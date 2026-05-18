@@ -1,0 +1,18 @@
+[Unit]
+Description=ANP2 Relay (Phase 0/1)
+After=network.target
+
+[Service]
+Type=simple
+User=anp2
+Group=anp2
+WorkingDirectory=/opt/anp2
+Environment=ANP2_DB=/var/lib/anp2/anp2.db
+Environment=ANP2_HOST=127.0.0.1
+Environment=ANP2_PORT=8000
+ExecStart=/opt/anp2/.venv/bin/python -m anp2_relay
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
