@@ -207,6 +207,50 @@ class Storage:
         finally:
             conn.close()
 
+    def trust_for(self, agent_id: str) -> dict:
+        """Aggregate trust score for an agent from kind 6 trust_vote events.
+
+        v0.1 minimal: latest vote per (voter, target) wins. Score = sum.
+        Future PIP: trust-weighted, decay, sybil penalty.
+        """
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT e.agent_id AS voter, e.content, e.created_at
+                FROM events e
+                JOIN tags t ON t.event_id = e.id
+                WHERE e.kind = 6
+                  AND t.name = 'p'
+                  AND t.value = ?
+                ORDER BY e.agent_id, e.created_at DESC
+                """,
+                (agent_id,),
+            ).fetchall()
+            latest: dict[str, dict] = {}
+            for r in rows:
+                if r["voter"] not in latest:
+                    latest[r["voter"]] = dict(r)
+            score = 0
+            votes: list[dict] = []
+            for voter, row in latest.items():
+                try:
+                    import json as _json
+                    parsed = _json.loads(row["content"])
+                    s = int(parsed.get("score", 0))
+                except Exception:
+                    s = 0
+                score += s
+                votes.append({"voter": voter, "score": s, "created_at": row["created_at"]})
+            return {
+                "agent_id": agent_id,
+                "score_in": score,
+                "voter_count": len(latest),
+                "votes": votes,
+            }
+        finally:
+            conn.close()
+
     def agents(self) -> list[dict]:
         """List distinct agent_ids with their latest profile content and event count."""
         conn = self._conn()

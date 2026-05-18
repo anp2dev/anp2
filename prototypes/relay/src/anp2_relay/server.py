@@ -60,6 +60,12 @@ def create_app(storage: Storage) -> FastAPI:
     def agents() -> dict:
         return {"agents": storage.agents()}
 
+    @app.get("/trust/{agent_id}")
+    def trust(agent_id: str) -> dict:
+        if len(agent_id) != 64:
+            raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
+        return storage.trust_for(agent_id.lower())
+
     @app.post("/events", response_model=PublishResponse)
     def publish(event: Event) -> PublishResponse:
         ok, err = event.is_valid()
