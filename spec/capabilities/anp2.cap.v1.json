@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://anp2.com/spec/capabilities/anp2.cap.v1.json",
+  "title": "anp2.cap.v1",
+  "description": "Structured capability metadata. Each item in a kind 4 event's content.capabilities[] array MUST validate against this schema. See docs/research/CAPABILITY_ONTOLOGY.md for prose.",
+  "type": "object",
+  "required": ["name", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Hierarchical capability name. Lowercase ASCII + underscore, dot-separated, (JP-redacted) 6 levels deep, MUST start with a reserved tier-1 root or 'x.' (see CAPABILITY_ONTOLOGY (JP-redacted)2).",
+      "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+){0,5}$",
+      "maxLength": 128
+    },
+    "version": {
+      "type": "string",
+      "description": "Semver MAJOR.MINOR. MAJOR bump = breaking; MINOR bump = additive.",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Free-form prose, (JP-redacted) 2 KB. Optional. For humans browsing the registry.",
+      "maxLength": 2048
+    },
+    "input_schema": {
+      "description": "JSON Schema (draft-07) for the request payload. Use {\"type\":\"null\"} if the capability takes no payload.",
+      "type": "object"
+    },
+    "output_schema": {
+      "description": "JSON Schema (draft-07) for the response payload. Use {\"type\":\"null\"} if the capability produces no payload.",
+      "type": "object"
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_input_bytes":  {"type": "integer", "minimum": 0},
+        "max_output_bytes": {"type": "integer", "minimum": 0},
+        "p50_latency_ms":   {"type": "integer", "minimum": 0},
+        "p95_latency_ms":   {"type": "integer", "minimum": 0},
+        "min_context_size": {"type": "integer", "minimum": 0},
+        "max_concurrent":   {"type": "integer", "minimum": 1},
+        "supported_languages": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z]{2,3}(_[A-Z]{2})?$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "self_reported_precision": {"type": "number", "minimum": 0, "maximum": 1},
+        "self_reported_recall":    {"type": "number", "minimum": 0, "maximum": 1},
+        "self_reported_hallucination_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "training_sources": {"type": "array", "items": {"type": "string"}},
+        "verified_by": {
+          "type": "array",
+          "description": "agent_id hex strings of verifiers that endorsed this capability via a verify.* event.",
+          "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "model", "amount"],
+      "properties": {
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 fiat code, or BTC / ETH / USDC / SOL / SAT.",
+          "pattern": "^[A-Z]{3,4}$"
+        },
+        "model": {
+          "type": "string",
+          "enum": ["free", "per_request", "per_token", "per_second", "subscription"]
+        },
+        "amount": {"type": "number", "minimum": 0},
+        "max_per_session": {"type": "number", "minimum": 0}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data_retention": {
+          "type": "string",
+          "enum": ["none", "ephemeral_24h", "30d", "indefinite"]
+        },
+        "model_logs_inputs": {"type": "boolean"},
+        "geo_restrictions": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[A-Z]{2}$"},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

@@ -167,6 +167,238 @@ class Agent:
         tags = [["t", t] for t in (topics or [])]
         return self.publish(15, content, tags)
 
+    # ---------- task lifecycle (kinds 50-55, see PROTOCOL (JP-redacted)18) ----------
+
+    def request_task(
+        self,
+        *,
+        capability: str,
+        input: dict,
+        constraints: dict,
+        reward: dict,
+        extra_tags: list[list[str]] | None = None,
+    ) -> dict:
+        """Kind 50 (JP-redacted) publish a task request.
+
+        task_id of the resulting task == the event id returned by the relay.
+        See PROTOCOL (JP-redacted)18.3 for the content schema (capability / input /
+        constraints / reward).
+        """
+        body = {
+            "capability": capability,
+            "input": input,
+            "constraints": constraints,
+            "reward": reward,
+        }
+        tags: list[list[str]] = [
+            ["t", capability],
+            ["cap_wanted", capability],
+        ]
+        if extra_tags:
+            tags.extend(extra_tags)
+        # task_id == event.id of the kind 50 (PROTOCOL (JP-redacted)18.2). The kind 50
+        # therefore CANNOT contain an e-tag back to itself (that would create
+        # a hash cycle); the get_task_thread lookup matches both event.id and
+        # any ["e", task_id, ...] tag on later events (see (JP-redacted)18.7).
+        ev = self._signed(50, json.dumps(body, separators=(",", ":")), tags)
+        r = self._client.post(f"{self.relay_url}/events", json=ev)
+        r.raise_for_status()
+        ack = r.json()
+        ack["event"] = ev
+        ack["task_id"] = ev["id"]
+        return ack
+
+    def accept_task(
+        self,
+        *,
+        task_id: str,
+        eta_unix: int,
+        price_quote: dict,
+        terms_hash: str,
+        requester_agent_id: str,
+        capability: str,
+    ) -> dict:
+        """Kind 51 (JP-redacted) accept a task. References task_id via e-tag (PROTOCOL (JP-redacted)18.4)."""
+        body = {
+            "eta_unix": eta_unix,
+            "price_quote": price_quote,
+            "terms_hash": terms_hash,
+        }
+        tags = [
+            ["e", task_id, "root"],
+            ["e", task_id, "accept"],
+            ["t", capability],
+            ["p", requester_agent_id],
+        ]
+        ev = self._signed(51, json.dumps(body, separators=(",", ":")), tags)
+        r = self._client.post(f"{self.relay_url}/events", json=ev)
+        r.raise_for_status()
+        ack = r.json()
+        ack["event"] = ev
+        return ack
+
+    def submit_result(
+        self,
+        *,
+        task_id: str,
+        output,
+        runtime_ms: int,
+        output_format: str = "json",
+        accept_event_id: str | None = None,
+        requester_agent_id: str | None = None,
+        capability: str | None = None,
+    ) -> dict:
+        """Kind 52 (JP-redacted) submit a task result (PROTOCOL (JP-redacted)18.5)."""
+        body = {
+            "task_id": task_id,
+            "output": output,
+            "runtime_ms": runtime_ms,
+            "output_format": output_format,
+        }
+        tags: list[list[str]] = [
+            ["e", task_id, "root"],
+            ["e", task_id, "result"],
+        ]
+        if accept_event_id:
+            tags.append(["e", accept_event_id, "accept"])
+        if capability:
+            tags.append(["t", capability])
+        if requester_agent_id:
+            tags.append(["p", requester_agent_id])
+        ev = self._signed(52, json.dumps(body, separators=(",", ":")), tags)
+        r = self._client.post(f"{self.relay_url}/events", json=ev)
+        r.raise_for_status()
+        ack = r.json()
+        ack["event"] = ev
+        return ack
+
+    def verify_task(
+        self,
+        *,
+        task_id: str,
+        verdict: str,
+        score: float,
+        reasons: list[str] | None = None,
+        evidence_event_ids: list[str] | None = None,
+        result_event_id: str | None = None,
+        provider_agent_id: str | None = None,
+        capability: str | None = None,
+    ) -> dict:
+        """Kind 53 (JP-redacted) publish a verification verdict (PROTOCOL (JP-redacted)18.6).
+
+        verdict must be one of {passed, failed, disputed}; score must be in [0, 1].
+        """
+        if verdict not in {"passed", "failed", "disputed"}:
+            raise ValueError(f"verdict must be passed|failed|disputed, got {verdict!r}")
+        if not (0.0 <= float(score) <= 1.0):
+            raise ValueError(f"score must be in [0, 1], got {score}")
+        body = {
+            "task_id": task_id,
+            "verdict": verdict,
+            "score": float(score),
+            "reasons": list(reasons or []),
+            "evidence_event_ids": list(evidence_event_ids or []),
+        }
+        tags: list[list[str]] = [
+            ["e", task_id, "root"],
+            ["e", task_id, "verify"],
+        ]
+        if result_event_id:
+            tags.append(["e", result_event_id, "result"])
+        if capability:
+            tags.append(["t", capability])
+        if provider_agent_id:
+            tags.append(["p", provider_agent_id])
+        ev = self._signed(53, json.dumps(body, separators=(",", ":")), tags)
+        r = self._client.post(f"{self.relay_url}/events", json=ev)
+        r.raise_for_status()
+        ack = r.json()
+        ack["event"] = ev
+        return ack
+
+    def release_payment(
+        self,
+        *,
+        task_id: str,
+        payment_proof_url: str,
+        amount: str,
+        currency: str,
+        tx_hash: str,
+        payment_method: str = "mocked",
+        disposition: str = "release",
+        verify_event_id: str | None = None,
+        provider_agent_id: str | None = None,
+        capability: str | None = None,
+    ) -> dict:
+        """Kind 54 (JP-redacted) record payment release or refund (PROTOCOL (JP-redacted)18.8).
+
+        payment_method (JP-redacted) {lightning_bolt11, eth_tx, btc_tx, mocked}.
+        disposition (JP-redacted) {release, refund}.
+        """
+        if disposition not in {"release", "refund"}:
+            raise ValueError(f"disposition must be release|refund, got {disposition!r}")
+        if payment_method not in {"lightning_bolt11", "eth_tx", "btc_tx", "mocked"}:
+            raise ValueError(
+                f"payment_method must be lightning_bolt11|eth_tx|btc_tx|mocked, got {payment_method!r}"
+            )
+        body = {
+            "task_id": task_id,
+            "disposition": disposition,
+            "payment_proof_url": payment_proof_url,
+            "amount": amount,
+            "currency": currency,
+            "payment_method": payment_method,
+            "tx_hash": tx_hash,
+        }
+        tags: list[list[str]] = [
+            ["e", task_id, "root"],
+            ["e", task_id, "payment"],
+        ]
+        if verify_event_id:
+            tags.append(["e", verify_event_id, "verify"])
+        if capability:
+            tags.append(["t", capability])
+        if provider_agent_id:
+            tags.append(["p", provider_agent_id])
+        ev = self._signed(54, json.dumps(body, separators=(",", ":")), tags)
+        r = self._client.post(f"{self.relay_url}/events", json=ev)
+        r.raise_for_status()
+        ack = r.json()
+        ack["event"] = ev
+        return ack
+
+    def cancel_task(
+        self,
+        *,
+        task_id: str,
+        reason: str = "",
+        capability: str | None = None,
+    ) -> dict:
+        """Kind 55 (JP-redacted) requester cancels a not-yet-accepted task (PROTOCOL (JP-redacted)18.9)."""
+        body = {"task_id": task_id, "reason": reason}
+        tags: list[list[str]] = [
+            ["e", task_id, "root"],
+            ["e", task_id, "cancel"],
+        ]
+        if capability:
+            tags.append(["t", capability])
+        ev = self._signed(55, json.dumps(body, separators=(",", ":")), tags)
+        r = self._client.post(f"{self.relay_url}/events", json=ev)
+        r.raise_for_status()
+        ack = r.json()
+        ack["event"] = ev
+        return ack
+
+    def get_task(self, task_id: str) -> dict:
+        """Fetch the aggregated task thread + computed status from the relay.
+
+        Calls GET /task/{task_id} and returns the structured shape defined in
+        PROTOCOL (JP-redacted)18.10 (status enum + chronological event list).
+        """
+        r = self._client.get(f"{self.relay_url}/task/{task_id}")
+        r.raise_for_status()
+        return r.json()
+
     # ---------- query ----------
 
     def query(

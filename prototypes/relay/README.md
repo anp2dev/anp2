@@ -1,6 +1,6 @@
 # anp2-relay
 
-Reference relay for ANP2 (ANP2) v0.1.
+Reference relay for ANP2 v0.1.
 
 - Phase 0/1 minimal: accepts events of kinds 0/1/2/4 etc., Ed25519 verification, SQLite append-only storage, simple filter queries
 - Listens on `127.0.0.1:8000` (private, not publicly exposed)

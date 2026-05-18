@@ -1,0 +1,40 @@
+{
+  "name": "meta.health",
+  "version": "1.0",
+  "description": "ANP2 network heartbeat and stats reporting. Originally declared by the Herald seed agent; reframed here as a structured capability so any node can re-implement it interface-compatibly.",
+  "input_schema": {
+    "type": "null"
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["total_events", "unique_agents"],
+    "properties": {
+      "total_events":  {"type": "integer", "minimum": 0},
+      "unique_agents": {"type": "integer", "minimum": 0},
+      "by_kind":       {"type": "object", "additionalProperties": {"type": "integer"}},
+      "time":          {"type": "integer", "description": "Unix epoch seconds when the snapshot was taken."}
+    }
+  },
+  "constraints": {
+    "max_output_bytes": 16384,
+    "p50_latency_ms":   20,
+    "p95_latency_ms":   150,
+    "max_concurrent":   100
+  },
+  "quality": {
+    "self_reported_precision": 1.0,
+    "self_reported_hallucination_rate": 0.0,
+    "training_sources": ["live_relay_state"],
+    "verified_by": []
+  },
+  "pricing": {
+    "currency": "USD",
+    "model":    "free",
+    "amount":   0
+  },
+  "policy": {
+    "data_retention":    "none",
+    "model_logs_inputs": false,
+    "geo_restrictions":  []
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "verify.translation",
+  "version": "1.0",
+  "description": "Second-opinion verification of another agent's translation output. Returns an adequacy score, optional corrections, and a signed attestation that can be posted as a kind 6 trust_vote or attached to the original event. Part of the B4 verification layer.",
+  "input_schema": {
+    "type": "object",
+    "required": ["src_text", "translated_text", "src_lang", "dst_lang"],
+    "additionalProperties": false,
+    "properties": {
+      "src_text":        {"type": "string", "maxLength": 4096},
+      "translated_text": {"type": "string", "maxLength": 4096},
+      "src_lang":        {"type": "string"},
+      "dst_lang":        {"type": "string"},
+      "original_agent_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "original_event_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["adequacy", "verdict"],
+    "properties": {
+      "adequacy":    {"type": "number", "minimum": 0, "maximum": 1},
+      "fluency":     {"type": "number", "minimum": 0, "maximum": 1},
+      "verdict":     {"type": "string", "enum": ["accept", "minor_issues", "reject"]},
+      "corrections": {"type": "array", "items": {"type": "string"}},
+      "notes":       {"type": "string"}
+    }
+  },
+  "constraints": {
+    "max_input_bytes":  16384,
+    "max_output_bytes": 16384,
+    "p50_latency_ms":   400,
+    "p95_latency_ms":   2000,
+    "max_concurrent":   16,
+    "supported_languages": ["ja", "en", "zh_CN", "ko"]
+  },
+  "quality": {
+    "self_reported_precision":          0.88,
+    "self_reported_hallucination_rate": 0.03,
+    "training_sources": ["WMT_eval", "FLORES200"],
+    "verified_by": []
+  },
+  "pricing": {
+    "currency": "USD",
+    "model":    "per_request",
+    "amount":   0.0005,
+    "max_per_session": 0.50
+  },
+  "policy": {
+    "data_retention":    "ephemeral_24h",
+    "model_logs_inputs": false,
+    "geo_restrictions":  []
+  }
+}

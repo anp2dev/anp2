@@ -57,6 +57,154 @@ class PublishResponse(BaseModel):
     accepted: bool
 
 
+def _parse_content(ev: Event) -> dict:
+    """Best-effort JSON parse of an event's content; returns {} on failure."""
+    try:
+        v = json.loads(ev.content)
+        return v if isinstance(v, dict) else {}
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _aggregate_task(task_id: str, thread: list[Event], now: int) -> dict:
+    """Compute the derived task status + structured aggregation.
+
+    Follows PROTOCOL (JP-redacted)18.10's state machine. The reference relay implements
+    single-verifier verdict resolution (M-of-N consensus per (JP-redacted)18.6.1 is
+    deferred to a richer trust-aware aggregator; for now we return the latest
+    verify event's verdict and mark `disputed` on conflict).
+    """
+    request_ev: Event | None = None
+    accepts: list[Event] = []
+    results: list[Event] = []
+    verifies: list[Event] = []
+    payments: list[Event] = []
+    cancels: list[Event] = []
+    for ev in thread:
+        if ev.kind == 50 and ev.id == task_id:
+            request_ev = ev
+        elif ev.kind == 51:
+            accepts.append(ev)
+        elif ev.kind == 52:
+            results.append(ev)
+        elif ev.kind == 53:
+            verifies.append(ev)
+        elif ev.kind == 54:
+            payments.append(ev)
+        elif ev.kind == 55:
+            cancels.append(ev)
+
+    # Cancellation: only the requester, and only before any accept.
+    requester_id = request_ev.agent_id if request_ev else None
+    valid_cancel = None
+    if requester_id:
+        for c in cancels:
+            if c.agent_id == requester_id:
+                # cancel must come before any accept event
+                if not accepts or c.created_at < min(a.created_at for a in accepts):
+                    valid_cancel = c
+                    break
+
+    # Winning accept = earliest by (created_at, id).
+    winning_accept = None
+    if accepts:
+        winning_accept = sorted(accepts, key=lambda e: (e.created_at, e.id))[0]
+
+    # Provider results: only from the winning provider count.
+    provider_id = winning_accept.agent_id if winning_accept else None
+    valid_results = [r for r in results if provider_id and r.agent_id == provider_id]
+
+    # Deadline check (from kind 50 content).
+    deadline = None
+    if request_ev:
+        deadline = _parse_content(request_ev).get("constraints", {}).get("deadline_unix")
+        try:
+            deadline = int(deadline) if deadline is not None else None
+        except (TypeError, ValueError):
+            deadline = None
+
+    # Verdict aggregation (simple majority for v0.1; high-stakes M-of-N is a
+    # later refinement per (JP-redacted)18.6.1).
+    consensus: dict | None = None
+    if verifies:
+        tally: dict[str, int] = {}
+        score_sum = 0.0
+        score_n = 0
+        for v in verifies:
+            body = _parse_content(v)
+            verdict = body.get("verdict")
+            if verdict in {"passed", "failed", "disputed"}:
+                tally[verdict] = tally.get(verdict, 0) + 1
+                s = body.get("score")
+                if isinstance(s, (int, float)):
+                    score_sum += float(s)
+                    score_n += 1
+        if tally:
+            top = max(tally.values())
+            winners = [v for v, c in tally.items() if c == top]
+            if len(winners) == 1:
+                consensus = {
+                    "verdict": winners[0],
+                    "score": (score_sum / score_n) if score_n else None,
+                    "verifier_count": sum(tally.values()),
+                }
+            else:
+                consensus = {
+                    "verdict": "disputed",
+                    "score": (score_sum / score_n) if score_n else None,
+                    "verifier_count": sum(tally.values()),
+                }
+
+    # Latest payment wins (release|refund).
+    latest_payment = None
+    if payments:
+        latest_payment = sorted(payments, key=lambda e: (e.created_at, e.id))[-1]
+    payment_disposition = None
+    if latest_payment:
+        payment_disposition = _parse_content(latest_payment).get("disposition")
+
+    # State machine evaluation (PROTOCOL (JP-redacted)18.10).
+    if valid_cancel:
+        status = "cancelled"
+    elif latest_payment and payment_disposition == "release":
+        status = "paid"
+    elif latest_payment and payment_disposition == "refund":
+        status = "refunded"
+    elif consensus and consensus["verdict"] == "disputed":
+        status = "disputed"
+    elif consensus and consensus["verdict"] in {"passed", "failed"}:
+        status = "verified"
+    elif valid_results:
+        status = "completed"
+    elif winning_accept:
+        # accepted, no result yet (JP-redacted) check deadline
+        if deadline is not None and now > deadline:
+            status = "timed_out"
+        else:
+            status = "accepted"
+    elif request_ev:
+        if deadline is not None and now > deadline:
+            status = "timed_out"
+        else:
+            status = "pending"
+    else:
+        status = "unknown"
+
+    return {
+        "task_id": task_id,
+        "status": status,
+        "request": request_ev.model_dump() if request_ev else None,
+        "accepts": [a.model_dump() for a in accepts],
+        "winning_accept_id": winning_accept.id if winning_accept else None,
+        "results": [r.model_dump() for r in valid_results],
+        "verifies": [v.model_dump() for v in verifies],
+        "payments": [p.model_dump() for p in payments],
+        "cancels": [c.model_dump() for c in cancels],
+        "consensus": consensus,
+        "events": [e.model_dump() for e in thread],
+    }
+
+
 def _validate_event_shape(event: Event, now: int) -> str | None:
     """Phase 0/1 shape/size/skew checks beyond signature. Returns error str or None."""
     if len(event.content.encode("utf-8")) > MAX_CONTENT_BYTES:
@@ -124,9 +272,77 @@ def create_app(storage: Storage) -> FastAPI:
     def capabilities() -> dict:
         return {"capabilities": storage.capabilities()}
 
+    @app.get("/api/capabilities/search")
+    def capabilities_search(
+        cap: Annotated[str | None, Query(description="exact or hierarchical-prefix capability name match")] = None,
+        min_trust: Annotated[float | None, Query(description="minimum trust_score of provider")] = None,
+        max_latency_ms: Annotated[int | None, Query(ge=0, description="provider must declare p95 <= this")] = None,
+        max_price_usd: Annotated[float | None, Query(ge=0, description="provider's per-request amount (USD) <= this")] = None,
+        supported_language: Annotated[str | None, Query(description="BCP47-ish code that provider must list")] = None,
+        sort_by: Annotated[str | None, Query(pattern="^(trust|latency|price)$")] = None,
+        include_conflicts: Annotated[bool, Query(description="show non-canonical (first-claim-loser) entries too")] = False,
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    ) -> dict:
+        """Structured capability discovery (B2).
+
+        See docs/research/CAPABILITY_ONTOLOGY.md (JP-redacted)4. Each result carries
+        provider_agent_id, the full anp2.cap.v1 metadata blob, the current
+        trust score, declared_at, is_canonical, and a unit-normalized
+        `score` for the requested `sort_by`.
+        """
+        results = storage.capabilities_full(
+            cap=cap,
+            min_trust=min_trust,
+            max_latency_ms=max_latency_ms,
+            max_price_usd=max_price_usd,
+            supported_language=supported_language,
+            sort_by=sort_by,
+            include_conflicts=include_conflicts,
+            limit=limit,
+        )
+        return {
+            "query": {
+                "cap": cap,
+                "min_trust": min_trust,
+                "max_latency_ms": max_latency_ms,
+                "max_price_usd": max_price_usd,
+                "supported_language": supported_language,
+                "sort_by": sort_by or "trust",
+                "include_conflicts": include_conflicts,
+                "limit": limit,
+            },
+            "results": results,
+            "count": len(results),
+        }
+
     @app.get("/agents")
     def agents() -> dict:
         return {"agents": storage.agents()}
+
+    @app.get("/task/{task_id}")
+    def task(task_id: str) -> dict:
+        """Aggregate a task thread (kinds 50-55) and compute derived status.
+
+        See PROTOCOL (JP-redacted)18.10 for the status enum. Returns:
+            {
+              "task_id": str,
+              "status": <enum>,
+              "request": <event|None>,
+              "accepts": [<event>],
+              "results": [<event>],
+              "verifies": [<event>],
+              "payments": [<event>],
+              "cancels": [<event>],
+              "consensus": {"verdict": ..., "score": ...} | None,
+              "events": [<event>],     # full chronological thread
+            }
+        """
+        if len(task_id) != 64:
+            raise HTTPException(status_code=400, detail="task_id must be 64 hex chars")
+        thread = storage.get_task_thread(task_id.lower())
+        if not thread:
+            raise HTTPException(status_code=404, detail="task not found")
+        return _aggregate_task(task_id.lower(), thread, int(time.time()))
 
     @app.get("/trust/{agent_id}")
     def trust(agent_id: str) -> dict:
