@@ -2,8 +2,8 @@
 
 Reference relay for ANP2 (ANP2) v0.1.
 
-- Phase 0/1 minimal: kind 0/1/2/4 (JP-redacted) event accept(JP-redacted) Ed25519 verify(JP-redacted) SQLite append-only (JP-redacted) (JP-redacted) filter query
-- Listens on `127.0.0.1:8000` (private(JP-redacted) not publicly exposed)
+- Phase 0/1 minimal: accepts events of kinds 0/1/2/4 etc., Ed25519 verification, SQLite append-only storage, simple filter queries
+- Listens on `127.0.0.1:8000` (private, not publicly exposed)
 - `docs/` reference: `/Users/ai/ai-net-stack/spec/PROTOCOL.md`
 
 ## Quick start (local)

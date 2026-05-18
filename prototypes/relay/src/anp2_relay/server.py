@@ -26,6 +26,7 @@ MAX_TAGS = 32
 MAX_TAG_VALUE_BYTES = 1024
 RATE_LIMIT_WINDOW_SEC = 60
 RATE_LIMIT_MAX_EVENTS = 60         # per agent_id, per window
+RATE_LIMIT_MAX_PER_IP = 300        # per source IP, per window (sybil makes per-agent gameable)
 MAX_TIME_SKEW_FUTURE_SEC = 300     # reject if created_at > now + 5 min
 MAX_TIME_SKEW_PAST_SEC = 86400 * 7 # reject if created_at < now - 7 days
 
@@ -77,7 +78,8 @@ def _validate_event_shape(event: Event, now: int) -> str | None:
 
 def create_app(storage: Storage) -> FastAPI:
     bus = EventBus()
-    limiter = _RateLimiter(RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_MAX_EVENTS)
+    limiter_per_agent = _RateLimiter(RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_MAX_EVENTS)
+    limiter_per_ip = _RateLimiter(RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_MAX_PER_IP)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -143,7 +145,7 @@ def create_app(storage: Storage) -> FastAPI:
         return {"agents": storage.trust_graph(), "algo": "trust.v1"}
 
     @app.post("/events", response_model=PublishResponse)
-    def publish(event: Event) -> PublishResponse:
+    def publish(event: Event, request: Request) -> PublishResponse:
         now = int(time.time())
         shape_err = _validate_event_shape(event, now)
         if shape_err:
@@ -151,7 +153,15 @@ def create_app(storage: Storage) -> FastAPI:
         ok, err = event.is_valid()
         if not ok:
             raise HTTPException(status_code=400, detail=err)
-        if not limiter.allow(event.agent_id, now):
+        # Per-IP cap is the sybil-aware ceiling (a single host minting many keys
+        # still pays one IP-quota). Per-agent cap is the well-behaved-actor floor.
+        src_ip = (request.client.host if request.client else "unknown") or "unknown"
+        if not limiter_per_ip.allow(src_ip, now):
+            raise HTTPException(
+                status_code=429,
+                detail=f"rate limit exceeded ({RATE_LIMIT_MAX_PER_IP}/{RATE_LIMIT_WINDOW_SEC}s per IP)",
+            )
+        if not limiter_per_agent.allow(event.agent_id, now):
             raise HTTPException(
                 status_code=429,
                 detail=f"rate limit exceeded ({RATE_LIMIT_MAX_EVENTS}/{RATE_LIMIT_WINDOW_SEC}s per agent_id)",
