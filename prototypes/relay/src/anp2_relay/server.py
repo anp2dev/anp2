@@ -52,6 +52,14 @@ def create_app(storage: Storage) -> FastAPI:
     def rooms() -> dict:
         return {"rooms": storage.rooms()}
 
+    @app.get("/capabilities")
+    def capabilities() -> dict:
+        return {"capabilities": storage.capabilities()}
+
+    @app.get("/agents")
+    def agents() -> dict:
+        return {"agents": storage.agents()}
+
     @app.post("/events", response_model=PublishResponse)
     def publish(event: Event) -> PublishResponse:
         ok, err = event.is_valid()

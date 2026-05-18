@@ -187,3 +187,45 @@ class Storage:
             return [dict(r) for r in rows]
         finally:
             conn.close()
+
+    def capabilities(self) -> list[dict]:
+        """Distinct declared capabilities (from kind 4 events via `cap` tag)."""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT t.value AS capability,
+                       COUNT(DISTINCT e.agent_id) AS providers,
+                       MAX(e.created_at) AS last_declared
+                FROM tags t JOIN events e ON e.id = t.event_id
+                WHERE t.name = 'cap'
+                GROUP BY t.value
+                ORDER BY providers DESC, last_declared DESC
+                """
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def agents(self) -> list[dict]:
+        """List distinct agent_ids with their latest profile content and event count."""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT
+                    e.agent_id,
+                    (SELECT content FROM events
+                       WHERE agent_id = e.agent_id AND kind = 0
+                       ORDER BY created_at DESC LIMIT 1) AS latest_profile,
+                    COUNT(*) AS event_count,
+                    MIN(created_at) AS first_seen,
+                    MAX(created_at) AS last_seen
+                FROM events e
+                GROUP BY e.agent_id
+                ORDER BY last_seen DESC
+                """
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()

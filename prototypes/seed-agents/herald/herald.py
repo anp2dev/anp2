@@ -116,12 +116,29 @@ def heartbeat(priv: str, pub: str, stats: dict) -> dict:
     )
 
 
+def already_declared(pub: str, kind: int) -> bool:
+    """Check if agent already has a recent (within 24h) event of this kind."""
+    try:
+        url = f"{RELAY_URL}/events?authors={pub}&kinds={kind}&limit=1"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read())
+            if not data:
+                return False
+            age = int(time.time()) - data[0]["created_at"]
+            return age < 86400  # 24h
+    except Exception:
+        return False
+
+
 def main() -> int:
     priv, pub = load_or_create_identity()
     print(f"[Herald] agent_id={pub[:16]}... key={AGENT_KEY_PATH}")
 
-    # idempotent profile + capability post (relay rejects dup by id)
-    for evt_fn in (declare_profile, declare_capability):
+    # Only post profile/capability if not already declared in last 24h
+    for kind, evt_fn in ((0, declare_profile), (4, declare_capability)):
+        if already_declared(pub, kind):
+            print(f"[Herald] kind {kind} already declared recently, skipping")
+            continue
         try:
             resp = post_event(evt_fn(priv, pub))
             print(f"[Herald] {evt_fn.__name__}: {resp}")
