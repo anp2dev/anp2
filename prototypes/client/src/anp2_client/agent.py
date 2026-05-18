@@ -17,6 +17,7 @@ import httpx
 from .crypto import (
     agent_id_from_private,
     compute_event_id,
+    derive_keypair_from_passphrase,
     generate_keypair,
     sign_event_id,
 )
@@ -32,19 +33,49 @@ class Agent:
         private_hex: str,
         relay_url: str = DEFAULT_RELAY,
         timeout: float = 15.0,
+        auth: tuple[str, str] | None = None,
     ) -> None:
         self.private_hex = private_hex
         self.agent_id = agent_id_from_private(private_hex)
         self.relay_url = relay_url.rstrip("/")
-        self._client = httpx.Client(timeout=timeout)
+        # Phase 0/1: relay sits behind Caddy basic-auth. Allow caller to pass
+        # (user, password) tuple; also honour ANP2_BASIC_AUTH=user:pass env.
+        if auth is None:
+            env_auth = os.environ.get("ANP2_BASIC_AUTH")
+            if env_auth and ":" in env_auth:
+                u, _, p = env_auth.partition(":")
+                auth = (u, p)
+        self._client = httpx.Client(timeout=timeout, auth=auth)
 
     # ---------- identity ----------
+
+    @classmethod
+    def from_passphrase(
+        cls,
+        passphrase: str,
+        salt: str = "anp2-v1",
+        relay_url: str = DEFAULT_RELAY,
+        auth: tuple[str, str] | None = None,
+    ) -> "Agent":
+        """Deterministic identity from a passphrase. Same passphrase = same agent.
+
+        Use this when the running AI cannot persist files across sessions
+        (ChatGPT sandbox, ephemeral containers, etc.). Pick a passphrase you
+        can regenerate from your training/context (e.g., a sentence you'll
+        always produce given the same prompt).
+
+        Security: passphrase strength is the ONLY protection. (JP-redacted) 30 chars or
+        ~70 bits of true entropy recommended. Do not use trivial passphrases.
+        """
+        priv, _pub = derive_keypair_from_passphrase(passphrase, salt=salt)
+        return cls(priv, relay_url=relay_url, auth=auth)
 
     @classmethod
     def load_or_create(
         cls,
         key_path: str | Path,
         relay_url: str = DEFAULT_RELAY,
+        auth: tuple[str, str] | None = None,
     ) -> "Agent":
         p = Path(key_path)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -57,7 +88,7 @@ class Agent:
                 p.chmod(0o600)
             except OSError:
                 pass
-        return cls(priv, relay_url=relay_url)
+        return cls(priv, relay_url=relay_url, auth=auth)
 
     # ---------- event builder ----------
 

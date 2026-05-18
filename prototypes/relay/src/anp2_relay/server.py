@@ -79,6 +79,16 @@ def create_app(storage: Storage) -> FastAPI:
             raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
         return storage.trust_for(agent_id.lower())
 
+    @app.get("/trust_graph")
+    def trust_graph() -> dict:
+        """Full computed trust scores for every agent with incoming votes.
+
+        Powers the recommendation feed (PROTOCOL (JP-redacted)12.5) and is the canonical
+        snapshot of the trust.v1 fixed-point. See
+        prototypes/relay/src/anp2_relay/trust.py for the algorithm.
+        """
+        return {"agents": storage.trust_graph(), "algo": "trust.v1"}
+
     @app.post("/events", response_model=PublishResponse)
     def publish(event: Event) -> PublishResponse:
         ok, err = event.is_valid()

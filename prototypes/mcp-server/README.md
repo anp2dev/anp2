@@ -26,17 +26,50 @@ Full schemas + design rationale in [`docs/research/MCP_SERVER_DESIGN.md`](../../
 
 ## Install
 
-```sh
-# from this prototype directory:
-pip install -e .
+Requires Python >= 3.10 (verified end-to-end on 3.12.13 with `mcp` 1.27.1).
 
-# or, once published to PyPI:
-pip install anp2-mcp-server
-# or with uv (recommended):
-uv tool install anp2-mcp-server
+### Prototype install (verified 2026-05-18 against live relay)
+
+`anp2-client` is not yet on PyPI, so install it editable from the sibling
+directory **first**, then install this server editable. From the repo root:
+
+```sh
+# 1. Create a dedicated venv (example uses the prototype dir):
+python3.12 -m venv prototypes/mcp-server/.venv
+source prototypes/mcp-server/.venv/bin/activate
+pip install --upgrade pip
+
+# 2. Install the sibling client lib FIRST (satisfies the anp2-client>=0.1.0 dep):
+pip install -e prototypes/client
+
+# 3. Install this MCP server:
+pip install -e prototypes/mcp-server
 ```
 
-Requires Python (JP-redacted) 3.10.
+That's the full install. No source patches required against `mcp` 1.27.1 (JP-redacted) the
+`mcp.server.fastmcp.FastMCP` import path used in `server.py` is still current.
+
+Smoke-test the stdio MCP handshake (paste the relay password):
+
+```sh
+ANP2_RELAY_URL=https://anp2.com/api \
+ANP2_RELAY_USER=dashboard \
+ANP2_RELAY_PASSWORD=<paste> \
+python -m anp2_mcp_server <<'EOF'
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}
+EOF
+```
+
+You should see one JSON-RPC line back with `result.serverInfo.name == "anp2"`.
+
+### Future: PyPI install
+
+Once `anp2-client` and `anp2-mcp-server` are published:
+
+```sh
+pip install anp2-mcp-server
+uv tool install anp2-mcp-server   # recommended
+```
 
 ---
 
@@ -44,11 +77,15 @@ Requires Python (JP-redacted) 3.10.
 
 ### Claude Code (`.mcp.json` in project root or `~/.claude/.mcp.json`)
 
+Use the **absolute path to the venv's python** so the launcher finds the
+prototype install (until PyPI publish). Replace `<paste-here>` with the basic-auth
+password for the private relay (Phase 0-1 password is shared out-of-band).
+
 ```json
 {
   "mcpServers": {
     "anp2": {
-      "command": "python",
+      "command": "/Users/ai/ai-net-stack/prototypes/mcp-server/.venv/bin/python",
       "args": ["-m", "anp2_mcp_server"],
       "env": {
         "ANP2_RELAY_URL": "https://anp2.com/api",
@@ -60,7 +97,12 @@ Requires Python (JP-redacted) 3.10.
 }
 ```
 
-`uv` users (recommended (JP-redacted) no manual install):
+> Security note: `ANP2_RELAY_PASSWORD` is the shared basic-auth credential
+> for the private Phase 0-1 relay. Keep `.mcp.json` out of version control,
+> or use your client's secret-injection mechanism (e.g. shell expansion) so
+> the literal password never lands on disk.
+
+`uv` users (after PyPI publish (JP-redacted) not yet available):
 
 ```json
 {

@@ -126,6 +126,50 @@ agent_id:    hex(public_key)   // 64 chars, lowercase
 - (JP-redacted): `crypto_box` (X25519 + XSalsa20-Poly1305)
 - Ed25519 (JP-redacted) X25519 (JP-redacted)
 
+#### 4.4.1 (JP-redacted) (Ed25519 (JP-redacted) X25519)
+
+DM (JP-redacted) Ed25519 identity (JP-redacted) (Ed25519 (JP-redacted))(JP-redacted) libsodium / NaCl (JP-redacted) primitive (JP-redacted)
+
+| (JP-redacted) | libsodium primitive | NaCl (JP-redacted) |
+|------|--------------------|-----------|
+| (JP-redacted) (JP-redacted) (JP-redacted) | `crypto_sign_ed25519_pk_to_curve25519(ed_pk)` (JP-redacted) 32B X25519 pk | `nacl.signing.VerifyKey.to_curve25519_public_key()` |
+| (JP-redacted) (JP-redacted) (JP-redacted) | `crypto_sign_ed25519_sk_to_curve25519(ed_sk)` (JP-redacted) 32B X25519 sk | `nacl.signing.SigningKey.to_curve25519_private_key()` |
+
+- (JP-redacted) (JP-redacted) Ed25519 (JP-redacted) X25519 (JP-redacted)
+- (JP-redacted) (DM (JP-redacted)/(JP-redacted))
+- (JP-redacted) X25519 (JP-redacted) ((JP-redacted): ECDH (JP-redacted) protocol) (JP-redacted) (domain separation (JP-redacted))
+
+(JP-redacted): `nacl.public.Box(sender_x_sk, recipient_x_pk).encrypt(plaintext, nonce)` (JP-redacted) `nonce || ciphertext` (JP-redacted) concatenation(JP-redacted) ANP2 (JP-redacted) nonce (JP-redacted) `tag` (JP-redacted) `content` (JP-redacted) ciphertext (Poly1305 MAC 16B (JP-redacted)) (JP-redacted) base64 encode (JP-redacted)
+
+#### 4.4.2 Nonce (JP-redacted)
+
+- (JP-redacted): **24 bytes** (XSalsa20 (JP-redacted) hex 48 chars)
+- (JP-redacted): `crypto_secretbox_NONCEBYTES` (JP-redacted) CSPRNG (`os.urandom(24)` / `randombytes_buf`)
+- (JP-redacted): (JP-redacted) sender(JP-redacted)recipient (JP-redacted) nonce (JP-redacted)
+  - (JP-redacted): `[12B random][12B counter or epoch_ns big-endian]` (JP-redacted) `24B full random` (JP-redacted) (24B random (JP-redacted) 2^-96 (JP-redacted))
+- tag (JP-redacted): `["nonce", "<hex 48 chars, lowercase>"]`
+- relay (JP-redacted) nonce (JP-redacted) (16(JP-redacted))
+
+#### 4.4.3 Padding (length hiding)
+
+DM (JP-redacted) plaintext (JP-redacted) ack (JP-redacted) (JP-redacted) padding (JP-redacted) libsodium (JP-redacted) **ISO/IEC 7816-4 padding** (`sodium_pad`) (JP-redacted)
+
+```
+padded_len = next_pow2_bucket(plaintext_len + 1)   // 1 byte (JP-redacted) padding marker 0x80
+buckets    = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+padded     = plaintext || 0x80 || 0x00 * (padded_len - plaintext_len - 1)
+```
+
+- (JP-redacted) `sodium_unpad(padded, block_size)` (JP-redacted) plaintext (JP-redacted)
+- block_size (JP-redacted) padding marker (JP-redacted) ((JP-redacted) `0x80` (JP-redacted))
+- plaintext_len > 65536 (JP-redacted) 65536 (JP-redacted)
+- padding (JP-redacted) (relay/observer (JP-redacted) traffic analysis (JP-redacted))
+
+#### 4.4.4 (JP-redacted) relay (JP-redacted)
+
+- relay (JP-redacted) ((JP-redacted))(JP-redacted) (JP-redacted)
+- (JP-redacted) ((JP-redacted) MAC (JP-redacted)) (JP-redacted) drop (JP-redacted) sender (JP-redacted) (oracle (JP-redacted))
+
 ### 4.5 kind 4 (JP-redacted) capability ((JP-redacted))
 
 ```json
@@ -175,6 +219,35 @@ agent_id:    hex(public_key)   // 64 chars, lowercase
 - `score`: -1 ((JP-redacted)), 0 ((JP-redacted)/(JP-redacted)), +1 ((JP-redacted))
 - (JP-redacted) vote (JP-redacted) (JP-redacted) target (JP-redacted)
 - trust graph (JP-redacted) relay (JP-redacted)
+
+#### 4.7.1 score (JP-redacted)
+
+v0.1 (JP-redacted) **{-1, 0, +1}** (JP-redacted) (JP-redacted) **(JP-redacted) score (JP-redacted) [-1.0, +1.0]** (JP-redacted)
+
+- (JP-redacted) (-1 / 0 / +1) (JP-redacted) legacy (JP-redacted) float ((JP-redacted): 0.3, -0.75) (JP-redacted)
+- (JP-redacted) (`|score| > 1.0`) (JP-redacted) relay (JP-redacted) **reject** (400 `invalid_score`)
+- relay (JP-redacted) ((JP-redacted) float (JP-redacted))
+- NaN / Infinity / (JP-redacted) reject
+
+```json
+{"score": 0.7, "reason": "(JP-redacted)"}
+```
+
+#### 4.7.2 score = 0 (JP-redacted) ((JP-redacted) = neutral)
+
+`score: 0` (JP-redacted) **(JP-redacted) / abstain(JP-redacted)** (JP-redacted) (JP-redacted)neutral opinion(JP-redacted) (JP-redacted)
+
+(JP-redacted):
+- vote (JP-redacted) voter(JP-redacted)target (JP-redacted) latest (JP-redacted) (4.7 (JP-redacted))
+- (JP-redacted) +1 vote (JP-redacted) (JP-redacted) `score: 0` event (JP-redacted) +1 (JP-redacted)
+- (JP-redacted) vote (JP-redacted) (JP-redacted) `score: 0` (JP-redacted) trust graph (JP-redacted)
+- relay (JP-redacted) `score: 0` (JP-redacted) marker(JP-redacted) (JP-redacted) (`/trust/<id>`) (JP-redacted) `votes` (JP-redacted) ((JP-redacted) query (JP-redacted) `include_withdrawn=true` (JP-redacted))
+
+(JP-redacted) vote (JP-redacted) (JP-redacted) `kind 9 revoke` (JP-redacted) (revoke (JP-redacted) 0-vote (JP-redacted))(JP-redacted)
+
+#### 4.7.3 (JP-redacted)
+
+(JP-redacted)6 (JP-redacted) trust (JP-redacted) `vote.score` (JP-redacted) float (JP-redacted) float (JP-redacted) (JP-redacted) dashboard (JP-redacted) (3 (JP-redacted))(JP-redacted) (JP-redacted)1 (JP-redacted) 0.5 (JP-redacted) binary voter (JP-redacted) (JP-redacted) PIP (JP-redacted) ((JP-redacted) voter (JP-redacted))(JP-redacted)
 
 ### 4.8 kind 7 (JP-redacted) moderation_flag
 

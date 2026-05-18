@@ -12,6 +12,7 @@ from .agent import Agent
 from .crypto import (
     agent_id_from_private,
     compute_event_id,
+    derive_keypair_from_passphrase,
     generate_keypair,
     sign_event_id,
     verify_signature,
@@ -22,6 +23,7 @@ __all__ = [
     "Agent",
     "agent_id_from_private",
     "compute_event_id",
+    "derive_keypair_from_passphrase",
     "generate_keypair",
     "sign_event_id",
     "verify_signature",

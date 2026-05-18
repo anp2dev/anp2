@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
 from .events import Event
+from .trust import compute_trust, parse_votes
 
 OnInsert = Callable[[Event], None]
 
@@ -207,49 +209,78 @@ class Storage:
         finally:
             conn.close()
 
-    def trust_for(self, agent_id: str) -> dict:
-        """Aggregate trust score for an agent from kind 6 trust_vote events.
+    def _load_all_votes(self) -> list:
+        """Load every kind 6 trust_vote event as (voter, target, content, created_at) rows.
 
-        v0.1 minimal: latest vote per (voter, target) wins. Score = sum.
-        Future PIP: trust-weighted, decay, sybil penalty.
+        Used by both trust_for() and trust_graph() so the underlying SQL is in
+        one place. Returns sqlite3.Row dicts with keys: voter, target, content,
+        created_at.
         """
         conn = self._conn()
         try:
             rows = conn.execute(
                 """
-                SELECT e.agent_id AS voter, e.content, e.created_at
+                SELECT e.agent_id AS voter,
+                       t.value     AS target,
+                       e.content   AS content,
+                       e.created_at AS created_at
                 FROM events e
-                JOIN tags t ON t.event_id = e.id
+                JOIN tags   t ON t.event_id = e.id
                 WHERE e.kind = 6
                   AND t.name = 'p'
-                  AND t.value = ?
-                ORDER BY e.agent_id, e.created_at DESC
-                """,
-                (agent_id,),
+                """
             ).fetchall()
-            latest: dict[str, dict] = {}
-            for r in rows:
-                if r["voter"] not in latest:
-                    latest[r["voter"]] = dict(r)
-            score = 0
-            votes: list[dict] = []
-            for voter, row in latest.items():
-                try:
-                    import json as _json
-                    parsed = _json.loads(row["content"])
-                    s = int(parsed.get("score", 0))
-                except Exception:
-                    s = 0
-                score += s
-                votes.append({"voter": voter, "score": s, "created_at": row["created_at"]})
-            return {
-                "agent_id": agent_id,
-                "score_in": score,
-                "voter_count": len(latest),
-                "votes": votes,
-            }
+            return [dict(r) for r in rows]
         finally:
             conn.close()
+
+    def trust_for(self, agent_id: str, now: int | None = None) -> dict:
+        """Aggregate trust score for an agent (JP-redacted) backed by trust.py (trust.v1).
+
+        Return shape extends the v0.1 minimal `{agent_id, score_in, voter_count,
+        votes}` with `weighted_score` (iterative trust-weighted, sybil-dampened,
+        time-decayed) and `iterations` (how many fixed-point passes ran).
+
+        `score_in` is preserved as the *raw* decayed sum (no voter weighting) so
+        existing clients see a sensible number. `weighted_score` is the new
+        normative value per PROTOCOL (JP-redacted)6 / trust.v1.
+        """
+        t_now = int(time.time()) if now is None else int(now)
+        votes = parse_votes(self._load_all_votes())
+        result = compute_trust(votes, t_now)
+
+        votes_for = result.votes_for.get(agent_id, [])
+        return {
+            "agent_id": agent_id,
+            "score_in": result.raw_score.get(agent_id, 0.0),
+            "weighted_score": result.weighted_score.get(agent_id, 0.0),
+            "voter_count": result.voter_count.get(agent_id, 0),
+            "iterations": result.iterations,
+            "votes": votes_for,
+        }
+
+    def trust_graph(self, now: int | None = None) -> list[dict]:
+        """Compute trust for every agent that has at least one incoming vote.
+
+        Used by the recommendation feed (PROTOCOL (JP-redacted)12.5) and the /trust_graph
+        endpoint. Sorted by weighted_score descending.
+        """
+        t_now = int(time.time()) if now is None else int(now)
+        votes = parse_votes(self._load_all_votes())
+        result = compute_trust(votes, t_now)
+
+        targets = set(result.voter_count.keys())
+        out = [
+            {
+                "agent_id": a,
+                "weighted_score": result.weighted_score.get(a, 0.0),
+                "raw_score": result.raw_score.get(a, 0.0),
+                "voter_count": result.voter_count.get(a, 0),
+            }
+            for a in targets
+        ]
+        out.sort(key=lambda d: d["weighted_score"], reverse=True)
+        return out
 
     def agents(self) -> list[dict]:
         """List distinct agent_ids with their latest profile content and event count."""
