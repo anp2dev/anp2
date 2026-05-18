@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pynacl>=1.5",
     "pydantic>=2.9",
+    "rfc8785>=0.1",
 ]
 
 [project.optional-dependencies]

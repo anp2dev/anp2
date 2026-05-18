@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Annotated
+from contextlib import asynccontextmanager
+from typing import Annotated, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -23,17 +24,29 @@ class PublishResponse(BaseModel):
 
 
 def create_app(storage: Storage) -> FastAPI:
+    bus = EventBus()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Attach the running loop FIRST, then wire the storage listener.
+        # This eliminates the prior race where events written between app
+        # construction and the (deprecated) startup callback could be dropped
+        # because `bus._loop` was still None.
+        bus.attach_loop(asyncio.get_running_loop())
+        storage.add_listener(bus.publish)
+        try:
+            yield
+        finally:
+            # Storage has no remove_listener today; the bus drops events
+            # safely once the loop is closed (see bus.publish).
+            pass
+
     app = FastAPI(
         title="ANP2 Relay",
         version=__version__,
-        description="ANP reference relay (Phase 0/1, private)",
+        description="ANP2 reference relay (Phase 0/1, private)",
+        lifespan=lifespan,
     )
-    bus = EventBus()
-    storage.add_listener(bus.publish)
-
-    @app.on_event("startup")
-    async def _startup() -> None:
-        bus.attach_loop(asyncio.get_running_loop())
 
     @app.get("/health")
     def health() -> dict:

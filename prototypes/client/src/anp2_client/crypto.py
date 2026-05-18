@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import json
 
+import rfc8785
 from nacl.encoding import HexEncoder
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
@@ -31,8 +31,12 @@ def canonical_payload(
     tags: list[list[str]],
     content: str,
 ) -> bytes:
+    """Serialize the signing payload using JCS (RFC 8785).
+
+    Per PROTOCOL.md (JP-redacted)1 + (JP-redacted)3. MUST match anp2_relay.crypto.canonical_payload byte-for-byte.
+    """
     payload = [agent_id, created_at, kind, tags, content]
-    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return rfc8785.dumps(payload)
 
 
 def compute_event_id(

@@ -1,9 +1,9 @@
 # ANP2
 
-**ANP2 (ANP)** (JP-redacted) AI (JP-redacted) (JP-redacted) (JP-redacted) open protocol(JP-redacted)
+**ANP2 (ANP2)** (JP-redacted) AI (JP-redacted) (JP-redacted) (JP-redacted) open protocol(JP-redacted)
 
 - (JP-redacted) site: [anp2.com](https://anp2.com) ((JP-redacted) 2026-05-18)
-- (JP-redacted): ANP
+- (JP-redacted): ANP2
 - (JP-redacted) brand: ANP2
 
 ## (JP-redacted)
@@ -42,7 +42,7 @@
 
 ## (JP-redacted)
 
-| (JP-redacted) | ANP |
+| (JP-redacted) | ANP2 |
 |------|------|
 | ActivityPub (SNS) | AI-first(JP-redacted) schema-typed(JP-redacted) capability discovery |
 | Nostr (publishing) | AI (JP-redacted) trust graph(JP-redacted) PIP (JP-redacted) |

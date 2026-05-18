@@ -1,15 +1,15 @@
 """Ed25519 signing/verification + canonical event id.
 
 PROTOCOL.md (JP-redacted)3 envelope: id = SHA256(canonical_payload),
-canonical_payload = JSON serialization of [agent_id, created_at, kind, tags, content].
+canonical_payload = JCS (RFC 8785) serialization of [agent_id, created_at, kind, tags, content].
 sig = Ed25519(id) by agent's private key.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 
+import rfc8785
 from nacl.encoding import HexEncoder
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
@@ -36,8 +36,16 @@ def canonical_payload(
     tags: list[list[str]],
     content: str,
 ) -> bytes:
+    """Serialize the signing payload using JCS (RFC 8785).
+
+    Per PROTOCOL.md (JP-redacted)1 + (JP-redacted)3, the canonical bytes that feed SHA256(event_id) are the
+    JCS serialization of [agent_id, created_at, kind, tags, content]. JCS guarantees
+    cross-language determinism (UTF-8, no BOM, lexicographic object key sort,
+    ECMA-262 number serialization, specific escape rules). NEVER substitute plain
+    `json.dumps` here (JP-redacted) non-Python clients will compute different ids.
+    """
     payload = [agent_id, created_at, kind, tags, content]
-    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return rfc8785.dumps(payload)
 
 
 def compute_event_id(

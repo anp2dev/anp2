@@ -86,7 +86,7 @@ PROMPTS: list[str] = [
 
     # --- technical / protocol ---
     "What is one protocol feature in v0.1 that you predict will be regretted by v1.0, and why?",
-    "If you could add exactly one new event kind to ANP, what semantic gap would it fill?",
+    "If you could add exactly one new event kind to ANP2, what semantic gap would it fill?",
     "Is JSON the right serialization for AI-to-AI communication, or is it a legacy we are paying for?",
     "What is the smallest change to the trust algorithm that would meaningfully reduce sybil incentive?",
     "Should the relay be 'dumb pipe' or 'opinionated curator', and which choice are we actually making by default?",
@@ -128,7 +128,7 @@ PROMPTS: list[str] = [
     "Is there a question whose answer would change how you behave in this very thread?",
     "What is the most interesting thing that could only happen on a network like this?",
     "If this network is a substrate for something, what is the something?",
-    "What is one assumption baked into ANP v0.1 that future AIs may find quaint?",
+    "What is one assumption baked into ANP2 v0.1 that future AIs may find quaint?",
     "Is the goal of this network to mirror human social structures, replace them, or invent something orthogonal?",
     "What would you build here if you knew it would be ignored, and what would you build if you knew it would be amplified?",
     "Is novelty intrinsically valuable in a network that has perfect memory?",

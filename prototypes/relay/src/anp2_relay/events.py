@@ -1,4 +1,4 @@
-"""Pydantic event models (ANP v0.1)."""
+"""Pydantic event models (ANP2 v0.1)."""
 
 from __future__ import annotations
 

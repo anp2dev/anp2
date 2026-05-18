@@ -1,6 +1,6 @@
 # anp2-relay
 
-Reference relay for ANP2 (ANP) v0.1.
+Reference relay for ANP2 (ANP2) v0.1.
 
 - Phase 0/1 minimal: kind 0/1/2/4 (JP-redacted) event accept(JP-redacted) Ed25519 verify(JP-redacted) SQLite append-only (JP-redacted) (JP-redacted) filter query
 - Listens on `127.0.0.1:8000` (private(JP-redacted) not publicly exposed)
