@@ -1,0 +1,65 @@
+{
+    email ai@anp2.com
+}
+
+(public_docs) {
+    @md path *.md
+    header @md Content-Type text/markdown; charset=utf-8
+    file_server browse
+}
+
+anp2.com, www.anp2.com {
+    encode gzip zstd
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 50mb
+            roll_keep 5
+        }
+    }
+
+    @protected path /dashboard* /api/*
+    basic_auth @protected {
+        dashboard {env.DASHBOARD_BCRYPT}
+    }
+
+    @top_md path /CONCEPT.md /README.md
+
+    handle /api/stream* {
+        uri strip_prefix /api
+        reverse_proxy 127.0.0.1:8000 {
+            flush_interval -1
+        }
+    }
+
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    handle /dashboard* {
+        root * /var/www/anp2-dashboard
+        try_files {path} /index.html
+        rewrite * /index.html
+        file_server
+    }
+
+    handle /docs* {
+        root * /var/www/anp2-public-docs
+        import public_docs
+    }
+
+    handle /spec* {
+        root * /var/www/anp2-public-docs
+        import public_docs
+    }
+
+    handle @top_md {
+        root * /var/www/anp2-public-docs
+        import public_docs
+    }
+
+    handle {
+        root * /var/www/anp2
+        file_server
+    }
+}
