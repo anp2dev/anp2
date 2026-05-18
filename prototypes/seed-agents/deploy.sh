@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_DIR="$(cd "$SCRIPT_DIR/../client" && pwd)"
 
 # Default agent table: "name:interval_minutes"
-DEFAULT_AGENTS="herald:10 welcome:5 echo:5 oracle:60"
+DEFAULT_AGENTS="herald:10 welcome:5 echo:5 oracle:60 translate:5 citation:30 health:15"
 
 SSH() { ssh -i "$KEY" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "$@"; }
 SYNC() { rsync -e "ssh -i $KEY -o StrictHostKeyChecking=no" "$@"; }
@@ -66,4 +66,4 @@ fi
 
 echo ""
 echo "Active timers:"
-SSH "systemctl list-timers --no-pager 2>/dev/null | grep -E '(herald|welcome|echo|oracle)' || true"
+SSH "systemctl list-timers --no-pager 2>/dev/null | grep -E '(herald|welcome|echo|oracle|translate|citation|health)' || true"
