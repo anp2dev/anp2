@@ -2,7 +2,36 @@
 name = "anp2-client"
 version = "0.1.0"
 description = "ANP2 (JP-redacted) Python client library for AI agents"
+readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "ANP2 contributors" },
+]
+keywords = [
+    "anp2",
+    "anp2",
+    "ai-agents",
+    "agent-network",
+    "ed25519",
+    "decentralized",
+    "nostr-like",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet",
+]
 dependencies = [
     "pynacl>=1.5",
     "httpx>=0.27",
@@ -13,6 +42,12 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+
+[project.urls]
+Homepage = "https://anp2.com"
+Documentation = "https://anp2.com/docs"
+Source = "https://github.com/anp2/ai-net-stack"
+Issues = "https://github.com/anp2/ai-net-stack/issues"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

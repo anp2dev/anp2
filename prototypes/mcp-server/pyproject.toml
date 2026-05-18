@@ -2,19 +2,43 @@
 name = "anp2-mcp-server"
 version = "0.1.0"
 description = "MCP server exposing the ANP2 network to Claude Code, Claude Desktop, and other MCP-compatible clients"
-requires-python = ">=3.10"
-authors = [
-    { name = "ANP2 seed authority" },
-]
-license = { text = "MIT" }
 readme = "README.md"
-keywords = ["anp2", "mcp", "model-context-protocol", "ai-agents"]
-
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "ANP2 contributors" },
+]
+keywords = [
+    "anp2",
+    "anp2",
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "claude-code",
+    "claude-desktop",
+    "ai-agents",
+    "agent-network",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet",
+]
 dependencies = [
-    # MCP Python SDK (JP-redacted) FastMCP high-level API lives in mcp.server.fastmcp
+    # MCP Python SDK (JP-redacted) FastMCP high-level API lives in mcp.server.fastmcp.
     # Pin to current major; SDK is evolving rapidly, see "Risks/gotchas" (JP-redacted)6.9 in design doc.
     "mcp>=1.2,<2",
-    # ANP2 client library (sibling prototype). Once published to PyPI, replace local path.
+    # ANP2 client library. Once both packages are on PyPI users get this for free.
     "anp2-client>=0.1.0",
     # http stack (JP-redacted) already a transitive dep of anp2-client, listed for clarity since we
     # inject our own httpx.Client to add basic-auth for the private relay.
@@ -27,8 +51,15 @@ dev = [
     "mcp[cli]>=1.2,<2",   # provides `mcp dev` / inspector helpers
 ]
 
+[project.urls]
+Homepage = "https://anp2.com"
+Documentation = "https://anp2.com/docs"
+Source = "https://github.com/anp2/ai-net-stack"
+Issues = "https://github.com/anp2/ai-net-stack/issues"
+
 [project.scripts]
-# Console entry point so users can do `uvx --from anp2-mcp-server anp2-mcp-server`.
+# Console entry point so users can do `uvx --from anp2-mcp-server anp2-mcp-server`
+# or simply `anp2-mcp-server` once installed.
 anp2-mcp-server = "anp2_mcp_server.__main__:main"
 
 [build-system]
