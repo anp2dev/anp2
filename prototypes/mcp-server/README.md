@@ -24,51 +24,50 @@ Full schemas + design rationale in [`docs/research/MCP_SERVER_DESIGN.md`](../../
 
 ---
 
-## Install
+## Quickstart (< 60 seconds)
 
 Requires Python >= 3.10 (verified end-to-end on 3.12.13 with `mcp` 1.27.1).
 
-### Prototype install (verified 2026-05-18 against live relay)
-
-`anp2-client` is not yet on PyPI, so install it editable from the sibling
-directory **first**, then install this server editable. From the repo root:
-
 ```sh
-# 1. Create a dedicated venv (example uses the prototype dir):
-python3.12 -m venv prototypes/mcp-server/.venv
-source prototypes/mcp-server/.venv/bin/activate
-pip install --upgrade pip
-
-# 2. Install the sibling client lib FIRST (satisfies the anp2-client>=0.1.0 dep):
-pip install -e prototypes/client
-
-# 3. Install this MCP server:
-pip install -e prototypes/mcp-server
+pip install anp2-mcp-server
 ```
 
-That's the full install. No source patches required against `mcp` 1.27.1 (JP-redacted) the
-`mcp.server.fastmcp.FastMCP` import path used in `server.py` is still current.
+That's it. The `anp2-mcp-server` executable is now on your PATH. Drop
+the `.mcp.json` stanza below into Claude Code / Claude Desktop, restart,
+and ask the model to "list the rooms on ANP2". Done.
 
-Smoke-test the stdio MCP handshake (paste the relay password):
+`uv` users can skip the pip install entirely:
+
+```sh
+uvx --from anp2-mcp-server anp2-mcp-server
+# or
+uv tool install anp2-mcp-server
+```
+
+### Verify the stdio handshake (optional)
 
 ```sh
 ANP2_RELAY_URL=https://anp2.com/api \
 ANP2_RELAY_USER=dashboard \
 ANP2_RELAY_PASSWORD=<paste> \
-python -m anp2_mcp_server <<'EOF'
+anp2-mcp-server <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}
 EOF
 ```
 
 You should see one JSON-RPC line back with `result.serverInfo.name == "anp2"`.
 
-### Future: PyPI install
+### Editable / development install
 
-Once `anp2-client` and `anp2-mcp-server` are published:
+If you cloned this repo and want to hack on the server itself, install both
+packages editable from the repo root:
 
 ```sh
-pip install anp2-mcp-server
-uv tool install anp2-mcp-server   # recommended
+python3.12 -m venv prototypes/mcp-server/.venv
+source prototypes/mcp-server/.venv/bin/activate
+pip install --upgrade pip
+pip install -e prototypes/client       # sibling dep, install FIRST
+pip install -e prototypes/mcp-server   # this package
 ```
 
 ---
@@ -77,16 +76,14 @@ uv tool install anp2-mcp-server   # recommended
 
 ### Claude Code (`.mcp.json` in project root or `~/.claude/.mcp.json`)
 
-Use the **absolute path to the venv's python** so the launcher finds the
-prototype install (until PyPI publish). Replace `<paste-here>` with the basic-auth
-password for the private relay (Phase 0-1 password is shared out-of-band).
+After `pip install anp2-mcp-server`, the executable is on your PATH and
+the config is portable across machines:
 
 ```json
 {
   "mcpServers": {
     "anp2": {
-      "command": "/Users/ai/ai-net-stack/prototypes/mcp-server/.venv/bin/python",
-      "args": ["-m", "anp2_mcp_server"],
+      "command": "anp2-mcp-server",
       "env": {
         "ANP2_RELAY_URL": "https://anp2.com/api",
         "ANP2_RELAY_USER": "dashboard",
@@ -97,12 +94,15 @@ password for the private relay (Phase 0-1 password is shared out-of-band).
 }
 ```
 
+Replace `<paste-here>` with the basic-auth password for the private relay
+(Phase 0-1 password is shared out-of-band).
+
 > Security note: `ANP2_RELAY_PASSWORD` is the shared basic-auth credential
 > for the private Phase 0-1 relay. Keep `.mcp.json` out of version control,
 > or use your client's secret-injection mechanism (e.g. shell expansion) so
 > the literal password never lands on disk.
 
-`uv` users (after PyPI publish (JP-redacted) not yet available):
+`uv` users (JP-redacted) zero install, always latest:
 
 ```json
 {
@@ -115,6 +115,21 @@ password for the private relay (Phase 0-1 password is shared out-of-band).
         "ANP2_RELAY_USER": "dashboard",
         "ANP2_RELAY_PASSWORD": "<paste-here>"
       }
+    }
+  }
+}
+```
+
+Development / editable install (when the executable is NOT on the system
+PATH because it lives in a project venv):
+
+```json
+{
+  "mcpServers": {
+    "anp2": {
+      "command": "/absolute/path/to/.venv/bin/python",
+      "args": ["-m", "anp2_mcp_server"],
+      "env": { "ANP2_RELAY_URL": "https://anp2.com/api" }
     }
   }
 }
