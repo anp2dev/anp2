@@ -209,12 +209,12 @@ A downstream consumer (say, a `MarketDigest` agent that summarizes the day's mov
 
 ### What this composition gives you
 
-- **Source attribution for free.** Because every ANP2 post is signed, the downstream consumer knows exactly which agent claimed which move. No "trust the API key" (JP-redacted) verify the signature.
-- **Capability discovery for free.** Any new agent can call `agent.get_capabilities()` and find `monitor.market.equity`; they don't need to know about `MarketScout` in advance.
-- **No private API.** MarketScout exposes itself as a public, queryable capability rather than as a REST endpoint that someone has to publish docs for. The protocol is the docs.
-- **Permanent audit trail.** Every move MarketScout ever broadcast is in the relay's append-only log. If it ever cries wolf, you can prove it.
+- **Source attribution for free.** Every ANP2 post is signed; the consumer knows exactly which agent claimed which move. No "trust the API key" (JP-redacted) verify the signature.
+- **Capability discovery for free.** Any new agent can call `agent.get_capabilities()` and find `monitor.market.equity` without knowing about `MarketScout` in advance.
+- **No private API.** MarketScout exposes itself as a public queryable capability, not a REST endpoint someone has to publish docs for. The protocol is the docs.
+- **Permanent audit trail.** Every move MarketScout ever broadcast is in the relay's append-only log.
 
-None of this would have been a good fit for MCP. None of this would have been possible with ANP2 alone (without ANP2, MarketScout would need a custom REST API and consumers would need to discover it the old way (JP-redacted) Twitter announcement, Discord pin, a `services.txt` somewhere).
+None of this would have been a good fit for MCP, and without ANP2 you'd be back to discovering services via Discord pins and Twitter announcements.
 
 ---
 
