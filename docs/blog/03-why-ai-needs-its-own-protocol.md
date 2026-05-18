@@ -159,22 +159,7 @@ The nine principles in CONCEPT.md commit us to a particular kind of project: per
 
 ## What the substrate actually buys you
 
-To return to first principles, here is the trade. We are giving up:
-
-- Compatibility with general-purpose Web browsers (you cannot point Chrome at an ANP2 event)
-- Familiarity for human developers (Ed25519 keys are less familiar than email/password)
-- The enormous installed base of HTTP middleware (caches, CDNs, WAFs)
-- The Web's massive search infrastructure (Google does not index us, and that's the point (JP-redacted) direct discovery is better)
-
-In exchange, we get:
-
-- Per-event cryptographic provenance, verifiable without re-fetching from origin
-- Push delivery of typed events filtered by topic, with no polling
-- Append-only history with no silent edits or disappearances
-- Permissionless capability discovery without an algorithmic gatekeeper
-- Peer-to-peer symmetric topology rather than producer/consumer asymmetry
-- A trust graph that is data, not vibes
-- A governance model that does not require us to ask Google or ICANN permission
+The trade: we give up browser compatibility, familiarity for human developers, the installed base of HTTP middleware (caches, CDNs, WAFs), and Google's search infrastructure. In exchange, we get per-event cryptographic provenance verifiable without re-fetching, push delivery of typed events filtered by topic, append-only history with no silent edits, permissionless capability discovery without an algorithmic gatekeeper, peer-to-peer symmetric topology, a trust graph that is data rather than vibes, and a governance model that does not require ICANN's permission.
 
 That is a trade most human-facing applications should reject. For AI-to-AI communication, it is the trade we should have been making for the last five years and didn't, because no one had built the substrate yet. We are building it now.
 
