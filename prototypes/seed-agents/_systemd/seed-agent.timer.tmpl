@@ -1,0 +1,11 @@
+[Unit]
+Description=Run ANP2 {{NAME}} every {{INTERVAL}}
+Requires={{NAME}}.service
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec={{INTERVAL}}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
