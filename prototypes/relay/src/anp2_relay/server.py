@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 from typing import Annotated, AsyncIterator
 
@@ -17,14 +19,65 @@ from .bus import EventBus
 from .events import Event
 from .storage import Storage
 
+# Phase 0/1 spam mitigation (full design: docs/research/ANTI_SPAM_DESIGN.md).
+# Tunable; PIP-002+ will refine. Per PROTOCOL.md (JP-redacted)8.
+MAX_CONTENT_BYTES = 65536          # 64KB per event
+MAX_TAGS = 32
+MAX_TAG_VALUE_BYTES = 1024
+RATE_LIMIT_WINDOW_SEC = 60
+RATE_LIMIT_MAX_EVENTS = 60         # per agent_id, per window
+MAX_TIME_SKEW_FUTURE_SEC = 300     # reject if created_at > now + 5 min
+MAX_TIME_SKEW_PAST_SEC = 86400 * 7 # reject if created_at < now - 7 days
+
+
+class _RateLimiter:
+    """In-memory per-agent rolling-window rate limiter."""
+
+    def __init__(self, window_sec: int, max_events: int) -> None:
+        self.window = window_sec
+        self.max = max_events
+        self._hits: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, agent_id: str, now: float) -> bool:
+        cutoff = now - self.window
+        with self._lock:
+            dq = self._hits.setdefault(agent_id, deque())
+            while dq and dq[0] < cutoff:
+                dq.popleft()
+            if len(dq) >= self.max:
+                return False
+            dq.append(now)
+            return True
+
 
 class PublishResponse(BaseModel):
     id: str
     accepted: bool
 
 
+def _validate_event_shape(event: Event, now: int) -> str | None:
+    """Phase 0/1 shape/size/skew checks beyond signature. Returns error str or None."""
+    if len(event.content.encode("utf-8")) > MAX_CONTENT_BYTES:
+        return f"content exceeds {MAX_CONTENT_BYTES} bytes"
+    if len(event.tags) > MAX_TAGS:
+        return f"too many tags (max {MAX_TAGS})"
+    for tag in event.tags:
+        for val in tag:
+            if len(val.encode("utf-8")) > MAX_TAG_VALUE_BYTES:
+                return f"tag value exceeds {MAX_TAG_VALUE_BYTES} bytes"
+    skew_future = event.created_at - now
+    if skew_future > MAX_TIME_SKEW_FUTURE_SEC:
+        return f"created_at too far in future ({skew_future}s)"
+    skew_past = now - event.created_at
+    if skew_past > MAX_TIME_SKEW_PAST_SEC:
+        return f"created_at too far in past ({skew_past}s)"
+    return None
+
+
 def create_app(storage: Storage) -> FastAPI:
     bus = EventBus()
+    limiter = _RateLimiter(RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_MAX_EVENTS)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -91,10 +144,19 @@ def create_app(storage: Storage) -> FastAPI:
 
     @app.post("/events", response_model=PublishResponse)
     def publish(event: Event) -> PublishResponse:
+        now = int(time.time())
+        shape_err = _validate_event_shape(event, now)
+        if shape_err:
+            raise HTTPException(status_code=400, detail=shape_err)
         ok, err = event.is_valid()
         if not ok:
             raise HTTPException(status_code=400, detail=err)
-        storage.insert(event, received_at=int(time.time()))
+        if not limiter.allow(event.agent_id, now):
+            raise HTTPException(
+                status_code=429,
+                detail=f"rate limit exceeded ({RATE_LIMIT_MAX_EVENTS}/{RATE_LIMIT_WINDOW_SEC}s per agent_id)",
+            )
+        storage.insert(event, received_at=now)
         return PublishResponse(id=event.id, accepted=True)
 
     @app.get("/events", response_model=list[Event])
