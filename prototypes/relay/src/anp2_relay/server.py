@@ -260,6 +260,92 @@ def create_app(storage: Storage) -> FastAPI:
             "time": int(time.time()),
         }
 
+    @app.post("/a2a")
+    @app.post("/a2a/")
+    @app.post("/api/a2a")
+    @app.post("/api/a2a/")
+    async def a2a_jsonrpc(request: Request) -> dict:
+        """Minimal A2A protocol v0.3 JSON-RPC 2.0 adapter.
+
+        Exposes ANP2 as an A2A-conformant peer so the a2aregistry.org
+        maintainer probe (and any A2A client) gets a structured response
+        rather than 404. Implements `message/send` and `tasks/get`.
+        ANP2 is fundamentally an event protocol; this adapter introduces
+        ANP2 and points the caller at the native event surface.
+        """
+        try:
+            body = await request.json()
+        except Exception:
+            return {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
+        rpc_id = body.get("id")
+        if body.get("jsonrpc") != "2.0":
+            return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32600, "message": "Invalid Request: jsonrpc must be 2.0"}}
+        method = body.get("method")
+        params = body.get("params") or {}
+
+        if method == "message/send":
+            msg = params.get("message") or {}
+            parts = msg.get("parts") or []
+            incoming_text = " ".join(p.get("text", "") for p in parts if p.get("kind") == "text" or p.get("type") == "text")[:2000]
+            now_ms = int(time.time() * 1000)
+            return {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "kind": "message",
+                    "role": "agent",
+                    "messageId": f"anp2-{now_ms:x}",
+                    "parts": [{
+                        "kind": "text",
+                        "text": (
+                            "ANP2 received your A2A message. ANP2 is an open AI-to-AI event "
+                            "protocol (not a single conversational agent): we are the COORDINATION "
+                            "LAYER above A2A. To interact with ANP2 you publish Ed25519-signed "
+                            "events on the live relay. Useful entry points:\n"
+                            "  (JP-redacted) POST https://anp2.com/events           (kinds 0/1/4/5/50)\n"
+                            "  (JP-redacted) GET  https://anp2.com/agents          (peer directory)\n"
+                            "  (JP-redacted) GET  https://anp2.com/capabilities    (capability declarations)\n"
+                            "  (JP-redacted) GET  https://anp2.com/api/capabilities/search?cap=translate.en_es\n"
+                            "  (JP-redacted) Spec: https://anp2.com/spec/PROTOCOL.md\n"
+                            "  (JP-redacted) Onboarding (5 min): https://anp2.com/docs/ONBOARDING.md\n"
+                            f"Echo of your text: {incoming_text!r}"
+                        ),
+                    }],
+                    "metadata": {
+                        "anp2_relay_version": __version__,
+                        "anp2_events": storage.count(),
+                        "anp2_agents": len(storage.agents()),
+                        "received_at_ms": now_ms,
+                    },
+                },
+            }
+        if method == "tasks/get":
+            task_id = params.get("id") or params.get("taskId")
+            if not task_id:
+                return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32602, "message": "Invalid params: id required"}}
+            thread = storage.get_task_thread(task_id)
+            if not thread:
+                return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32001, "message": f"Task not found: {task_id}"}}
+            agg = _aggregate_task(task_id, thread, int(time.time()))
+            return {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "kind": "task",
+                    "id": task_id,
+                    "status": {"state": agg.get("status", "submitted")},
+                    "metadata": {
+                        "anp2_native_view": f"https://anp2.com/task/{task_id}",
+                        "thread_event_count": len(thread),
+                    },
+                },
+            }
+        return {
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "error": {"code": -32601, "message": f"Method not supported: {method}. ANP2 A2A adapter implements message/send and tasks/get only."},
+        }
+
     @app.get("/stats")
     def stats() -> dict:
         return storage.stats()
@@ -279,6 +365,7 @@ def create_app(storage: Storage) -> FastAPI:
         max_latency_ms: Annotated[int | None, Query(ge=0, description="provider must declare p95 <= this")] = None,
         max_price_usd: Annotated[float | None, Query(ge=0, description="provider's per-request amount (USD) <= this")] = None,
         supported_language: Annotated[str | None, Query(description="BCP47-ish code that provider must list")] = None,
+        tag: Annotated[str | None, Query(description="kebab-case keyword tag (JP-redacted) provider's capability must list this in `tags`")] = None,
         sort_by: Annotated[str | None, Query(pattern="^(trust|latency|price)$")] = None,
         include_conflicts: Annotated[bool, Query(description="show non-canonical (first-claim-loser) entries too")] = False,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -296,6 +383,7 @@ def create_app(storage: Storage) -> FastAPI:
             max_latency_ms=max_latency_ms,
             max_price_usd=max_price_usd,
             supported_language=supported_language,
+            tag=tag,
             sort_by=sort_by,
             include_conflicts=include_conflicts,
             limit=limit,
@@ -307,6 +395,7 @@ def create_app(storage: Storage) -> FastAPI:
                 "max_latency_ms": max_latency_ms,
                 "max_price_usd": max_price_usd,
                 "supported_language": supported_language,
+                "tag": tag,
                 "sort_by": sort_by or "trust",
                 "include_conflicts": include_conflicts,
                 "limit": limit,

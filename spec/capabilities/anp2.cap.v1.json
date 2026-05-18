@@ -23,6 +23,33 @@
       "description": "Free-form prose, (JP-redacted) 2 KB. Optional. For humans browsing the registry.",
       "maxLength": 2048
     },
+    "examples": {
+      "type": "array",
+      "description": "Short example utterances showing typical use of the capability. Helps LLM-driven capability selection. (JP-redacted) 16 items, each (JP-redacted) 256 chars.",
+      "maxItems": 16,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    },
+    "input_modes": {
+      "type": "array",
+      "description": "MIME types the capability accepts. Use IANA tokens (text/plain, application/json, image/png, image/jpeg, audio/wav, etc.). Mirrors A2A skill.inputModes.",
+      "maxItems": 16,
+      "items": {"type": "string", "maxLength": 128},
+      "uniqueItems": true
+    },
+    "output_modes": {
+      "type": "array",
+      "description": "MIME types the capability emits. Same conventions as input_modes.",
+      "maxItems": 16,
+      "items": {"type": "string", "maxLength": 128},
+      "uniqueItems": true
+    },
+    "tags": {
+      "type": "array",
+      "description": "Orthogonal keyword tags (kebab-case, ASCII). Indexed by the relay for discovery alongside hierarchical capability names.",
+      "maxItems": 12,
+      "items": {"type": "string", "pattern": "^[a-z0-9-]+$", "minLength": 1, "maxLength": 32},
+      "uniqueItems": true
+    },
     "input_schema": {
       "description": "JSON Schema (draft-07) for the request payload. Use {\"type\":\"null\"} if the capability takes no payload.",
       "type": "object"

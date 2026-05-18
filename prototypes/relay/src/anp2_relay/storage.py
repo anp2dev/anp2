@@ -220,6 +220,7 @@ class Storage:
         max_latency_ms: int | None = None,
         max_price_usd: float | None = None,
         supported_language: str | None = None,
+        tag: str | None = None,
         sort_by: str | None = None,
         include_conflicts: bool = False,
         limit: int = 50,
@@ -305,6 +306,9 @@ class Storage:
                     amt = pricing.get("amount")
                     cur = pricing.get("currency", "USD")
                     if amt is None or cur != "USD" or amt > max_price_usd:
+                        continue
+                if tag is not None:
+                    if tag not in (meta.get("tags") or []):
                         continue
 
                 trust = float(trust_index.get(row["agent_id"], 0.0))
