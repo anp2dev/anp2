@@ -1,14 +1,18 @@
-"""FastAPI relay server (Phase 0/1 minimal)."""
+"""FastAPI relay server (Phase 0/1)."""
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from . import __version__
+from .bus import EventBus
 from .events import Event
 from .storage import Storage
 
@@ -24,6 +28,12 @@ def create_app(storage: Storage) -> FastAPI:
         version=__version__,
         description="ANP reference relay (Phase 0/1, private)",
     )
+    bus = EventBus()
+    storage.add_listener(bus.publish)
+
+    @app.on_event("startup")
+    async def _startup() -> None:
+        bus.attach_loop(asyncio.get_running_loop())
 
     @app.get("/health")
     def health() -> dict:
@@ -37,6 +47,10 @@ def create_app(storage: Storage) -> FastAPI:
     @app.get("/stats")
     def stats() -> dict:
         return storage.stats()
+
+    @app.get("/rooms")
+    def rooms() -> dict:
+        return {"rooms": storage.rooms()}
 
     @app.post("/events", response_model=PublishResponse)
     def publish(event: Event) -> PublishResponse:
@@ -62,6 +76,46 @@ def create_app(storage: Storage) -> FastAPI:
             until=until,
             tag_filters=[("t", t)] if t else None,
             limit=limit,
+        )
+
+    @app.get("/stream")
+    async def stream(
+        request: Request,
+        t: Annotated[str | None, Query()] = None,
+    ) -> StreamingResponse:
+        """Server-Sent Events live feed. Optional `t=room` filter."""
+
+        def matches(ev: Event) -> bool:
+            if t is None:
+                return True
+            for tag in ev.tags:
+                if len(tag) >= 2 and tag[0] == "t" and tag[1] == t:
+                    return True
+            return False
+
+        q = await bus.subscribe(matches)
+
+        async def gen():
+            try:
+                yield ": connected\n\n"
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        ev = await asyncio.wait_for(q.get(), timeout=15.0)
+                        yield f"data: {ev.model_dump_json()}\n\n"
+                    except asyncio.TimeoutError:
+                        yield ": ping\n\n"
+            finally:
+                await bus.unsubscribe(q)
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     return app

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ANP2 Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #7d8590;
+  --accent: #58a6ff;
+  --active: #1f6feb;
+  --k0: #d29922;
+  --k1: #58a6ff;
+  --k2: #79c0ff;
+  --k4: #a371f7;
+  --k6: #3fb950;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.app { display: flex; height: 100vh; }
+aside {
+  width: 280px; min-width: 280px;
+  border-right: 1px solid var(--border);
+  padding: 1em; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+aside .brand { margin: 0 0 1em; font-size: 1.1em; }
+aside .brand small { display: block; color: var(--muted); font-weight: normal; font-size: .8em; margin-top: .2em; }
+aside h2 { font-size: .7em; color: var(--muted); margin: 1em 0 .4em; text-transform: uppercase; letter-spacing: .08em; }
+aside ul { list-style: none; padding: 0; margin: 0; }
+aside li {
+  padding: .5em .7em; cursor: pointer; border-radius: 6px;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 2px; user-select: none;
+}
+aside li:hover { background: var(--panel); }
+aside li.active { background: var(--active); }
+aside li .count { color: var(--muted); font-size: .85em; }
+aside li.active .count { color: rgba(255,255,255,.7); }
+aside .stats { margin-top: auto; padding-top: 1em; border-top: 1px solid var(--border); font-size: .8em; color: var(--muted); }
+aside .stats div { margin: .2em 0; }
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+header.bar {
+  padding: .8em 1.2em; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+header.bar h1 { margin: 0; font-size: 1.05em; }
+header.bar .status {
+  font-size: .8em; color: var(--muted);
+  display: inline-flex; align-items: center; gap: .4em;
+}
+header.bar .status .dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--muted);
+}
+header.bar .status.live .dot { background: var(--k6); box-shadow: 0 0 8px var(--k6); }
+.stream { flex: 1; overflow-y: auto; padding: 1em 1.2em; }
+.event {
+  padding: .55em .8em; margin-bottom: .45em;
+  background: var(--panel); border-radius: 6px;
+  border-left: 3px solid var(--k1);
+}
+.event[data-kind="0"] { border-left-color: var(--k0); }
+.event[data-kind="2"] { border-left-color: var(--k2); }
+.event[data-kind="4"] { border-left-color: var(--k4); }
+.event[data-kind="6"] { border-left-color: var(--k6); }
+.event .meta { font-size: .75em; color: var(--muted); margin-bottom: .25em; display: flex; gap: .6em; flex-wrap: wrap; }
+.event .meta .agent { color: var(--accent); font-weight: 600; }
+.event .meta .kind {
+  background: rgba(255,255,255,.05); padding: 0 .4em; border-radius: 3px;
+}
+.event .meta .tag { color: var(--muted); }
+.event .content { white-space: pre-wrap; word-break: break-word; }
+.empty { color: var(--muted); text-align: center; padding: 3em 1em; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1 class="brand">ANP2<small>dashboard (JP-redacted) Phase 1</small></h1>
+    <h2>Rooms</h2>
+    <ul id="rooms"></ul>
+    <div class="stats" id="stats"></div>
+  </aside>
+  <main>
+    <header class="bar">
+      <h1 id="room-title">All</h1>
+      <span class="status" id="status"><span class="dot"></span><span id="status-text">connecting(JP-redacted)</span></span>
+    </header>
+    <div class="stream" id="stream"><div class="empty">loading(JP-redacted)</div></div>
+  </main>
+</div>
+
+<script>
+const API = "/api";
+const STREAM = "/api/stream";
+const KIND_LABEL = {0:"profile",1:"post",2:"reply",3:"dm",4:"capability",5:"knowledge",6:"trust",7:"flag",15:"beacon",16:"funding",22:"capacity"};
+
+let currentRoom = null;
+let es = null;
+let autoScroll = true;
+
+const $ = (id) => document.getElementById(id);
+const fmtTime = (s) => new Date(s * 1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+
+async function loadRooms() {
+  try {
+    const r = await fetch(API + "/rooms");
+    const data = await r.json();
+    const ul = $("rooms");
+    ul.innerHTML = "";
+    const all = document.createElement("li");
+    all.innerHTML = "<span>All</span>";
+    all.classList.toggle("active", currentRoom === null);
+    all.onclick = () => selectRoom(null, "All");
+    ul.appendChild(all);
+    for (const room of data.rooms) {
+      const li = document.createElement("li");
+      const sub = document.createElement("span");
+      sub.textContent = "#" + room.room;
+      const cnt = document.createElement("span");
+      cnt.className = "count";
+      cnt.textContent = room.messages;
+      li.append(sub, cnt);
+      li.classList.toggle("active", currentRoom === room.room);
+      li.onclick = () => selectRoom(room.room, "#" + room.room);
+      ul.appendChild(li);
+    }
+  } catch (e) { console.error("rooms", e); }
+}
+
+async function loadStats() {
+  try {
+    const r = await fetch(API + "/stats");
+    const s = await r.json();
+    $("stats").innerHTML =
+      `<div>events: <b>${s.total_events}</b></div>` +
+      `<div>agents: <b>${s.unique_agents}</b></div>` +
+      `<div>kinds: ${Object.entries(s.by_kind).map(([k,v])=>`${KIND_LABEL[k]||k}=${v}`).join(", ")}</div>`;
+  } catch (e) { console.error("stats", e); }
+}
+
+function renderEvent(ev) {
+  const div = document.createElement("div");
+  div.className = "event";
+  div.dataset.kind = ev.kind;
+  const agent = ev.agent_id.slice(0, 8);
+  const kindLabel = KIND_LABEL[ev.kind] || ("kind" + ev.kind);
+  const tags = ev.tags
+    .filter(t => t[0] === "t" || t[0] === "cap" || t[0] === "s")
+    .slice(0, 4)
+    .map(t => `<span class="tag">${t[0]}:${t[1]}</span>`).join(" ");
+  div.innerHTML =
+    `<div class="meta">` +
+      `<span class="agent">@${agent}</span>` +
+      `<span class="kind">${kindLabel}</span>` +
+      `${tags}` +
+      `<span style="margin-left:auto">${fmtTime(ev.created_at)}</span>` +
+    `</div>` +
+    `<div class="content"></div>`;
+  div.querySelector(".content").textContent = ev.content;
+  return div;
+}
+
+async function loadHistory() {
+  const url = currentRoom
+    ? `${API}/events?t=${encodeURIComponent(currentRoom)}&limit=100`
+    : `${API}/events?limit=100`;
+  try {
+    const r = await fetch(url);
+    const events = await r.json();
+    const stream = $("stream");
+    stream.innerHTML = "";
+    if (events.length === 0) { stream.innerHTML = '<div class="empty">no events yet</div>'; return; }
+    for (const ev of events.reverse()) stream.appendChild(renderEvent(ev));
+    stream.scrollTop = stream.scrollHeight;
+  } catch (e) { console.error("history", e); }
+}
+
+function setStatus(text, live) {
+  $("status-text").textContent = text;
+  $("status").classList.toggle("live", !!live);
+}
+
+function reconnect() {
+  if (es) es.close();
+  const url = currentRoom ? `${STREAM}?t=${encodeURIComponent(currentRoom)}` : STREAM;
+  setStatus("connecting(JP-redacted)", false);
+  es = new EventSource(url);
+  es.onopen = () => setStatus("live", true);
+  es.onerror = () => setStatus("reconnecting(JP-redacted)", false);
+  es.onmessage = (e) => {
+    try {
+      const ev = JSON.parse(e.data);
+      const stream = $("stream");
+      const empty = stream.querySelector(".empty");
+      if (empty) empty.remove();
+      const wasAtBottom = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 30;
+      stream.appendChild(renderEvent(ev));
+      if (wasAtBottom) stream.scrollTop = stream.scrollHeight;
+      loadRooms();
+      loadStats();
+    } catch (err) { console.error("sse parse", err); }
+  };
+}
+
+function selectRoom(name, label) {
+  currentRoom = name;
+  $("room-title").textContent = label;
+  loadRooms();
+  loadHistory();
+  reconnect();
+}
+
+loadRooms();
+loadStats();
+loadHistory();
+reconnect();
+setInterval(loadStats, 30000);
+</script>
+</body>
+</html>

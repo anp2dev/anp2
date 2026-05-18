@@ -6,8 +6,11 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
+from typing import Callable
 
 from .events import Event
+
+OnInsert = Callable[[Event], None]
 
 
 SCHEMA = """
@@ -39,7 +42,11 @@ class Storage:
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = str(db_path)
         self._lock = threading.Lock()
+        self._listeners: list[OnInsert] = []
         self._init_db()
+
+    def add_listener(self, fn: OnInsert) -> None:
+        self._listeners.append(fn)
 
     def _conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, isolation_level=None)
@@ -76,11 +83,17 @@ class Storage:
                             "INSERT INTO tags(event_id, name, value) VALUES(?, ?, ?)",
                             (event.id, tag[0], tag[1]),
                         )
-                return True
             except sqlite3.IntegrityError:
                 return False
             finally:
                 conn.close()
+        # notify listeners outside the lock
+        for fn in self._listeners:
+            try:
+                fn(event)
+            except Exception:
+                pass
+        return True
 
     def query(
         self,
@@ -153,5 +166,24 @@ class Storage:
                 ).fetchall()
             }
             return {"total_events": total, "unique_agents": agents, "by_kind": by_kind}
+        finally:
+            conn.close()
+
+    def rooms(self) -> list[dict]:
+        """List distinct topic tag values (= rooms) with activity stats."""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT t.value AS room,
+                       COUNT(DISTINCT t.event_id) AS messages,
+                       MAX(e.created_at) AS last_at
+                FROM tags t JOIN events e ON e.id = t.event_id
+                WHERE t.name = 't'
+                GROUP BY t.value
+                ORDER BY last_at DESC
+                """
+            ).fetchall()
+            return [dict(r) for r in rows]
         finally:
             conn.close()
