@@ -162,10 +162,11 @@ def post_verify(
     if hasattr(agent, "verify_task"):
         return agent.verify_task(  # type: ignore[attr-defined]
             task_id=task_id,
-            result_id=result_id,
+            result_event_id=result_id,
             verdict=verdict,
             score=score,
             reasons=reasons,
+            provider_agent_id=verifier_target_id,
         )
     tags = [
         ["e", task_id, "task"],
@@ -199,11 +200,12 @@ def post_payment_release(
     if hasattr(agent, "release_payment"):
         return agent.release_payment(  # type: ignore[attr-defined]
             task_id=task_id,
-            result_id=result_id,
-            worker_id=worker_id,
-            amount=amount,
-            payment_method="mocked",
+            payment_proof_url=f"mock://{tx_hash}",
+            amount=str(amount),
+            currency="USD",
             tx_hash=tx_hash,
+            payment_method="mocked",
+            provider_agent_id=worker_id,
         )
     tags = [
         ["e", task_id, "task"],

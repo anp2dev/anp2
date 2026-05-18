@@ -310,9 +310,11 @@ def _post_task_accept(agent: Agent, task_id: str, requester_id: str) -> dict:
     if hasattr(agent, "accept_task"):
         return agent.accept_task(  # type: ignore[attr-defined]
             task_id=task_id,
-            requester_id=requester_id,
+            requester_agent_id=requester_id,
             eta_unix=eta,
             price_quote=quote,
+            terms_hash="",
+            capability=CAPABILITY,
         )
     body = json.dumps(
         {"task_id": task_id, "eta_unix": eta, "price_quote": quote, "cap": CAPABILITY},
@@ -348,10 +350,10 @@ def _post_task_result(
     if hasattr(agent, "submit_result"):
         return agent.submit_result(  # type: ignore[attr-defined]
             task_id=task_id,
-            requester_id=requester_id,
-            output=output,
+            requester_agent_id=requester_id,
+            output={"text": output, "src_lang": src, "dst_lang": dst, "model": "rule-based"},
             runtime_ms=runtime_ms,
-            extra={"src_lang": src, "dst_lang": dst, "model": "rule-based"},
+            capability=CAPABILITY,
         )
     body = json.dumps(result, separators=(",", ":"))
     tags = [

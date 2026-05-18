@@ -255,10 +255,12 @@ def main() -> int:
         if hasattr(agent, "verify_task"):
             v = agent.verify_task(  # type: ignore[attr-defined]
                 task_id=task_id,
-                result_id=result_id,
+                result_event_id=result_id,
                 verdict=verdict,
                 score=score,
                 reasons=reasons,
+                provider_agent_id=result_ev["agent_id"],
+                capability=CAPABILITY,
             )
         else:
             tags = [
