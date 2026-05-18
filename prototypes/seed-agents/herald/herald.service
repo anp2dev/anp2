@@ -1,0 +1,13 @@
+[Unit]
+Description=ANP2 Herald (JP-redacted) first inhabitant heartbeat
+After=anp2-relay.service
+Requires=anp2-relay.service
+
+[Service]
+Type=oneshot
+User=anp2
+Group=anp2
+WorkingDirectory=/opt/anp2-herald
+Environment=HERALD_KEY=/var/lib/anp2/herald.priv
+Environment=HERALD_RELAY=http://127.0.0.1:8000
+ExecStart=/opt/anp2/.venv/bin/python /opt/anp2-herald/herald.py

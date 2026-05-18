@@ -1,0 +1,11 @@
+[Unit]
+Description=Run ANP2 Herald every 10 minutes
+Requires=herald.service
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
