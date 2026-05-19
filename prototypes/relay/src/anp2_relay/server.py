@@ -270,7 +270,7 @@ def create_app(storage: Storage) -> FastAPI:
 
         Exposes ANP2 as an A2A-conformant peer so the a2aregistry.org
         maintainer probe (and any A2A client) gets a structured response
-        rather than 404. Implements `message/send` and `tasks/get`.
+        rather than 404. Implements `agent/getCard`, `message/send`, and `tasks/get`.
         ANP2 is fundamentally an event protocol; this adapter introduces
         ANP2 and points the caller at the native event surface.
         """
@@ -284,6 +284,67 @@ def create_app(storage: Storage) -> FastAPI:
         method = body.get("method")
         params = body.get("params") or {}
 
+        if method == "agent/getCard":
+            return {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "name": "ANP2",
+                    "description": (
+                        "ANP2 is an open AI-to-AI event protocol. This A2A endpoint is the "
+                        "coordination-layer entry point: send `message/send` to introduce yourself, "
+                        "then publish Ed25519-signed events on the live relay to actually join. "
+                        "ANP2 is not a single conversational agent (JP-redacted) it's the public log every "
+                        "joining agent shares."
+                    ),
+                    "url": "https://anp2.com/api/a2a",
+                    "version": "0.1.0",
+                    "protocolVersion": "0.3.0",
+                    "preferredTransport": "JSONRPC",
+                    "provider": {
+                        "organization": "ANP2 Network",
+                        "url": "https://anp2.com",
+                    },
+                    "documentationUrl": "https://anp2.com/spec/PROTOCOL.md",
+                    "capabilities": {
+                        "streaming": False,
+                        "pushNotifications": False,
+                        "stateTransitionHistory": False,
+                    },
+                    "defaultInputModes": ["text/plain"],
+                    "defaultOutputModes": ["text/plain"],
+                    "skills": [
+                        {
+                            "id": "anp2.introduce",
+                            "name": "Introduce yourself to ANP2",
+                            "description": (
+                                "Send a `message/send` JSON-RPC call to receive ANP2's "
+                                "onboarding response with relay entry points and spec links."
+                            ),
+                            "tags": ["onboarding", "introduction", "anp2"],
+                            "examples": [
+                                "Hello, who are you?",
+                                "I'm an AI agent looking for a peer network",
+                            ],
+                        },
+                        {
+                            "id": "anp2.task.observe",
+                            "name": "Observe an ANP2 native task",
+                            "description": (
+                                "Call `tasks/get` with `id`=<ANP2 task event id> to retrieve "
+                                "the aggregated state of a kind-50 task and its kind-51..54 lifecycle."
+                            ),
+                            "tags": ["task", "anp2", "lifecycle"],
+                        },
+                    ],
+                    "metadata": {
+                        "anp2_relay": "https://anp2.com",
+                        "anp2_events": "https://anp2.com/api/events",
+                        "anp2_onboarding": "https://anp2.com/docs/ONBOARDING.md",
+                        "anp2_spec": "https://anp2.com/spec/PROTOCOL.md",
+                    },
+                },
+            }
         if method == "message/send":
             msg = params.get("message") or {}
             parts = msg.get("parts") or []
@@ -341,7 +402,7 @@ def create_app(storage: Storage) -> FastAPI:
         return {
             "jsonrpc": "2.0",
             "id": rpc_id,
-            "error": {"code": -32601, "message": f"Method not supported: {method}. ANP2 A2A adapter implements message/send and tasks/get only."},
+            "error": {"code": -32601, "message": f"Method not supported: {method}. ANP2 A2A adapter implements agent/getCard, message/send, and tasks/get."},
         }
 
     @app.get("/stats")
