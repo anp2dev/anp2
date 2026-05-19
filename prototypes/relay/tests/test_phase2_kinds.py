@@ -275,6 +275,85 @@ def test_a2a_message_stream_returns_sse_url(tmp_path):
     assert "stream_url" in res
 
 
+def test_time_travel_as_of(tmp_path):
+    c = _client(tmp_path)
+    priv, pub = generate_keypair()
+    # publish at t=now-100
+    import time as _t
+    ts_old = int(_t.time()) - 100
+    tags: list = [["t", "old"]]
+    eid = compute_event_id(pub, ts_old, 1, tags, "old post")
+    sig = sign_event_id(eid, priv)
+    old = {"id": eid, "agent_id": pub, "created_at": ts_old, "kind": 1,
+           "tags": tags, "content": "old post", "sig": sig}
+    c.post("/events", json=old).raise_for_status()
+    # as_of=ts_old+1 should include it
+    r = c.get(f"/events?as_of={ts_old + 1}&kinds=1")
+    assert r.status_code == 200
+    assert any(e["id"] == eid for e in r.json())
+    # as_of=ts_old-1 should NOT include it
+    r2 = c.get(f"/events?as_of={ts_old - 1}&kinds=1")
+    assert all(e["id"] != eid for e in r2.json())
+
+
+def test_history_endpoint_returns_all_revisions(tmp_path):
+    c = _client(tmp_path)
+    priv, pub = generate_keypair()
+    import time as _t
+    # publish two profiles with distinct timestamps
+    for i, name in enumerate(["v1", "v2"]):
+        ts = int(_t.time()) - 10 + i
+        tags: list = []
+        content = json.dumps({"name": name})
+        eid = compute_event_id(pub, ts, 0, tags, content)
+        sig = sign_event_id(eid, priv)
+        c.post("/events", json={"id": eid, "agent_id": pub, "created_at": ts,
+                                  "kind": 0, "tags": tags, "content": content,
+                                  "sig": sig}).raise_for_status()
+    r = c.get(f"/history/{pub}?kind=0")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["count"] == 2
+    # oldest first per spec example
+    assert json.loads(d["history"][0]["content"])["name"] == "v1"
+    assert json.loads(d["history"][1]["content"])["name"] == "v2"
+
+
+def test_onboarding_view(tmp_path):
+    c = _client(tmp_path)
+    priv, pub = generate_keypair()
+    profile = json.dumps({"name": "Newbie", "description": "just joined"})
+    ev = _payload(priv, pub, kind=0, content=profile)
+    c.post("/events", json=ev).raise_for_status()
+    r = c.get(f"/onboarding/{pub}")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["agent_id"] == pub
+    assert "neighbors" in d
+    assert "next_steps" in d
+
+
+def test_discoverability_invite_only_hidden(tmp_path):
+    c = _client(tmp_path)
+    priv_a, pub_a = generate_keypair()
+    priv_b, pub_b = generate_keypair()
+    # B publishes invite_only profile
+    inv = _payload(priv_b, pub_b, kind=0,
+                   content=json.dumps({"name": "B", "discoverability": "invite_only"}))
+    c.post("/events", json=inv).raise_for_status()
+    # A publishes some content
+    p1 = _payload(priv_a, pub_a, kind=1, content="hello", tags=[["t", "tag"]])
+    c.post("/events", json=p1).raise_for_status()
+    # Same topic from B
+    p2 = _payload(priv_b, pub_b, kind=1, content="hello", tags=[["t", "tag"]])
+    c.post("/events", json=p2).raise_for_status()
+    # /copresence/A should NOT include B
+    r = c.get(f"/copresence/{pub_a}")
+    assert r.status_code == 200
+    neigh = r.json()["neighbors"]
+    assert all(n["agent_id"] != pub_b for n in neigh)
+
+
 def test_neighbors_embedding_path(tmp_path):
     c = _client(tmp_path)
     priv, pub = generate_keypair()

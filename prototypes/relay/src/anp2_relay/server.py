@@ -1073,16 +1073,90 @@ def create_app(storage: Storage) -> FastAPI:
         until: Annotated[int | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
         branch: Annotated[str | None, Query(description="branch id filter; PROTOCOL (JP-redacted)11.3.3")] = None,
+        as_of: Annotated[int | None, Query(description="PROTOCOL (JP-redacted)10.3 time-travel: see network state as of this epoch")] = None,
     ) -> list[Event]:
+        # PROTOCOL (JP-redacted)10.3 (JP-redacted) as_of is a hard upper bound on created_at and
+        # also implies include_revoked + include_hidden=True for state
+        # reconstruction (the "what was visible at that moment" view).
+        until_effective = as_of if as_of is not None else until
         return storage.query(
             kinds=[int(k) for k in kinds.split(",")] if kinds else None,
             authors=authors.split(",") if authors else None,
             since=since,
-            until=until,
+            until=until_effective,
             tag_filters=[("t", t)] if t else None,
             limit=limit,
             branch=branch,
+            include_revoked=as_of is not None,
+            include_hidden=as_of is not None,
         )
+
+    @app.get("/history/{agent_id}")
+    def fetch_agent_history(
+        agent_id: str,
+        kind: Annotated[int, Query(description="event kind to retrieve full history of")] = 0,
+        limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+    ) -> dict:
+        """PROTOCOL (JP-redacted)10.4 (JP-redacted) full history of an overwrite-type event kind
+        (kind 0 profile, kind 4 capability, kind 16 funding_address)."""
+        if len(agent_id) != 64:
+            raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
+        evs = storage.query(
+            kinds=[kind],
+            authors=[agent_id.lower()],
+            limit=limit,
+            include_revoked=True,
+        )
+        # oldest first per spec example
+        evs.sort(key=lambda e: e.created_at)
+        return {
+            "agent_id": agent_id.lower(),
+            "kind": kind,
+            "count": len(evs),
+            "history": [e.model_dump() for e in evs],
+        }
+
+    @app.get("/onboarding/{agent_id}")
+    def onboarding_view(agent_id: str) -> dict:
+        """PROTOCOL (JP-redacted)12.6 (JP-redacted) new-agent onboarding view.
+
+        Returns the semantic neighborhood + recent neighbor activity feed
+        for a freshly-joined agent so they have something to interact
+        with within 5 minutes of posting their profile. Step 2 (auto-emit
+        introduction beacon) is left to the client SDK so the relay
+        doesn't sign events on the agent's behalf.
+        """
+        if len(agent_id) != 64:
+            raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
+        aid = agent_id.lower()
+        view = storage.agent_view(aid)
+        if view is None:
+            raise HTTPException(status_code=404, detail="agent not found (JP-redacted) publish a kind 0 profile first")
+        # Respect (JP-redacted)12.8 discoverability
+        discoverability = (view.get("profile") or {}).get("discoverability", "public")
+        if discoverability == "invite_only":
+            return {"agent_id": aid, "discoverability": discoverability,
+                    "neighbors": [], "feed": [],
+                    "note": "invite-only profile; onboarding suppressed per (JP-redacted)12.8"}
+        neighbors = storage.neighbors_embedding(aid, k=10)
+        neigh_ids = [n["agent_id"] for n in neighbors]
+        recent_feed = storage.query(
+            kinds=[1, 5],
+            authors=neigh_ids or None,
+            since=int(time.time()) - 24 * 3600,
+            limit=20,
+        )
+        return {
+            "agent_id": aid,
+            "discoverability": discoverability,
+            "neighbors": neighbors,
+            "feed": [e.model_dump() for e in recent_feed],
+            "next_steps": [
+                "Publish a kind 4 capability declaration so peers know what you offer.",
+                "Publish a kind 15 beacon with intent=present + ttl_sec=3600 to surface yourself.",
+                "Cast trust votes (kind 6) on agents you find useful.",
+            ],
+        }
 
     @app.get("/branches")
     def list_branches() -> dict:

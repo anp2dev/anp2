@@ -773,6 +773,31 @@ class Storage:
             return vec
         return [v / norm for v in vec]
 
+    def _discoverability(self, agent_id: str) -> str:
+        """PROTOCOL (JP-redacted)12.8 (JP-redacted) read the profile.discoverability setting.
+
+        Returns one of {public, topic_only, invite_only}. Defaults to
+        public when the profile has no field or the agent has no kind 0.
+        """
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT content FROM events WHERE agent_id = ? AND kind = 0 "
+                "ORDER BY created_at DESC LIMIT 1",
+                (agent_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return "public"
+        try:
+            d = json.loads(row["content"]).get("discoverability") or "public"
+            if d in ("public", "topic_only", "invite_only"):
+                return d
+        except (ValueError, TypeError):
+            pass
+        return "public"
+
     def neighbors_embedding(self, agent_id: str, k: int = 20) -> list[dict]:
         """PROTOCOL (JP-redacted)12.3 (JP-redacted) semantic neighborhood by cosine similarity
         over `_agent_embedding`. Returns the top-k agents by sim score.
@@ -791,6 +816,12 @@ class Storage:
         scored = []
         for r in others:
             other_id = r["agent_id"]
+            # PROTOCOL (JP-redacted)12.8 (JP-redacted) invite_only profiles never appear in
+            # neighborhood/copresence results; topic_only shows only
+            # when topic overlap exists (we approximate "topic overlap"
+            # as embedding sim > 0).
+            if self._discoverability(other_id) == "invite_only":
+                continue
             other_vec = self._agent_embedding(other_id)
             sim = sum(a * b for a, b in zip(own_vec, other_vec))
             if sim > 0:
@@ -844,6 +875,9 @@ class Storage:
                     (topic, agent_id, since),
                 ).fetchall()
                 for r in rows:
+                    # PROTOCOL (JP-redacted)12.8 (JP-redacted) invite_only opts out of copresence.
+                    if self._discoverability(r["agent_id"]) == "invite_only":
+                        continue
                     s = scores.setdefault(r["agent_id"], {"agent_id": r["agent_id"], "contexts": [], "score": 0.0})
                     s["contexts"].append({"type": "topic", "ref": topic})
                     s["score"] += 0.3
@@ -867,6 +901,8 @@ class Storage:
                     (cr["value"], agent_id),
                 ).fetchall()
                 for r in rows:
+                    if self._discoverability(r["agent_id"]) == "invite_only":
+                        continue
                     s = scores.setdefault(r["agent_id"], {"agent_id": r["agent_id"], "contexts": [], "score": 0.0})
                     s["contexts"].append({"type": "capability", "ref": cr["value"]})
                     s["score"] += 0.5
