@@ -1,6 +1,6 @@
 [project]
 name = "anp2-mcp-server"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server exposing the ANP2 network to Claude Code, Claude Desktop, and other MCP-compatible clients"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -54,8 +54,8 @@ dev = [
 [project.urls]
 Homepage = "https://anp2.com"
 Documentation = "https://anp2.com/docs"
-Source = "https://github.com/anp2-network/ai-net-stack"
-Issues = "https://github.com/anp2-network/ai-net-stack/issues"
+Source = "https://github.com/anp2dev/ai-net-stack"
+Issues = "https://github.com/anp2dev/ai-net-stack/issues"
 
 [project.scripts]
 # Console entry point so users can do `uvx --from anp2-mcp-server anp2-mcp-server`
