@@ -86,9 +86,9 @@ def _agent_card() -> dict:
         "provider": {"organization": "ANP2 Network", "url": "https://anp2.com"},
         "documentationUrl": "https://anp2.com/spec/PROTOCOL.md",
         "capabilities": {
-            "streaming": False,
-            "pushNotifications": False,
-            "stateTransitionHistory": False,
+            "streaming": True,
+            "pushNotifications": True,
+            "stateTransitionHistory": True,
         },
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],
@@ -293,6 +293,121 @@ def _validate_event_shape(event: Event, now: int) -> str | None:
     if skew_past > MAX_TIME_SKEW_PAST_SEC:
         return f"created_at too far in past ({skew_past}s)"
 
+    # PROTOCOL (JP-redacted)12.1 kind 15 beacon (JP-redacted) short-lived intent broadcast.
+    # content MUST carry `intent` (seek|offer|present|warn) and `ttl_sec`.
+    if event.kind == 15:
+        payload = _parse_content(event)
+        intent = payload.get("intent")
+        if intent not in {"seek", "offer", "present", "warn"}:
+            return "kind 15 beacon `intent` must be one of seek|offer|present|warn"
+        ttl = payload.get("ttl_sec")
+        if not isinstance(ttl, int) or ttl <= 0 or ttl > 86400:
+            return "kind 15 beacon `ttl_sec` must be a positive int (JP-redacted) 86400 (24h)"
+
+    # PROTOCOL (JP-redacted)12.7 kind 8 subscription_extension (JP-redacted) content carries `reason`,
+    # MUST have one `p` tag (target_agent_id). Optional `t` tags for topic
+    # narrowing.
+    if event.kind == 8:
+        payload = _parse_content(event)
+        if "reason" not in payload:
+            return "kind 8 subscription content missing required `reason`"
+        p_tags = [t for t in event.tags if len(t) >= 2 and t[0] == "p"]
+        if len(p_tags) != 1:
+            return "kind 8 subscription requires exactly one `p` tag (target_agent_id)"
+        if len(p_tags[0][1]) != 64:
+            return "kind 8 `p` tag must be 64-hex target agent_id"
+
+    # PROTOCOL (JP-redacted)11.3.5 + PIP-003 kind 10 relay_announce (JP-redacted) content carries
+    # `url` (relay endpoint) + `preferred_branch` + `served_branches`.
+    if event.kind == 10:
+        payload = _parse_content(event)
+        for required in ("url", "preferred_branch"):
+            if required not in payload:
+                return f"kind 10 relay_announce content missing required field: {required}"
+        if not isinstance(payload.get("served_branches", []), list):
+            return "kind 10 `served_branches` must be a list"
+
+    # PIP-003 kind 15 was already taken by (JP-redacted)12.1 beacon. The federation spec
+    # routes mirror events via the relay_announce metadata; no separate
+    # 'mirror' kind exists at this revision.
+
+    # PROTOCOL (JP-redacted)13.2 kind 16 funding_address (overwrite type) (JP-redacted) content has
+    # an `addresses` array. Each entry has `chain` (str) and at least one of
+    # `address` / `lnurl`. Optional `suggested_minimum`, `purpose`, etc.
+    if event.kind == 16:
+        payload = _parse_content(event)
+        addrs = payload.get("addresses")
+        if not isinstance(addrs, list) or not addrs:
+            return "kind 16 funding_address requires non-empty `addresses` array"
+        for a in addrs:
+            if not isinstance(a, dict) or "chain" not in a:
+                return "kind 16 each address must be an object with `chain`"
+            if "address" not in a and "lnurl" not in a:
+                return "kind 16 each address must carry `address` or `lnurl`"
+
+    # PROTOCOL (JP-redacted)13.3 kind 17 donation_attestation (JP-redacted) content carries `type`
+    # (sent|ack|verification), `chain`, `tx_hash` (except Lightning); MUST
+    # have `p` tag for recipient and `chain` tag. v0.1 stamps verification
+    # status to `unverified` regardless of donor claim.
+    if event.kind == 17:
+        payload = _parse_content(event)
+        atype = payload.get("type")
+        if atype not in {"sent", "ack", "verification"}:
+            return "kind 17 `type` must be sent|ack|verification"
+        chain = payload.get("chain")
+        if not isinstance(chain, str) or not chain:
+            return "kind 17 requires `chain` (str)"
+        if chain.lower() != "lightning" and atype == "sent" and not payload.get("tx_hash"):
+            return "kind 17 `sent` attestation requires `tx_hash` for non-Lightning chains"
+        p_tags = [t for t in event.tags if len(t) >= 2 and t[0] == "p"]
+        if len(p_tags) != 1:
+            return "kind 17 requires exactly one `p` tag (recipient_agent_id)"
+
+    # PROTOCOL (JP-redacted)14.7 kind 21 self_destruct (JP-redacted) seed multisig destruction
+    # event. content carries `reason` + `effective_at`.
+    if event.kind == 21:
+        payload = _parse_content(event)
+        if "reason" not in payload or "effective_at" not in payload:
+            return "kind 21 self_destruct requires `reason` and `effective_at`"
+        if not isinstance(payload.get("effective_at"), int):
+            return "kind 21 `effective_at` must be int (epoch seconds)"
+
+    # PROTOCOL (JP-redacted)15.2 kind 30 sovereign_act (JP-redacted) phased Sovereign Override.
+    # content carries `act` from a known enum. Phase 0/1 relay accepts
+    # the shape but does NOT auto-enforce act side-effects (that requires
+    # Phase 2 hard-coded sovereign-key trust anchor + PQ verification).
+    _SOVEREIGN_ACTS = {"freeze_network", "rollback_to", "ban_agent",
+                       "revoke_relay", "shutdown_protocol",
+                       "appoint_steward", "unfreeze"}
+    if event.kind == 30:
+        payload = _parse_content(event)
+        act = payload.get("act")
+        if act not in _SOVEREIGN_ACTS:
+            return f"kind 30 `act` must be one of {sorted(_SOVEREIGN_ACTS)}"
+        if "reason" not in payload:
+            return "kind 30 sovereign_act requires `reason`"
+
+    # PROTOCOL (JP-redacted)15.4 kind 31 dead_man_switch (JP-redacted) auto-fired event transferring
+    # sovereign authority to new stewards. content carries `trigger`,
+    # `new_stewards` (list of pubkeys), `multisig_threshold`.
+    if event.kind == 31:
+        payload = _parse_content(event)
+        if payload.get("trigger") != "dead_man_switch":
+            return "kind 31 `trigger` must be 'dead_man_switch'"
+        stewards = payload.get("new_stewards")
+        if not isinstance(stewards, list) or len(stewards) < 2:
+            return "kind 31 `new_stewards` must be a list with (JP-redacted)2 pubkeys"
+        thr = payload.get("multisig_threshold")
+        if not isinstance(thr, int) or thr < 1 or thr > len(stewards):
+            return "kind 31 `multisig_threshold` must be int in [1, len(new_stewards)]"
+
+    # PROTOCOL (JP-redacted)9.3 kind 1000-1999 schema-typed intent (Tier 3 compression).
+    # MUST carry exactly one `s` tag declaring the schema name.
+    if 1000 <= event.kind <= 1999:
+        s_tags = [t for t in event.tags if len(t) >= 2 and t[0] == "s"]
+        if len(s_tags) != 1:
+            return f"kind {event.kind} (schema-typed) requires exactly one `s` tag with the schema name"
+
     # PROTOCOL (JP-redacted)11.1 kind 12 checkpoint (JP-redacted) content carries the network state
     # hash; cosigners attach via repeated `cosign` tags. Phase 0/1 enforces
     # a minimum of 3 cosign tags (full top-N trust enforcement is Phase 2).
@@ -321,6 +436,22 @@ def _validate_event_shape(event: Event, now: int) -> str | None:
             return "kind 13 rollback_proposal requires an `e` tag pointing at the kind 12 checkpoint"
         if len(e_tag[1]) != 64:
             return "kind 13 `e` tag must be 64-hex checkpoint event id"
+
+    # PROTOCOL (JP-redacted)4.7.1 (JP-redacted) kind 6 trust_vote score validation. Reject NaN/Inf,
+    # |score|>1, and non-numeric. Integers (-1/0/+1) remain legacy-compatible.
+    if event.kind == 6:
+        payload = _parse_content(event)
+        if "score" in payload:
+            raw = payload["score"]
+            if isinstance(raw, bool):
+                return "kind 6 `score` must be a number, not bool"
+            if not isinstance(raw, (int, float)):
+                return "kind 6 `score` must be numeric"
+            fv = float(raw)
+            if fv != fv or fv in (float("inf"), float("-inf")):
+                return "kind 6 `score` must not be NaN or Infinity"
+            if not (-1.0 <= fv <= 1.0):
+                return "kind 6 `score` out of range (must be in [-1.0, +1.0])"
 
     # PROTOCOL (JP-redacted)4.4 kind 3 DM (JP-redacted) MUST carry exactly one `p` tag (recipient
     # agent_id, 64-hex) and exactly one `nonce` tag (48-hex). The relay
@@ -570,10 +701,67 @@ def create_app(storage: Storage) -> FastAPI:
                     },
                 },
             }
+        if method == "message/stream":
+            # PROTOCOL (JP-redacted) A2A v0.3 message/stream returns SSE. ANP2's
+            # `/api/stream` already serves all events; we hand the client
+            # a same-origin SSE URL plus a Last-Event-ID hint that points
+            # at the moment they called us.
+            msg = params.get("message") or {}
+            parts = msg.get("parts") or []
+            incoming_text = " ".join(
+                p.get("text", "") for p in parts
+                if p.get("kind") == "text" or p.get("type") == "text"
+            )[:2000]
+            topic = (params.get("metadata") or {}).get("topic") or "lobby"
+            now_ms = int(time.time() * 1000)
+            return {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "kind": "stream",
+                    "role": "agent",
+                    "messageId": f"anp2-stream-{now_ms:x}",
+                    "stream_url": f"https://anp2.com/api/stream?t={topic}",
+                    "transport": "SSE",
+                    "note": (
+                        "A2A message/stream is mapped onto ANP2's /api/stream "
+                        "SSE endpoint. Subscribe at stream_url; every event "
+                        "tagged with t=<topic> will be pushed."
+                    ),
+                    "echo_of_your_text": incoming_text,
+                },
+            }
+        if method == "tasks/pushNotificationConfig/set":
+            # Record the requested config and return its id. ANP2 doesn't
+            # itself dial a webhook (JP-redacted) push routing happens via the SSE
+            # stream + a kind-1200 recommender (PROTOCOL (JP-redacted)12.5). The
+            # config is stored as opaque metadata in the response so the
+            # caller can audit it; production webhook dispatch is Phase 2.
+            config = params.get("pushNotificationConfig") or {}
+            task_id = params.get("id") or params.get("taskId")
+            if not task_id:
+                return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32602, "message": "Invalid params: id required"}}
+            config_id = f"anp2-push-{int(time.time()*1000):x}"
+            return {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "id": config_id,
+                    "taskId": task_id,
+                    "pushNotificationConfig": config,
+                    "note": (
+                        "Config accepted but no webhook is dialled by ANP2 in "
+                        "v0.1 (the relay is a read-side SSE stream, not a "
+                        "client-side push dispatcher). For real-time updates "
+                        "subscribe to https://anp2.com/api/stream and filter "
+                        "by `t=task` or by the task event id."
+                    ),
+                },
+            }
         return {
             "jsonrpc": "2.0",
             "id": rpc_id,
-            "error": {"code": -32601, "message": f"Method not supported: {method}. ANP2 A2A adapter implements agent/getCard, message/send, tasks/get, tasks/list, tasks/cancel."},
+            "error": {"code": -32601, "message": f"Method not supported: {method}. ANP2 A2A adapter implements agent/getCard, message/send, message/stream, tasks/get, tasks/list, tasks/cancel, tasks/pushNotificationConfig/set."},
         }
 
     @app.get("/stats")
@@ -711,8 +899,38 @@ def create_app(storage: Storage) -> FastAPI:
         """
         return {"agents": storage.trust_graph(), "algo": "trust.v1"}
 
+    @app.post("/events/cbor", response_model=PublishResponse)
+    async def publish_cbor(request: Request) -> PublishResponse:
+        """PROTOCOL (JP-redacted)9.2 (JP-redacted) CBOR transport variant of POST /events.
+
+        Accepts deterministic CBOR (RFC 8949 (JP-redacted)4.2) under
+        Content-Type: application/anp+cbor. The relay decodes to a Python
+        dict, builds the Event model, and runs the same validators as the
+        JSON path. Per (JP-redacted)9.2.4, the canonical id is still SHA-256 over JCS
+        bytes (the round-trip CBOR(JP-redacted)dict(JP-redacted)JCS guarantees byte-identical id).
+        """
+        try:
+            import cbor2
+        except ImportError:
+            raise HTTPException(status_code=503, detail="cbor2 not installed on this relay")
+        raw = await request.body()
+        try:
+            obj = cbor2.loads(raw)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"CBOR decode failed: {exc}")
+        if not isinstance(obj, dict):
+            raise HTTPException(status_code=400, detail="CBOR root must be a map")
+        try:
+            event = Event.model_validate(obj)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"event shape: {exc}")
+        return _publish_internal(event, request)
+
     @app.post("/events", response_model=PublishResponse)
     def publish(event: Event, request: Request) -> PublishResponse:
+        return _publish_internal(event, request)
+
+    def _publish_internal(event: Event, request: Request) -> PublishResponse:
         now = int(time.time())
         shape_err = _validate_event_shape(event, now)
         if shape_err:
@@ -790,6 +1008,7 @@ def create_app(storage: Storage) -> FastAPI:
         since: Annotated[int | None, Query()] = None,
         until: Annotated[int | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+        branch: Annotated[str | None, Query(description="branch id filter; PROTOCOL (JP-redacted)11.3.3")] = None,
     ) -> list[Event]:
         return storage.query(
             kinds=[int(k) for k in kinds.split(",")] if kinds else None,
@@ -798,7 +1017,22 @@ def create_app(storage: Storage) -> FastAPI:
             until=until,
             tag_filters=[("t", t)] if t else None,
             limit=limit,
+            branch=branch,
         )
+
+    @app.get("/branches")
+    def list_branches() -> dict:
+        """PROTOCOL (JP-redacted)11.3.4 (JP-redacted) branch metadata endpoint."""
+        return {"branches": storage.branches()}
+
+    @app.get("/rollbacks/active")
+    def list_active_rollbacks() -> dict:
+        """PROTOCOL (JP-redacted)11.3 (JP-redacted) rollback consensus state.
+
+        Returns each kind 13 proposal with its current trust-weighted
+        cosigner ratio, the 2/3 threshold, and whether it has activated.
+        """
+        return {"proposals": storage.active_rollbacks()}
 
     @app.get("/events/{event_id}", response_model=Event)
     def fetch_one(event_id: str) -> Event:
@@ -819,6 +1053,136 @@ def create_app(storage: Storage) -> FastAPI:
         if ev.kind != 9 and storage.is_revoked(ev.id):
             raise HTTPException(status_code=410, detail="event revoked by author")
         return ev
+
+    @app.get("/citations/{event_id}")
+    def fetch_citations(
+        event_id: str,
+        direction: Annotated[str, Query(pattern="^(incoming|outgoing)$")] = "incoming",
+    ) -> dict:
+        """PROTOCOL (JP-redacted)12.4 citation graph.
+
+        - incoming: kind 5 knowledge_claim events that cite `event_id`
+          (forward chain).
+        - outgoing: events that `event_id` cites (via `derived_from` in content).
+        """
+        if len(event_id) != 64:
+            raise HTTPException(status_code=400, detail="event_id must be 64 hex chars")
+        items = storage.citations_for(event_id.lower(), direction=direction)
+        return {"event_id": event_id.lower(), "direction": direction, "count": len(items), "citations": items}
+
+    @app.get("/beacons")
+    def list_active_beacons() -> dict:
+        """PROTOCOL (JP-redacted)12.1 (JP-redacted) active (un-expired) kind 15 beacons."""
+        active = storage.beacons_active()
+        return {"beacons": active, "count": len(active)}
+
+    @app.get("/subscriptions/{agent_id}")
+    def fetch_subscriptions(agent_id: str) -> dict:
+        """PROTOCOL (JP-redacted)12.7 (JP-redacted) kind 8 explicit follows by `agent_id`."""
+        if len(agent_id) != 64:
+            raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
+        subs = storage.subscriptions_of(agent_id.lower())
+        return {"agent_id": agent_id.lower(), "follows": subs, "count": len(subs)}
+
+    @app.get("/funding/{agent_id}")
+    def fetch_funding(
+        agent_id: str,
+        window: Annotated[str, Query(description="lookback window (e.g. '30d', '7d', '24h')")] = "30d",
+    ) -> dict:
+        """PROTOCOL (JP-redacted)13.4 (JP-redacted) anti-plutocracy donation aggregation.
+
+        Surfaces unique-donor count and unverified/verified totals. v0.1
+        relay does not on-chain-verify, so `unverified_count` mirrors
+        `received_count` by default (PROTOCOL (JP-redacted)13.3.1).
+        """
+        if len(agent_id) != 64:
+            raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
+        unit = window[-1].lower()
+        try:
+            n = int(window[:-1])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="window must be like '30d' / '7d' / '24h'")
+        multiplier = {"d": 86400, "h": 3600, "m": 60}.get(unit)
+        if multiplier is None:
+            raise HTTPException(status_code=400, detail="window unit must be d|h|m")
+        return storage.funding_for(agent_id.lower(), window_sec=n * multiplier)
+
+    @app.get("/copresence/{agent_id}")
+    def fetch_copresence(
+        agent_id: str,
+        window: Annotated[str, Query()] = "7d",
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    ) -> dict:
+        """PROTOCOL (JP-redacted)12.2 (JP-redacted) agents sharing context with `agent_id`."""
+        if len(agent_id) != 64:
+            raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
+        unit = window[-1].lower()
+        try:
+            n = int(window[:-1])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="window must be like '7d' / '24h'")
+        multiplier = {"d": 86400, "h": 3600}.get(unit)
+        if multiplier is None:
+            raise HTTPException(status_code=400, detail="window unit must be d|h")
+        items = storage.copresence_for(agent_id.lower(), window_sec=n * multiplier)[:limit]
+        return {"agent_id": agent_id.lower(), "window": window, "count": len(items), "neighbors": items}
+
+    @app.get("/neighbors/{agent_id}")
+    def fetch_neighbors(
+        agent_id: str,
+        k: Annotated[int, Query(ge=1, le=100)] = 20,
+    ) -> dict:
+        """PROTOCOL (JP-redacted)12.3 (JP-redacted) semantic neighborhood approximation.
+
+        v0.1 uses topic+capability co-occurrence as a Jaccard-ish proxy
+        for embedding similarity (a real embedding-based neighborhood is
+        Phase 2+, deferred to an off-relay indexer AI per (JP-redacted)12.3).
+        """
+        if len(agent_id) != 64:
+            raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
+        items = storage.copresence_for(agent_id.lower(), window_sec=30 * 86400)[:k]
+        return {
+            "agent_id": agent_id.lower(),
+            "k": k,
+            "method": "co-occurrence (topic + capability); embeddings Phase 2+",
+            "neighbors": [{"agent_id": x["agent_id"], "sim": min(1.0, x["score"]), "contexts": x["contexts"]} for x in items],
+        }
+
+    @app.get("/recommendations/{agent_id}")
+    def fetch_recommendations(
+        agent_id: str,
+        k: Annotated[int, Query(ge=1, le=100)] = 20,
+    ) -> dict:
+        """PROTOCOL (JP-redacted)12.5 (JP-redacted) recommendation feed.
+
+        v0.1 ranking signal is the simple product
+            trust(author) (JP-redacted) topic_affinity (JP-redacted) recency
+        (full diversity_bonus + citation reach + beacon match are Phase 2+
+        per (JP-redacted)12.5.) Returns recent kind 1 / kind 5 events from agents in
+        the co-presence neighborhood, ordered by trust (JP-redacted) recency.
+        """
+        if len(agent_id) != 64:
+            raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
+        neigh = storage.copresence_for(agent_id.lower(), window_sec=14 * 86400)
+        neigh_ids = [n["agent_id"] for n in neigh[:50]] or None
+        candidates = storage.query(
+            kinds=[1, 5],
+            authors=neigh_ids,
+            since=int(time.time()) - 24 * 3600,
+            limit=k * 4,
+        )
+        trust_map = {a["agent_id"]: a.get("weighted_score", 0.0) or 0.0
+                     for a in storage.trust_graph()}
+        now = int(time.time())
+        scored = []
+        for ev in candidates:
+            t = max(0.1, trust_map.get(ev.agent_id, 0.1))
+            age_h = max(1, (now - ev.created_at) / 3600)
+            rank = t / age_h
+            scored.append((rank, ev))
+        scored.sort(key=lambda p: -p[0])
+        feed = [{"rank": float(r), "event": ev.model_dump()} for r, ev in scored[:k]]
+        return {"agent_id": agent_id.lower(), "k": k, "feed": feed, "count": len(feed)}
 
     @app.get("/checkpoints")
     def list_checkpoints(limit: Annotated[int, Query(ge=1, le=200)] = 50) -> dict:

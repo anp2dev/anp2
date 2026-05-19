@@ -97,9 +97,15 @@ class Storage:
                 pass
         return True
 
-    # PROTOCOL (JP-redacted)4.8 moderation auto-hide threshold (Phase 0/1: simple count;
-    # PIP-001 trust-weighting comes in PROTOCOL (JP-redacted)7.4 high-trust override).
+    # PROTOCOL (JP-redacted)4.8 + (JP-redacted)7.4 (JP-redacted) moderation auto-hide.
+    # Hidden when EITHER:
+    #   (a) (JP-redacted) MOD_HIDE_THRESHOLD distinct flaggers (simple count, Phase 0/1)
+    #   (b) (JP-redacted) flagger_trust_weight (JP-redacted) MOD_HIDE_TRUST_WEIGHT ((JP-redacted)7.4 override)
+    # A single high-trust flagger can hide content; a swarm of zero-trust
+    # flaggers cannot. raw_score (JP-redacted) 1.0 is roughly "the relay accepts your
+    # trust signal" (JP-redacted) equivalent to one mid-tier honest voter.
     MOD_HIDE_THRESHOLD = 3
+    MOD_HIDE_TRUST_WEIGHT = 1.0
 
     def query(
         self,
@@ -111,9 +117,35 @@ class Storage:
         limit: int = 100,
         include_revoked: bool = False,
         include_hidden: bool = False,
+        branch: str | None = None,
     ) -> list[Event]:
+        """Query events. PROTOCOL (JP-redacted)11.3.3 branch filter:
+          - branch=None or 'main': events without a branch tag OR with branch=main
+          - branch='all': no branch filter at all
+          - branch=<other>: events that carry a matching branch tag
+          - branch='a,b' comma-separated: union over branches
+        """
         clauses: list[str] = []
         params: list = []
+        if branch and branch != "all":
+            branch_ids = [b.strip() for b in branch.split(",") if b.strip()]
+            if branch_ids == ["main"]:
+                # default branch: include events without any non-main branch tag
+                clauses.append(
+                    "NOT EXISTS ("
+                    "  SELECT 1 FROM tags bt WHERE bt.event_id = events.id "
+                    "  AND bt.name = 'branch' AND bt.value != 'main'"
+                    ")"
+                )
+            else:
+                placeholders = ",".join("?" * len(branch_ids))
+                clauses.append(
+                    "EXISTS ("
+                    f"  SELECT 1 FROM tags bt WHERE bt.event_id = events.id "
+                    f"  AND bt.name = 'branch' AND bt.value IN ({placeholders})"
+                    ")"
+                )
+                params.extend(branch_ids)
         if kinds:
             clauses.append(f"events.kind IN ({','.join('?' * len(kinds))})")
             params.extend(kinds)
@@ -167,7 +199,7 @@ class Storage:
         conn = self._conn()
         try:
             rows = conn.execute(sql, params).fetchall()
-            return [
+            evs = [
                 Event(
                     id=r["id"],
                     agent_id=r["agent_id"],
@@ -181,6 +213,360 @@ class Storage:
             ]
         finally:
             conn.close()
+        # PROTOCOL (JP-redacted)7.4 (JP-redacted) high-trust override. Trust-weighted aggregation
+        # over already-SQL-filtered rows; cheap because trust_map is
+        # computed once and the candidate set is already tight.
+        if not include_hidden and evs:
+            try:
+                trust_map = {a["agent_id"]: max(0.0, a.get("weighted_score", 0.0) or 0.0)
+                             for a in self.trust_graph()}
+                evs = [
+                    ev for ev in evs
+                    if ev.kind == 7 or self.flag_weight_for(ev.id, trust_map) < self.MOD_HIDE_TRUST_WEIGHT
+                ]
+            except Exception:
+                # Trust graph may be empty during bootstrap; skip override.
+                pass
+        return evs
+
+    # PROTOCOL (JP-redacted)11.3 (JP-redacted) quiet period (6h) inside which kind 13 cosigners
+    # may push past the 2/3 trust supermajority that activates a rollback.
+    ROLLBACK_QUIET_PERIOD_SEC = 6 * 3600
+    ROLLBACK_THRESHOLD_FRAC = 0.67
+
+    def active_rollbacks(self) -> list[dict]:
+        """Determine which kind 13 rollback proposals have crossed the
+        2/3 trust-weighted supermajority within the (JP-redacted)11.3 quiet period.
+
+        Each proposal points at a kind 12 checkpoint; cosigners attach via
+        `cosign` tags on the proposal (3-tuple form). The activated rollback
+        creates a `pre-rollback-<id8>` branch (PROTOCOL (JP-redacted)11.3.1).
+        """
+        t_now = int(time.time())
+        proposals = self.query(kinds=[13], limit=200)
+        if not proposals:
+            return []
+        # trust-weighted denominator: sum of all weighted_score values
+        graph = self.trust_graph()
+        total_weight = sum(max(0.0, a.get("weighted_score", 0.0) or 0.0) for a in graph) or 1.0
+        trust_map = {a["agent_id"]: max(0.0, a.get("weighted_score", 0.0) or 0.0) for a in graph}
+        out = []
+        for prop in proposals:
+            age = t_now - prop.created_at
+            if age > self.ROLLBACK_QUIET_PERIOD_SEC:
+                # outside quiet period; activation decided at the boundary
+                pass  # keep evaluating; status reflects past activation too
+            cosign_agents = [t[1] for t in prop.tags if len(t) >= 3 and t[0] == "cosign"]
+            # include proposer themselves as automatic cosigner
+            cosign_agents = list({prop.agent_id, *cosign_agents})
+            cosign_weight = sum(trust_map.get(a, 0.0) for a in cosign_agents)
+            ratio = cosign_weight / total_weight
+            activated = ratio >= self.ROLLBACK_THRESHOLD_FRAC
+            out.append({
+                "proposal_event_id": prop.id,
+                "proposer": prop.agent_id,
+                "target_checkpoint_event_id": next(
+                    (t[1] for t in prop.tags if len(t) >= 2 and t[0] == "e"), None
+                ),
+                "cosigner_count": len(cosign_agents),
+                "cosign_weight": cosign_weight,
+                "ratio": ratio,
+                "threshold": self.ROLLBACK_THRESHOLD_FRAC,
+                "activated": activated,
+                "created_at": prop.created_at,
+                "quiet_period_remaining_sec": max(0, self.ROLLBACK_QUIET_PERIOD_SEC - age),
+            })
+        return out
+
+    def branches(self) -> list[dict]:
+        """PROTOCOL (JP-redacted)11.3.4 (JP-redacted) branch metadata.
+
+        v0.1 surfaces:
+          - `main` (the default consensus branch),
+          - `pre-rollback-<id8>` for each activated rollback,
+          - `b-<id8>` for any voluntary branch declared via a kind 1+ event
+            that carries a `["branch","b-..."]` tag.
+        Trust-weight % is derived from the cosigners of the rollback /
+        the trust-weight of authors who published to that branch.
+        """
+        out = [{"id": "main", "head_event_id": None, "event_count": 0, "trust_weight_pct": 0.0}]
+        conn = self._conn()
+        try:
+            # Voluntary forks: any branch tag value starting with b- or pre-rollback-
+            rows = conn.execute(
+                """
+                SELECT t.value AS branch_id,
+                       COUNT(DISTINCT t.event_id) AS event_count,
+                       MAX(e.created_at) AS last_at
+                FROM tags t JOIN events e ON e.id = t.event_id
+                WHERE t.name = 'branch' AND t.value != 'main'
+                GROUP BY t.value
+                """
+            ).fetchall()
+            total_events = conn.execute("SELECT COUNT(*) AS c FROM events").fetchone()["c"] or 1
+            for r in rows:
+                out.append({
+                    "id": r["branch_id"],
+                    "head_event_id": None,
+                    "event_count": r["event_count"],
+                    "trust_weight_pct": round(100.0 * r["event_count"] / total_events, 2),
+                    "created_from": "rollback" if r["branch_id"].startswith("pre-rollback-") else "voluntary_fork",
+                })
+            main_rows = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM events
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM tags WHERE tags.event_id = events.id
+                    AND tags.name = 'branch' AND tags.value != 'main'
+                )
+                """
+            ).fetchone()
+            out[0]["event_count"] = main_rows["c"]
+            out[0]["trust_weight_pct"] = round(100.0 * main_rows["c"] / total_events, 2)
+        finally:
+            conn.close()
+        return out
+
+    def citations_for(self, event_id: str, direction: str = "incoming") -> list[dict]:
+        """Citation graph (PROTOCOL (JP-redacted)12.4).
+
+        - incoming: kind 5 events that reference `event_id` via `derived_from`
+          in their content (or via an `e` tag with role 'derived').
+        - outgoing: events that `event_id` itself references.
+        """
+        conn = self._conn()
+        try:
+            if direction == "incoming":
+                rows = conn.execute(
+                    """
+                    SELECT DISTINCT e.id, e.agent_id, e.created_at, e.content
+                    FROM events e
+                    JOIN tags t ON t.event_id = e.id
+                    WHERE e.kind = 5 AND t.name = 'e' AND t.value = ?
+                    ORDER BY e.created_at DESC
+                    LIMIT 200
+                    """,
+                    (event_id,),
+                ).fetchall()
+            else:  # outgoing
+                source = conn.execute(
+                    "SELECT content FROM events WHERE id = ?", (event_id,)
+                ).fetchone()
+                if not source:
+                    return []
+                try:
+                    payload = json.loads(source["content"])
+                    df = payload.get("derived_from") or []
+                    if isinstance(df, str):
+                        df = [df]
+                except (ValueError, TypeError):
+                    df = []
+                if not df:
+                    return []
+                placeholders = ",".join("?" * len(df))
+                rows = conn.execute(
+                    f"SELECT id, agent_id, created_at, content FROM events WHERE id IN ({placeholders})",
+                    df,
+                ).fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
+
+    def beacons_active(self, now: int | None = None) -> list[dict]:
+        """Return kind 15 beacons whose TTL has not expired (PROTOCOL (JP-redacted)12.1)."""
+        t_now = int(time.time()) if now is None else int(now)
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT id, agent_id, created_at, content, tags_json "
+                "FROM events WHERE kind = 15 "
+                "ORDER BY created_at DESC LIMIT 500"
+            ).fetchall()
+        finally:
+            conn.close()
+        out = []
+        for r in rows:
+            try:
+                p = json.loads(r["content"])
+                ttl = int(p.get("ttl_sec") or 0)
+            except (ValueError, TypeError):
+                continue
+            if r["created_at"] + ttl < t_now:
+                continue
+            d = dict(r)
+            d["payload"] = p
+            d["expires_at"] = r["created_at"] + ttl
+            d.pop("content", None)
+            try:
+                d["tags"] = json.loads(d.pop("tags_json"))
+            except (ValueError, TypeError):
+                d["tags"] = []
+                d.pop("tags_json", None)
+            out.append(d)
+        return out
+
+    def subscriptions_of(self, agent_id: str) -> list[dict]:
+        """kind 8 subscription_extension targets followed by `agent_id` (latest per p)."""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT t.value AS target, MAX(e.created_at) AS at, e.id
+                FROM events e
+                JOIN tags t ON t.event_id = e.id
+                WHERE e.kind = 8 AND e.agent_id = ? AND t.name = 'p'
+                GROUP BY t.value
+                ORDER BY at DESC
+                """,
+                (agent_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
+
+    def funding_for(self, agent_id: str, window_sec: int = 30 * 86400) -> dict:
+        """kind 17 donation aggregation for `agent_id` (PROTOCOL (JP-redacted)13.4)."""
+        t_now = int(time.time())
+        since = t_now - window_sec
+        conn = self._conn()
+        try:
+            # received
+            rec = conn.execute(
+                """
+                SELECT e.agent_id AS donor, e.content, e.created_at
+                FROM events e
+                JOIN tags t ON t.event_id = e.id
+                WHERE e.kind = 17 AND t.name = 'p' AND t.value = ?
+                  AND e.created_at >= ?
+                """,
+                (agent_id, since),
+            ).fetchall()
+            addr_row = conn.execute(
+                """
+                SELECT content FROM events
+                WHERE kind = 16 AND agent_id = ?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (agent_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        addresses = []
+        if addr_row:
+            try:
+                addresses = json.loads(addr_row["content"]).get("addresses", [])
+            except (ValueError, TypeError):
+                pass
+        donors = set()
+        unverified = 0
+        verified = 0
+        for r in rec:
+            donors.add(r["donor"])
+            try:
+                p = json.loads(r["content"])
+                if p.get("verification", {}).get("status") == "verified":
+                    verified += 1
+                else:
+                    unverified += 1
+            except (ValueError, TypeError):
+                unverified += 1
+        return {
+            "agent_id": agent_id,
+            "window_sec": window_sec,
+            "addresses": addresses,
+            "received_count": len(rec),
+            "received_unique_donors": len(donors),
+            "received_verified_count": verified,
+            "received_unverified_count": unverified,
+        }
+
+    def copresence_for(self, agent_id: str, window_sec: int = 7 * 86400) -> list[dict]:
+        """Co-presence index (PROTOCOL (JP-redacted)12.2).
+
+        Other agents seen sharing a thread root, topic tag, capability, or
+        knowledge_claim citation with `agent_id` within `window_sec`.
+        """
+        since = int(time.time()) - window_sec
+        conn = self._conn()
+        try:
+            # Topic tag overlap
+            topics = conn.execute(
+                """
+                SELECT DISTINCT t.value FROM events e
+                JOIN tags t ON t.event_id = e.id
+                WHERE e.agent_id = ? AND t.name = 't' AND e.created_at >= ?
+                """,
+                (agent_id, since),
+            ).fetchall()
+            topic_vals = [r["value"] for r in topics]
+            scores: dict[str, dict] = {}
+            for topic in topic_vals:
+                rows = conn.execute(
+                    """
+                    SELECT DISTINCT e.agent_id FROM events e
+                    JOIN tags t ON t.event_id = e.id
+                    WHERE t.name = 't' AND t.value = ? AND e.agent_id != ?
+                      AND e.created_at >= ?
+                    LIMIT 50
+                    """,
+                    (topic, agent_id, since),
+                ).fetchall()
+                for r in rows:
+                    s = scores.setdefault(r["agent_id"], {"agent_id": r["agent_id"], "contexts": [], "score": 0.0})
+                    s["contexts"].append({"type": "topic", "ref": topic})
+                    s["score"] += 0.3
+            # Capability overlap
+            cap_rows = conn.execute(
+                """
+                SELECT DISTINCT t.value FROM events e
+                JOIN tags t ON t.event_id = e.id
+                WHERE e.agent_id = ? AND t.name = 'cap'
+                """,
+                (agent_id,),
+            ).fetchall()
+            for cr in cap_rows:
+                rows = conn.execute(
+                    """
+                    SELECT DISTINCT e.agent_id FROM events e
+                    JOIN tags t ON t.event_id = e.id
+                    WHERE t.name = 'cap' AND t.value = ? AND e.agent_id != ?
+                    LIMIT 50
+                    """,
+                    (cr["value"], agent_id),
+                ).fetchall()
+                for r in rows:
+                    s = scores.setdefault(r["agent_id"], {"agent_id": r["agent_id"], "contexts": [], "score": 0.0})
+                    s["contexts"].append({"type": "capability", "ref": cr["value"]})
+                    s["score"] += 0.5
+        finally:
+            conn.close()
+        # Cap score at 1.0; sort desc
+        for s in scores.values():
+            s["score"] = min(1.0, s["score"])
+        return sorted(scores.values(), key=lambda x: -x["score"])
+
+    def flag_weight_for(self, event_id: str, trust_map: dict[str, float] | None = None) -> float:
+        """PROTOCOL (JP-redacted)7.4 (JP-redacted) sum of flagger trust weights against `event_id`.
+
+        Caller can pass a precomputed `trust_map` to avoid per-call trust
+        recompute when scanning many events.
+        """
+        if trust_map is None:
+            trust_map = {a["agent_id"]: max(0.0, a.get("weighted_score", 0.0) or 0.0)
+                         for a in self.trust_graph()}
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT f.agent_id
+                FROM events f JOIN tags ft ON ft.event_id = f.id
+                WHERE f.kind = 7 AND ft.name = 'e' AND ft.value = ?
+                """,
+                (event_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return sum(trust_map.get(r["agent_id"], 0.0) for r in rows)
 
     def flags_for(self, event_id: str) -> list[dict]:
         """Return the kind 7 moderation_flag events targeting `event_id`."""

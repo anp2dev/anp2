@@ -69,7 +69,9 @@ class Vote:
 
     voter: str
     target: str
-    score: int  # -1, 0, or +1 per spec (JP-redacted)4.7
+    # PROTOCOL (JP-redacted)4.7.1 (JP-redacted) score is a float in [-1.0, +1.0]; integers -1/0/+1
+    # remain legacy-compatible (mypy-friendly float coercion in parse_votes).
+    score: float
     created_at: int  # unix seconds
     # PIP-002: declared PoW bits on this vote (None for pre-PIP-002 votes
     # that carry no `pow` tag). Feeds `sybil_factor_pow(target)`.
@@ -116,11 +118,22 @@ def parse_votes(rows: Iterable[dict]) -> list[Vote]:
     for r in rows:
         try:
             parsed = json.loads(r["content"])
-            s = int(parsed.get("score", 0))
-            if s not in (-1, 0, 1):
-                s = 0
+            raw = parsed.get("score", 0)
+            # PROTOCOL (JP-redacted)4.7.1 (JP-redacted) continuous float scores in [-1.0, +1.0] are
+            # accepted; integers stay legacy-compatible. NaN / Inf / string
+            # / |s|>1 collapse to 0 (= withdrawal, per (JP-redacted)4.7.2).
+            if isinstance(raw, bool):
+                s = 0.0
+            elif isinstance(raw, (int, float)):
+                fv = float(raw)
+                if not (-1.0 <= fv <= 1.0) or fv != fv or fv in (float("inf"), float("-inf")):
+                    s = 0.0
+                else:
+                    s = fv
+            else:
+                s = 0.0
         except Exception:
-            s = 0
+            s = 0.0
         pow_bits: int | None = None
         tags_blob = r.get("tags_json") if isinstance(r, dict) else None
         if tags_blob:
