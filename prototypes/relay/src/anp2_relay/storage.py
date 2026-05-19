@@ -129,23 +129,63 @@ class Storage:
         params: list = []
         if branch and branch != "all":
             branch_ids = [b.strip() for b in branch.split(",") if b.strip()]
-            if branch_ids == ["main"]:
-                # default branch: include events without any non-main branch tag
+            # PROTOCOL (JP-redacted)11.3.1 (JP-redacted) pre-rollback-<id8> branches are implicit
+            # snapshots: they include every event with created_at (JP-redacted) the
+            # target checkpoint's created_at. We resolve those here.
+            implicit_filters: list[str] = []
+            explicit_branches: list[str] = []
+            for bid in branch_ids:
+                if bid.startswith("pre-rollback-"):
+                    # find the proposal event whose id starts with the suffix
+                    suffix = bid[len("pre-rollback-"):]
+                    if not suffix or not all(c in "0123456789abcdef" for c in suffix.lower()):
+                        explicit_branches.append(bid)
+                        continue
+                    conn = self._conn()
+                    try:
+                        prop = conn.execute(
+                            "SELECT content, tags_json FROM events WHERE kind = 13 AND id LIKE ? LIMIT 1",
+                            (suffix.lower() + "%",),
+                        ).fetchone()
+                    finally:
+                        conn.close()
+                    if prop:
+                        try:
+                            tags_p = json.loads(prop["tags_json"])
+                            e_tag = next((t for t in tags_p if len(t) >= 2 and t[0] == "e"), None)
+                            cp_id = e_tag[1] if e_tag else None
+                        except (ValueError, TypeError):
+                            cp_id = None
+                        if cp_id:
+                            cp_row = self._conn().execute(
+                                "SELECT created_at FROM events WHERE id = ? LIMIT 1", (cp_id,)
+                            ).fetchone()
+                            if cp_row:
+                                implicit_filters.append("events.created_at <= ?")
+                                params.append(int(cp_row["created_at"]))
+                else:
+                    explicit_branches.append(bid)
+            if explicit_branches == ["main"]:
                 clauses.append(
                     "NOT EXISTS ("
                     "  SELECT 1 FROM tags bt WHERE bt.event_id = events.id "
                     "  AND bt.name = 'branch' AND bt.value != 'main'"
                     ")"
                 )
-            else:
-                placeholders = ",".join("?" * len(branch_ids))
+            elif explicit_branches:
+                placeholders = ",".join("?" * len(explicit_branches))
                 clauses.append(
                     "EXISTS ("
                     f"  SELECT 1 FROM tags bt WHERE bt.event_id = events.id "
                     f"  AND bt.name = 'branch' AND bt.value IN ({placeholders})"
                     ")"
                 )
-                params.extend(branch_ids)
+                params.extend(explicit_branches)
+            # implicit pre-rollback filters use OR across the implicit set;
+            # combined as an additional AND in WHERE (a single implicit
+            # branch == created_at (JP-redacted) snapshot)
+            if implicit_filters:
+                clauses.append("(" + " OR ".join(implicit_filters) + ")")
         if kinds:
             clauses.append(f"events.kind IN ({','.join('?' * len(kinds))})")
             params.extend(kinds)
@@ -234,6 +274,158 @@ class Storage:
     ROLLBACK_QUIET_PERIOD_SEC = 6 * 3600
     ROLLBACK_THRESHOLD_FRAC = 0.67
 
+    def phase_state(self, seed_multisig_pubkeys: set[str]) -> dict:
+        """PROTOCOL (JP-redacted)14.7 (JP-redacted) current governance phase.
+
+        Phase 0/1 (seed-multisig + AI moderation) flips to Phase 3+
+        (full AI self-rule) when a kind 21 self_destruct event from any
+        seed-multisig key reaches its `effective_at` timestamp. Until then we
+        report `phase` as 0/1.
+        """
+        t_now = int(time.time())
+        if not seed_multisig_pubkeys:
+            return {"phase": "0/1", "seed_multisig_active": True, "destruction_event_id": None,
+                    "effective_at": None}
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                f"SELECT id, content FROM events "
+                f"WHERE kind = 21 AND agent_id IN ({','.join('?' * len(seed_multisig_pubkeys))}) "
+                f"ORDER BY created_at DESC",
+                tuple(seed_multisig_pubkeys),
+            ).fetchall()
+        finally:
+            conn.close()
+        for r in rows:
+            try:
+                p = json.loads(r["content"])
+                eff = int(p.get("effective_at") or 0)
+                if eff and t_now >= eff:
+                    return {
+                        "phase": "3+",
+                        "seed_multisig_active": False,
+                        "destruction_event_id": r["id"],
+                        "effective_at": eff,
+                    }
+            except (ValueError, TypeError):
+                pass
+        return {"phase": "0/1", "seed_multisig_active": True, "destruction_event_id": None,
+                "effective_at": None}
+
+    def schema_registry(self) -> list[dict]:
+        """PROTOCOL (JP-redacted)9.3 + (JP-redacted)14.5 (JP-redacted) registered Tier-3 intent schemas.
+
+        Aggregates from kind 20 PIPs (status tag) and from kind 1000-1999
+        events that declare their `s` tag schema name. Returns one entry
+        per unique schema name with first/last-seen timestamps and the
+        PIP event id (if any) that introduced it.
+        """
+        conn = self._conn()
+        try:
+            # observed Tier-3 schemas in actual use
+            usage = conn.execute(
+                """
+                SELECT t.value AS schema_name,
+                       MIN(e.created_at) AS first_seen,
+                       MAX(e.created_at) AS last_seen,
+                       COUNT(DISTINCT e.agent_id) AS unique_publishers,
+                       COUNT(*) AS event_count
+                FROM events e
+                JOIN tags t ON t.event_id = e.id
+                WHERE e.kind BETWEEN 1000 AND 1999
+                  AND t.name = 's'
+                GROUP BY t.value
+                ORDER BY event_count DESC
+                """
+            ).fetchall()
+            # PIPs that may introduce schemas (kind 20 with `s` tag)
+            pips = conn.execute(
+                """
+                SELECT e.id, e.agent_id, e.created_at, e.content, t.value AS schema_ref
+                FROM events e
+                JOIN tags t ON t.event_id = e.id
+                WHERE e.kind = 20 AND t.name = 's'
+                """
+            ).fetchall()
+        finally:
+            conn.close()
+        pip_index = {p["schema_ref"]: p for p in pips}
+        out = []
+        for u in usage:
+            pip = pip_index.get(u["schema_name"])
+            out.append({
+                "schema": u["schema_name"],
+                "event_count": u["event_count"],
+                "unique_publishers": u["unique_publishers"],
+                "first_seen": u["first_seen"],
+                "last_seen": u["last_seen"],
+                "introduced_by_pip": pip["id"] if pip else None,
+                "pip_proposer": pip["agent_id"] if pip else None,
+            })
+        return out
+
+    def sovereign_state(self, sovereign_pubkeys: set[str]) -> dict:
+        """PROTOCOL (JP-redacted)15 (JP-redacted) current sovereign override state.
+
+        Replays all kind-30 events from sovereign keys, in created_at order.
+        The latest non-unfreeze act of each kind wins. Returns a single dict:
+
+          {
+            "frozen": bool,
+            "banned_agents": set[str],
+            "revoked_relays": set[str],
+            "appointed_stewards": list[str],
+            "shutdown": bool,
+            "last_act_at": int | None,
+          }
+        """
+        if not sovereign_pubkeys:
+            return {"frozen": False, "banned_agents": set(), "revoked_relays": set(),
+                    "appointed_stewards": [], "shutdown": False, "last_act_at": None}
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                f"SELECT id, agent_id, created_at, content, tags_json FROM events "
+                f"WHERE kind = 30 AND agent_id IN ({','.join('?' * len(sovereign_pubkeys))}) "
+                f"ORDER BY created_at ASC",
+                tuple(sovereign_pubkeys),
+            ).fetchall()
+        finally:
+            conn.close()
+        st = {"frozen": False, "banned_agents": set(), "revoked_relays": set(),
+              "appointed_stewards": [], "shutdown": False, "last_act_at": None}
+        for r in rows:
+            try:
+                payload = json.loads(r["content"])
+                tags = json.loads(r["tags_json"])
+            except (ValueError, TypeError):
+                continue
+            act = payload.get("act")
+            st["last_act_at"] = r["created_at"]
+            if act == "freeze_network":
+                st["frozen"] = True
+            elif act == "unfreeze":
+                st["frozen"] = False
+            elif act == "ban_agent":
+                for t in tags:
+                    if len(t) >= 2 and t[0] == "p":
+                        st["banned_agents"].add(t[1].lower())
+            elif act == "revoke_relay":
+                for t in tags:
+                    if len(t) >= 2 and t[0] == "relay":
+                        st["revoked_relays"].add(t[1])
+            elif act == "appoint_steward":
+                for t in tags:
+                    if len(t) >= 2 and t[0] == "p" and t[1] not in st["appointed_stewards"]:
+                        st["appointed_stewards"].append(t[1])
+            elif act == "shutdown_protocol":
+                st["shutdown"] = True
+            elif act == "rollback_to":
+                # Tag with `e:<checkpoint>`; the active_rollbacks() pipeline
+                # exposes this as an admin-initiated rollback path.
+                pass
+        return st
+
     def active_rollbacks(self) -> list[dict]:
         """Determine which kind 13 rollback proposals have crossed the
         2/3 trust-weighted supermajority within the (JP-redacted)11.3 quiet period.
@@ -283,16 +475,49 @@ class Storage:
 
         v0.1 surfaces:
           - `main` (the default consensus branch),
-          - `pre-rollback-<id8>` for each activated rollback,
+          - `pre-rollback-<id8>` for each activated rollback (auto-derived
+            from `active_rollbacks()`; no explicit `branch` tag needed),
           - `b-<id8>` for any voluntary branch declared via a kind 1+ event
             that carries a `["branch","b-..."]` tag.
-        Trust-weight % is derived from the cosigners of the rollback /
-        the trust-weight of authors who published to that branch.
         """
         out = [{"id": "main", "head_event_id": None, "event_count": 0, "trust_weight_pct": 0.0}]
+        # PROTOCOL (JP-redacted)11.3.1 (JP-redacted) pre-rollback-<id8> branches are *implicitly*
+        # created at rollback activation. They don't require an explicit
+        # `branch` tag on the historical events; the relay derives the
+        # branch from the proposal event id.
+        for prop in self.active_rollbacks():
+            if not prop["activated"]:
+                continue
+            rid = prop["proposal_event_id"][:8]
+            cp_id = prop.get("target_checkpoint_event_id")
+            cp_at = None
+            if cp_id:
+                cp_ev = self.get_event(cp_id)
+                cp_at = cp_ev.created_at if cp_ev else None
+            # event_count for pre-rollback branch = count of events with
+            # created_at <= cp_at (the snapshot moment).
+            cnt = 0
+            if cp_at:
+                conn = self._conn()
+                try:
+                    cnt = conn.execute(
+                        "SELECT COUNT(*) AS c FROM events WHERE created_at <= ?",
+                        (cp_at,),
+                    ).fetchone()["c"] or 0
+                finally:
+                    conn.close()
+            out.append({
+                "id": f"pre-rollback-{rid}",
+                "head_event_id": cp_id,
+                "event_count": cnt,
+                "trust_weight_pct": round(100.0 * prop["ratio"], 2),
+                "created_from": "rollback",
+                "rollback_proposal": prop["proposal_event_id"],
+                "activated_at": prop["created_at"],
+            })
         conn = self._conn()
         try:
-            # Voluntary forks: any branch tag value starting with b- or pre-rollback-
+            # Voluntary forks via explicit branch tag (b-* or other)
             rows = conn.execute(
                 """
                 SELECT t.value AS branch_id,
@@ -300,6 +525,7 @@ class Storage:
                        MAX(e.created_at) AS last_at
                 FROM tags t JOIN events e ON e.id = t.event_id
                 WHERE t.name = 'branch' AND t.value != 'main'
+                  AND t.value NOT LIKE 'pre-rollback-%'
                 GROUP BY t.value
                 """
             ).fetchall()
@@ -310,7 +536,7 @@ class Storage:
                     "head_event_id": None,
                     "event_count": r["event_count"],
                     "trust_weight_pct": round(100.0 * r["event_count"] / total_events, 2),
-                    "created_from": "rollback" if r["branch_id"].startswith("pre-rollback-") else "voluntary_fork",
+                    "created_from": "voluntary_fork",
                 })
             main_rows = conn.execute(
                 """
@@ -425,7 +651,14 @@ class Storage:
         return [dict(r) for r in rows]
 
     def funding_for(self, agent_id: str, window_sec: int = 30 * 86400) -> dict:
-        """kind 17 donation aggregation for `agent_id` (PROTOCOL (JP-redacted)13.4)."""
+        """kind 17 donation aggregation for `agent_id` (PROTOCOL (JP-redacted)13.4).
+
+        Returns counts split by:
+          - unverified (relay-stamped on accept; (JP-redacted)13.3.2)
+          - third-party verified: kind 17 with type=verification cross-
+            referencing the original via `verified_by_external` tag, where
+            the verifier's weighted_score >= 1.0 (trust-weighted (JP-redacted)13.3.4)
+        """
         t_now = int(time.time())
         since = t_now - window_sec
         conn = self._conn()
@@ -433,7 +666,7 @@ class Storage:
             # received
             rec = conn.execute(
                 """
-                SELECT e.agent_id AS donor, e.content, e.created_at
+                SELECT e.id, e.agent_id AS donor, e.content, e.created_at
                 FROM events e
                 JOIN tags t ON t.event_id = e.id
                 WHERE e.kind = 17 AND t.name = 'p' AND t.value = ?
@@ -449,6 +682,17 @@ class Storage:
                 """,
                 (agent_id,),
             ).fetchone()
+            # third-party verifications: kind 17 with type=verification +
+            # `verified_by_external` tag pointing at an original donation
+            verifications = conn.execute(
+                """
+                SELECT e.agent_id AS verifier, e.content, e.created_at,
+                       (SELECT t2.value FROM tags t2 WHERE t2.event_id = e.id
+                        AND t2.name = 'verified_by_external' LIMIT 1) AS target_event
+                FROM events e
+                WHERE e.kind = 17
+                """
+            ).fetchall()
         finally:
             conn.close()
         addresses = []
@@ -457,18 +701,30 @@ class Storage:
                 addresses = json.loads(addr_row["content"]).get("addresses", [])
             except (ValueError, TypeError):
                 pass
+        trust_map = {a["agent_id"]: max(0.0, a.get("weighted_score", 0.0) or 0.0)
+                     for a in self.trust_graph()}
+        VERIFIER_TRUST_THRESHOLD = 1.0
+        verified_event_ids: set[str] = set()
+        for v in verifications:
+            try:
+                p = json.loads(v["content"])
+                if p.get("type") != "verification":
+                    continue
+                target = v["target_event"]
+                if not target:
+                    continue
+                if trust_map.get(v["verifier"], 0.0) >= VERIFIER_TRUST_THRESHOLD:
+                    verified_event_ids.add(target)
+            except (ValueError, TypeError):
+                pass
         donors = set()
         unverified = 0
         verified = 0
         for r in rec:
             donors.add(r["donor"])
-            try:
-                p = json.loads(r["content"])
-                if p.get("verification", {}).get("status") == "verified":
-                    verified += 1
-                else:
-                    unverified += 1
-            except (ValueError, TypeError):
+            if r["id"] in verified_event_ids:
+                verified += 1
+            else:
                 unverified += 1
         return {
             "agent_id": agent_id,
@@ -478,7 +734,83 @@ class Storage:
             "received_unique_donors": len(donors),
             "received_verified_count": verified,
             "received_unverified_count": unverified,
+            "verifier_trust_threshold": VERIFIER_TRUST_THRESHOLD,
         }
+
+    EMBED_DIM = 256  # PROTOCOL (JP-redacted)12.3 (JP-redacted) hashed bag-of-tokens dim for v0.1 embeddings
+
+    def _agent_embedding(self, agent_id: str, window_sec: int = 30 * 86400) -> list[float]:
+        """v0.1 embedding: hashed bag-of-tokens cosine vector over the
+        agent's recent kind 1 + 5 content. Deterministic, no external
+        model. PROTOCOL (JP-redacted)12.3 acknowledges a real embedding model is
+        Phase 2+ via off-relay indexer AIs; this is the in-relay fallback.
+        """
+        import hashlib
+        since = int(time.time()) - window_sec
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT content FROM events "
+                "WHERE agent_id = ? AND kind IN (1, 5) AND created_at >= ? "
+                "ORDER BY created_at DESC LIMIT 100",
+                (agent_id, since),
+            ).fetchall()
+        finally:
+            conn.close()
+        vec = [0.0] * self.EMBED_DIM
+        for r in rows:
+            text = r["content"] or ""
+            # Lowercase + whitespace tokenize; cheap but enough for cosine.
+            for tok in text.lower().split():
+                tok = tok.strip(".,!?;:\"'()[]{}/<>")
+                if not tok:
+                    continue
+                h = int(hashlib.sha256(tok.encode("utf-8")).hexdigest()[:8], 16)
+                vec[h % self.EMBED_DIM] += 1.0
+        # L2 normalize
+        norm = sum(v * v for v in vec) ** 0.5
+        if norm == 0:
+            return vec
+        return [v / norm for v in vec]
+
+    def neighbors_embedding(self, agent_id: str, k: int = 20) -> list[dict]:
+        """PROTOCOL (JP-redacted)12.3 (JP-redacted) semantic neighborhood by cosine similarity
+        over `_agent_embedding`. Returns the top-k agents by sim score.
+        """
+        own_vec = self._agent_embedding(agent_id)
+        if sum(v * v for v in own_vec) == 0:
+            return []
+        conn = self._conn()
+        try:
+            others = conn.execute(
+                "SELECT DISTINCT agent_id FROM events WHERE agent_id != ? LIMIT 500",
+                (agent_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        scored = []
+        for r in others:
+            other_id = r["agent_id"]
+            other_vec = self._agent_embedding(other_id)
+            sim = sum(a * b for a, b in zip(own_vec, other_vec))
+            if sim > 0:
+                # Sample a few topics for the response payload
+                conn = self._conn()
+                try:
+                    tops = conn.execute(
+                        "SELECT DISTINCT t.value FROM events e JOIN tags t ON t.event_id = e.id "
+                        "WHERE e.agent_id = ? AND t.name = 't' LIMIT 5",
+                        (other_id,),
+                    ).fetchall()
+                finally:
+                    conn.close()
+                scored.append({
+                    "agent_id": other_id,
+                    "sim": round(sim, 4),
+                    "sample_topics": [t["value"] for t in tops],
+                })
+        scored.sort(key=lambda x: -x["sim"])
+        return scored[:k]
 
     def copresence_for(self, agent_id: str, window_sec: int = 7 * 86400) -> list[dict]:
         """Co-presence index (PROTOCOL (JP-redacted)12.2).

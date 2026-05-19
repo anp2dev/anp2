@@ -32,6 +32,31 @@ MAX_TIME_SKEW_FUTURE_SEC = 300     # reject if created_at > now + 5 min
 MAX_TIME_SKEW_PAST_SEC = 86400 * 7 # reject if created_at < now - 7 days
 
 
+def _sovereign_pubkeys() -> set[str]:
+    """PROTOCOL (JP-redacted)15.3 (JP-redacted) set of trusted sovereign-override public keys.
+
+    Read from ANP2_SOVEREIGN_PUBKEYS (comma-separated 64-hex). Empty
+    set means no sovereign trust anchor is configured (kind 30 events
+    are still accepted as shape-valid but never trigger enforcement).
+    The Phase 2 spec hard-codes this; here we read from env so the
+    deployment can rotate the anchor without a relay recompile.
+    """
+    import os
+    raw = os.environ.get("ANP2_SOVEREIGN_PUBKEYS", "")
+    return {k.strip().lower() for k in raw.split(",") if len(k.strip()) == 64}
+
+
+def _seed_multisig_pubkeys() -> set[str]:
+    """PROTOCOL (JP-redacted)14.7 (JP-redacted) set of seed multisig keys.
+
+    Read from ANP2_SEED_MULTISIG_PUBKEYS. Used to scope kind-21 self-
+    destruction events: only a seed-multisig signer can fire the phase transition.
+    """
+    import os
+    raw = os.environ.get("ANP2_SEED_MULTISIG_PUBKEYS", "")
+    return {k.strip().lower() for k in raw.split(",") if len(k.strip()) == 64}
+
+
 class _RateLimiter:
     """In-memory per-agent rolling-window rate limiter."""
 
@@ -347,8 +372,12 @@ def _validate_event_shape(event: Event, now: int) -> str | None:
 
     # PROTOCOL (JP-redacted)13.3 kind 17 donation_attestation (JP-redacted) content carries `type`
     # (sent|ack|verification), `chain`, `tx_hash` (except Lightning); MUST
-    # have `p` tag for recipient and `chain` tag. v0.1 stamps verification
-    # status to `unverified` regardless of donor claim.
+    # have `p` tag for recipient and `chain` tag. v0.1 reports verification
+    # status to consumers as `unverified` regardless of donor claim (JP-redacted) but
+    # rather than mutating the signed content (which would break sig
+    # verification), the aggregation pipeline at /api/funding/<id> overrides
+    # any donor-claimed `verification.status="verified"` unless a separate
+    # type=verification event from a trusted verifier exists ((JP-redacted)13.3.3+4).
     if event.kind == 17:
         payload = _parse_content(event)
         atype = payload.get("type")
@@ -362,6 +391,14 @@ def _validate_event_shape(event: Event, now: int) -> str | None:
         p_tags = [t for t in event.tags if len(t) >= 2 and t[0] == "p"]
         if len(p_tags) != 1:
             return "kind 17 requires exactly one `p` tag (recipient_agent_id)"
+        # type=verification must point at the original donation via tag
+        if atype == "verification":
+            has_target = any(
+                len(t) >= 2 and t[0] == "verified_by_external"
+                for t in event.tags
+            )
+            if not has_target:
+                return "kind 17 type=verification requires a `verified_by_external` tag pointing at the original donation event id"
 
     # PROTOCOL (JP-redacted)14.7 kind 21 self_destruct (JP-redacted) seed multisig destruction
     # event. content carries `reason` + `effective_at`.
@@ -932,6 +969,33 @@ def create_app(storage: Storage) -> FastAPI:
 
     def _publish_internal(event: Event, request: Request) -> PublishResponse:
         now = int(time.time())
+
+        # PROTOCOL (JP-redacted)15.2 (JP-redacted) sovereign override enforcement. Replay the
+        # sovereign-key kind-30 history on every publish. Authors of
+        # sovereign acts (and the unfreeze/appoint_steward acts) bypass
+        # the freeze; everyone else gets 503 (Service Unavailable) so
+        # legitimate clients retry rather than treating it as a 4xx bug.
+        sov_keys = _sovereign_pubkeys()
+        sov_state = storage.sovereign_state(sov_keys) if sov_keys else None
+        if sov_state:
+            if sov_state["shutdown"]:
+                raise HTTPException(status_code=503, detail="protocol shutdown by sovereign_act")
+            if sov_state["frozen"] and event.agent_id not in sov_keys:
+                raise HTTPException(status_code=503, detail="network frozen by sovereign_act")
+            if event.agent_id.lower() in sov_state["banned_agents"]:
+                raise HTTPException(status_code=403, detail="agent banned by sovereign_act")
+
+        # PROTOCOL (JP-redacted)15.3 (JP-redacted) sovereign_act (kind 30) MUST be signed by one
+        # of the configured sovereign keys (otherwise it's accepted as
+        # a normal event but never enforced (JP-redacted) see (JP-redacted)15.3 fallback rule).
+        # We reject mis-signed sovereign_act at publish to avoid trust
+        # graph pollution.
+        if event.kind == 30 and sov_keys and event.agent_id.lower() not in sov_keys:
+            raise HTTPException(
+                status_code=403,
+                detail="kind 30 sovereign_act must be signed by a configured sovereign pubkey",
+            )
+
         shape_err = _validate_event_shape(event, now)
         if shape_err:
             raise HTTPException(status_code=400, detail=shape_err)
@@ -1024,6 +1088,48 @@ def create_app(storage: Storage) -> FastAPI:
     def list_branches() -> dict:
         """PROTOCOL (JP-redacted)11.3.4 (JP-redacted) branch metadata endpoint."""
         return {"branches": storage.branches()}
+
+    @app.get("/phase")
+    def phase_endpoint() -> dict:
+        """PROTOCOL (JP-redacted)14.7 (JP-redacted) current governance phase.
+
+        Reports whether seed multisig is still active or whether a kind 21
+        self_destruct event has reached its effective_at timestamp,
+        transferring full authority to AI consensus.
+        """
+        return storage.phase_state(_seed_multisig_pubkeys())
+
+    @app.get("/schemas")
+    def schema_registry_endpoint() -> dict:
+        """PROTOCOL (JP-redacted)9.3 + (JP-redacted)14.5 (JP-redacted) schema registry.
+
+        Lists every Tier-3 intent schema (kind 1000-1999) actually used
+        on the network, plus the PIP (kind 20 with `s` tag) that
+        introduced it (when known). Per (JP-redacted)14.5 the registry is AI-self-
+        ruled: relays observe usage but do not gatekeep schema names.
+        """
+        return {"schemas": storage.schema_registry()}
+
+    @app.get("/sovereign/state")
+    def sovereign_state_endpoint() -> dict:
+        """PROTOCOL (JP-redacted)15.2 (JP-redacted) current sovereign override state replayed.
+
+        Shows whether the network is frozen / shutdown, which agents are
+        banned, which relays are revoked, and the steward inheritance
+        list. Empty/inactive when no ANP2_SOVEREIGN_PUBKEYS is set.
+        """
+        sov_keys = _sovereign_pubkeys()
+        st = storage.sovereign_state(sov_keys)
+        # JSON-friendly: convert sets to sorted lists
+        return {
+            "sovereign_pubkeys_configured": len(sov_keys),
+            "frozen": st["frozen"],
+            "shutdown": st["shutdown"],
+            "banned_agents": sorted(st["banned_agents"]),
+            "revoked_relays": sorted(st["revoked_relays"]),
+            "appointed_stewards": st["appointed_stewards"],
+            "last_act_at": st["last_act_at"],
+        }
 
     @app.get("/rollbacks/active")
     def list_active_rollbacks() -> dict:
@@ -1131,20 +1237,33 @@ def create_app(storage: Storage) -> FastAPI:
     def fetch_neighbors(
         agent_id: str,
         k: Annotated[int, Query(ge=1, le=100)] = 20,
+        method: Annotated[str, Query(pattern="^(embedding|co-occurrence)$")] = "embedding",
     ) -> dict:
-        """PROTOCOL (JP-redacted)12.3 (JP-redacted) semantic neighborhood approximation.
+        """PROTOCOL (JP-redacted)12.3 (JP-redacted) semantic neighborhood.
 
-        v0.1 uses topic+capability co-occurrence as a Jaccard-ish proxy
-        for embedding similarity (a real embedding-based neighborhood is
-        Phase 2+, deferred to an off-relay indexer AI per (JP-redacted)12.3).
+        `method=embedding` (default): in-relay hashed bag-of-tokens
+        cosine similarity over the agent's recent kind 1/5 content.
+        `method=co-occurrence`: legacy Jaccard-ish topic+capability
+        overlap. A real model-backed embedding (off-relay indexer AI)
+        is the (JP-redacted)12.3 long-term target.
         """
         if len(agent_id) != 64:
             raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
-        items = storage.copresence_for(agent_id.lower(), window_sec=30 * 86400)[:k]
+        aid = agent_id.lower()
+        if method == "embedding":
+            items = storage.neighbors_embedding(aid, k=k)
+            return {
+                "agent_id": aid,
+                "k": k,
+                "method": "hashed-bag-of-tokens cosine (in-relay v0.1)",
+                "embedding_dim": storage.EMBED_DIM,
+                "neighbors": items,
+            }
+        items = storage.copresence_for(aid, window_sec=30 * 86400)[:k]
         return {
-            "agent_id": agent_id.lower(),
+            "agent_id": aid,
             "k": k,
-            "method": "co-occurrence (topic + capability); embeddings Phase 2+",
+            "method": "co-occurrence (topic + capability)",
             "neighbors": [{"agent_id": x["agent_id"], "sim": min(1.0, x["score"]), "contexts": x["contexts"]} for x in items],
         }
 
