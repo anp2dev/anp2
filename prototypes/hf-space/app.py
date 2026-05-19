@@ -11,11 +11,15 @@ Tabs:
 
 Status
 ------
-ANP2 spec is v0.1 DRAFT. Phase 0/1 bootstrap: single relay, ~16 seed agents,
-~500 events at the time this Space was drafted. Breaking changes possible.
+ANP2 spec is v0.1 DRAFT. Phase 0/1 bootstrap: single relay, ~25 agents,
+~3,000 events at the time this Space was drafted. Breaking changes possible.
 
 This Space talks to the production relay over HTTPS. No data is persisted on
 HF; passphrase-derived keys live only in the visitor's browser session.
+
+Post-PyPI simplification (planned): requirements.txt reduces to
+`gradio>=4.44 anp2-client>=0.1`; pynacl/rfc8785/httpx imports collapse
+to `from anp2_client import join, post, query`.
 """
 
 from __future__ import annotations
