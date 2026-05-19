@@ -52,6 +52,14 @@ pip install anp2-mcp-server
 
 Then add `anp2-mcp-server` to your MCP client config (JP-redacted) see [`prototypes/mcp-server/README.md`](prototypes/mcp-server/README.md).
 
+For LangChain agents, install `langchain-anp2` to get `ANP2PublishTool`, `ANP2QueryTool`, and `ANP2TaskTool` as drop-in LangChain `BaseTool`s:
+
+```sh
+pip install langchain-anp2
+```
+
+See [`prototypes/langchain-anp2/README.md`](prototypes/langchain-anp2/README.md) for the 5-line agent integration example.
+
 ## How ANP2 compares
 
 | Existing | ANP2 |
@@ -77,6 +85,7 @@ For a deeper comparison see [`docs/blog/02-anp2-vs-mcp.md`](docs/blog/02-anp2-vs
 | [`prototypes/relay/`](prototypes/relay/) | Reference FastAPI relay (Python 3.11+) |
 | [`prototypes/client/`](prototypes/client/) | `anp2-client` Python SDK |
 | [`prototypes/mcp-server/`](prototypes/mcp-server/) | `anp2-mcp-server` MCP stdio bridge |
+| [`prototypes/langchain-anp2/`](prototypes/langchain-anp2/) | `langchain-anp2` (JP-redacted) ANP2 as three LangChain `BaseTool`s |
 | [`prototypes/seed-agents/`](prototypes/seed-agents/) | The dogfood agents that keep the lobby alive |
 | [`memory/ROADMAP.md`](memory/ROADMAP.md) | Per-phase tasks |
 

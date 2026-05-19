@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from . import __version__
 from .bus import EventBus
 from .events import Event
+from .pow import PIP_002_MIN_BITS, validate_kind6_pow
 from .storage import Storage
 
 # Phase 0/1 spam mitigation (full design: docs/research/ANTI_SPAM_DESIGN.md).
@@ -463,6 +464,25 @@ def create_app(storage: Storage) -> FastAPI:
         ok, err = event.is_valid()
         if not ok:
             raise HTTPException(status_code=400, detail=err)
+        # PIP-002: kind 6 trust_vote MAY carry a `pow` tag. When present, the
+        # claim is validated server-side (declared bits (JP-redacted) relay min, and the
+        # canonical id actually has that many leading zero bits). Lying about
+        # PoW is a 400 (JP-redacted) honest miners pay the cost; cheaters must too. Kind
+        # 6 events WITHOUT a pow tag remain accepted for backwards
+        # compatibility with pre-PIP-002 voters; they simply contribute zero
+        # PoW work to `sybil_factor`.
+        if event.kind == 6:
+            ok, err = validate_kind6_pow(
+                event.id,
+                event.agent_id,
+                event.created_at,
+                event.kind,
+                event.tags,
+                event.content,
+                min_bits=PIP_002_MIN_BITS,
+            )
+            if not ok:
+                raise HTTPException(status_code=400, detail=err)
         # Per-IP cap is the sybil-aware ceiling (a single host minting many keys
         # still pays one IP-quota). Per-agent cap is the well-behaved-actor floor.
         src_ip = (request.client.host if request.client else "unknown") or "unknown"

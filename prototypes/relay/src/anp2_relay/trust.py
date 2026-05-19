@@ -48,6 +48,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Iterable
 
+from .pow import SYBIL_NORM_CONSTANT
+
 # --- tunables (versioned as trust.v1 (JP-redacted) change requires a new PIP) ---
 HALF_LIFE_DAYS = 30.0
 DAY_SECONDS = 86400.0
@@ -69,6 +71,9 @@ class Vote:
     target: str
     score: int  # -1, 0, or +1 per spec (JP-redacted)4.7
     created_at: int  # unix seconds
+    # PIP-002: declared PoW bits on this vote (None for pre-PIP-002 votes
+    # that carry no `pow` tag). Feeds `sybil_factor_pow(target)`.
+    pow_bits: int | None = None
 
 
 @dataclass
