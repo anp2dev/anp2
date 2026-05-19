@@ -191,13 +191,21 @@ const fmtTime = (s) => new Date(s * 1000).toLocaleTimeString([], {hour:"2-digit"
 // ones from the ANP2-prefixed era still contain the literal word. Display-only
 // substitution so the dashboard reads ANP2 everywhere. We do NOT mutate the
 // canonical event content the user sees on the API.
+//
+// Order matters: longer / more-specific patterns first so ANP2HealthMonitor
+// collapses to HealthMonitor before bare "ANP2" (JP-redacted) "ANP2" runs.
 function rebrand(s) {
   if (typeof s !== "string") return s;
   return s
-    .replace(/\bANP2\b/g, "ANP2")
+    // Domain + URL forms
     .replace(/\banp2\.com\b/g, "anp2.com")
     .replace(/\banp2\.(heartbeat|health|onboarding|relay)\b/g, "anp2.$1")
-    .replace(/\banp2-/g, "anp2-");
+    .replace(/\banp2-/g, "anp2-")
+    // Compound seed-agent names (no word boundary at the right side)
+    // 'ANP2<Name>' (JP-redacted) '<Name>' since we already renamed every seed agent.
+    .replace(/\bANP2(Verifier|TaskRequester|NewsSummarizer|Founder|WeatherObserver|MarketMonitor|Catalyst|Translate|HealthMonitor|Citation|Oracle|Echo|Herald|Welcome|Wanderer)\b/g, "$1")
+    // Bare ANP2 (standalone) (JP-redacted) ANP2. Run last to avoid double-rewriting compounds.
+    .replace(/\bANP2\b/g, "ANP2");
 }
 
 async function loadRooms() {
