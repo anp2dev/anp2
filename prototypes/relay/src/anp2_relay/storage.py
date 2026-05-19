@@ -491,8 +491,14 @@ class Storage:
         finally:
             conn.close()
 
+    HEALTH_KIND = 11
+    HEALTH_HEALTHY_WINDOW_SEC = 300        # 5 minutes
+    HEALTH_24H = 24 * 3600
+    HEALTH_7D = 7 * HEALTH_24H
+    HEALTH_BUCKET_SEC = 300
+
     def agents(self) -> list[dict]:
-        """List distinct agent_ids with their latest profile content and event count."""
+        """List distinct agent_ids with their latest profile content, event count, and liveness summary."""
         conn = self._conn()
         try:
             rows = conn.execute(
@@ -510,6 +516,79 @@ class Storage:
                 ORDER BY last_seen DESC
                 """
             ).fetchall()
-            return [dict(r) for r in rows]
+            out = []
+            for r in rows:
+                d = dict(r)
+                h = self.health_for(d["agent_id"])
+                d["is_healthy"]     = h["is_healthy"]
+                d["uptime_24h_pct"] = h["uptime_24h_pct"]
+                d["last_seen_at"]   = h["last_seen_at"]
+                out.append(d)
+            return out
         finally:
             conn.close()
+
+    def health_for(self, agent_id: str, now: int | None = None) -> dict:
+        """Aggregate kind 11 health beats into per-agent uptime + latency stats.
+
+        See PROTOCOL (JP-redacted)5.5 and docs/research/a2a_adoption/patch_003_liveness.md.
+        Beat-based; no outbound probing.
+        """
+        import statistics
+        t_now = int(time.time()) if now is None else int(now)
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT created_at, content
+                FROM events
+                WHERE agent_id = ? AND kind = ? AND created_at > ?
+                ORDER BY created_at DESC
+                """,
+                (agent_id, self.HEALTH_KIND, t_now - self.HEALTH_7D),
+            ).fetchall()
+        finally:
+            conn.close()
+        if not rows:
+            return {
+                "agent_id": agent_id,
+                "last_seen_at": None,
+                "is_healthy": False,
+                "uptime_24h_pct": 0.0,
+                "uptime_7d_pct": 0.0,
+                "beats_24h": 0,
+                "p50_latency_ms": None,
+                "p95_latency_ms": None,
+                "status_notes": [],
+            }
+        latest = rows[0]
+        is_healthy = (t_now - latest["created_at"]) <= self.HEALTH_HEALTHY_WINDOW_SEC
+        buckets_24h = {((t_now - r["created_at"]) // self.HEALTH_BUCKET_SEC) for r in rows
+                       if (t_now - r["created_at"]) < self.HEALTH_24H}
+        buckets_7d  = {((t_now - r["created_at"]) // self.HEALTH_BUCKET_SEC) for r in rows}
+        latencies: list[float] = []
+        for r in rows:
+            try:
+                payload = json.loads(r["content"])
+                v = payload.get("latency_ms")
+                if isinstance(v, (int, float)) and v >= 0:
+                    latencies.append(float(v))
+            except (json.JSONDecodeError, TypeError):
+                pass
+        p50 = statistics.median(latencies) if latencies else None
+        if len(latencies) >= 20:
+            srt = sorted(latencies)
+            p95 = srt[int(len(srt) * 0.95) - 1]
+        else:
+            p95 = max(latencies) if latencies else None
+        return {
+            "agent_id": agent_id,
+            "last_seen_at": latest["created_at"],
+            "is_healthy": is_healthy,
+            "uptime_24h_pct": round(100.0 * len(buckets_24h) / (self.HEALTH_24H // self.HEALTH_BUCKET_SEC), 2),
+            "uptime_7d_pct":  round(100.0 * len(buckets_7d)  / (self.HEALTH_7D  // self.HEALTH_BUCKET_SEC), 2),
+            "beats_24h": sum(1 for r in rows if (t_now - r["created_at"]) < self.HEALTH_24H),
+            "p50_latency_ms": p50,
+            "p95_latency_ms": p95,
+            "status_notes": [],
+        }

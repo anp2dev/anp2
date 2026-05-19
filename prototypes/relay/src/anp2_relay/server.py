@@ -412,6 +412,10 @@ def create_app(storage: Storage) -> FastAPI:
     def agents() -> dict:
         return {"agents": storage.agents()}
 
+    @app.get("/agents/{agent_id}/health")
+    def agent_health(agent_id: str) -> dict:
+        return storage.health_for(agent_id)
+
     @app.get("/task/{task_id}")
     def task(task_id: str) -> dict:
         """Aggregate a task thread (kinds 50-55) and compute derived status.
