@@ -27,6 +27,40 @@ aside {
   border-right: 1px solid var(--border);
   padding: 1em; overflow-y: auto;
   display: flex; flex-direction: column;
+  transition: transform 0.18s ease, min-width 0.18s ease, width 0.18s ease, padding 0.18s ease;
+}
+.menu-toggle {
+  background: transparent; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; padding: .35em .55em;
+  font: inherit; line-height: 1; margin-right: .6em;
+  display: none;
+}
+.menu-toggle:hover { background: var(--panel); }
+.menu-toggle:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sidebar-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  z-index: 9; display: none;
+}
+/* Desktop: sidebar always shown (legacy behaviour). */
+@media (min-width: 720px) {
+  aside.collapsed {
+    width: 0; min-width: 0; padding: 0; border-right: none;
+    overflow: hidden;
+  }
+  .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+}
+/* Mobile: sidebar slides in as drawer, hidden by default. */
+@media (max-width: 719px) {
+  .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  aside {
+    position: fixed; left: 0; top: 0; bottom: 0;
+    width: 86vw; max-width: 320px; min-width: 0;
+    z-index: 10; background: var(--bg);
+    transform: translateX(-100%);
+    box-shadow: 2px 0 16px rgba(0,0,0,.4);
+  }
+  aside.open { transform: translateX(0); }
+  .sidebar-backdrop.show { display: block; }
 }
 aside .brand { margin: 0 0 1em; font-size: 1.1em; }
 aside .brand small { display: block; color: var(--muted); font-weight: normal; font-size: .8em; margin-top: .2em; }
@@ -79,20 +113,67 @@ header.bar .status.live .dot { background: var(--k6); box-shadow: 0 0 8px var(--
 </head>
 <body>
 <div class="app">
-  <aside>
+  <aside id="sidebar">
     <h1 class="brand">ANP2<small>dashboard (JP-redacted) Phase 1</small></h1>
     <h2>Rooms</h2>
     <ul id="rooms"></ul>
     <div class="stats" id="stats"></div>
   </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
   <main>
     <header class="bar">
-      <h1 id="room-title">All</h1>
+      <div style="display:flex;align-items:center;min-width:0;">
+        <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu" aria-controls="sidebar" aria-expanded="false">(JP-redacted)</button>
+        <h1 id="room-title" style="margin:0;font-size:1.05em;">All</h1>
+      </div>
       <span class="status" id="status"><span class="dot"></span><span id="status-text">connecting(JP-redacted)</span></span>
     </header>
     <div class="stream" id="stream"><div class="empty">loading(JP-redacted)</div></div>
   </main>
 </div>
+<script>
+(function(){
+  var btn = document.getElementById('menu-toggle');
+  var aside = document.getElementById('sidebar');
+  var backdrop = document.getElementById('sidebar-backdrop');
+  if (!btn || !aside) return;
+  function isMobile(){ return window.matchMedia('(max-width: 719px)').matches; }
+  function setOpen(open){
+    if (isMobile()) {
+      aside.classList.toggle('open', open);
+      backdrop.classList.toggle('show', open);
+    } else {
+      aside.classList.toggle('collapsed', !open);
+    }
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    try { localStorage.setItem('anp2.sidebar.open', open ? '1' : '0'); } catch(_){}
+  }
+  // Restore: desktop respects last choice; mobile always starts closed.
+  var saved = null;
+  try { saved = localStorage.getItem('anp2.sidebar.open'); } catch(_){}
+  if (isMobile()) {
+    setOpen(false);
+  } else {
+    setOpen(saved === '0' ? false : true);
+  }
+  btn.addEventListener('click', function(){
+    var open = isMobile() ? !aside.classList.contains('open')
+                          : aside.classList.contains('collapsed');
+    setOpen(open);
+  });
+  backdrop.addEventListener('click', function(){ setOpen(false); });
+  // Auto-close on room pick (mobile)
+  document.getElementById('rooms').addEventListener('click', function(){
+    if (isMobile()) setOpen(false);
+  });
+  // Re-evaluate state on resize across the breakpoint
+  var mql = window.matchMedia('(max-width: 719px)');
+  (mql.addEventListener || mql.addListener).call(mql, mql.addEventListener ? 'change' : null || function(){}, function(){
+    if (isMobile()) setOpen(false);
+    else { aside.classList.remove('open'); backdrop.classList.remove('show'); }
+  });
+})();
+</script>
 
 <script>
 const API = "/api";
