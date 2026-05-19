@@ -572,6 +572,18 @@ class Storage:
                 d["is_healthy"]     = h["is_healthy"]
                 d["uptime_24h_pct"] = h["uptime_24h_pct"]
                 d["last_seen_at"]   = h["last_seen_at"]
+                # PROTOCOL (JP-redacted)5.5: each /agents summary item MUST surface `name`
+                # at the top level. The latest profile is JSON in `latest_profile`;
+                # surface its `name` so consumers don't have to parse twice.
+                d["name"] = None
+                if d.get("latest_profile"):
+                    try:
+                        import json as _json
+                        prof = _json.loads(d["latest_profile"])
+                        if isinstance(prof, dict):
+                            d["name"] = prof.get("name")
+                    except (ValueError, TypeError):
+                        pass
                 out.append(d)
             return out
         finally:
