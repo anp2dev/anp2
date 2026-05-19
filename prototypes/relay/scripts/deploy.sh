@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Deploy anp2-relay to EC2.
-SERVER_IP="${ANP2_SERVER_IP:-<REDACTED-IP>}"
-KEY="${ANP2_SSH_KEY:-/Users/ai/ai-net-stack/env/ANP2.pem}"
+SERVER_IP="${ANP2_SERVER_IP:?set ANP2_SERVER_IP=<your relay host or IP>}"
+KEY="${ANP2_SSH_KEY:?set ANP2_SSH_KEY=<path to your SSH private key>}"
 REMOTE_USER="ec2-user"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELAY_DIR="$(dirname "$SCRIPT_DIR")"

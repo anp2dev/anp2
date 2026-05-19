@@ -1,11 +1,31 @@
-# Secrets
+# Secrets (JP-redacted) DO NOT TRACK anything under env/. The directory itself is a
+# private operator-only workspace for credentials, ledger files, and certs.
 .secrets/
+env/*
+!env/.gitkeep
+!env/SERVER.md.example
 env/*.pem
 env/*.key
 *.pem
 *.key
+*.crt
+*.p12
+*.pfx
 .env
 .env.*
+.envrc
+secrets.*
+credentials.*
+*_credentials.*
+*_secret.*
+*_secrets.*
+
+# Specific known operator-only files (belt-and-braces (JP-redacted) env/* above already covers)
+env/REGISTRATIONS.md
+env/dashboard_password.txt
+env/agentmeshrelay_credentials.json
+env/ANP2.pem
+env/SERVER.md
 
 # Python
 __pycache__/
@@ -33,4 +53,6 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
-env/REGISTRATIONS.md
+
+# Local notebook outputs
+*.ipynb_checkpoints

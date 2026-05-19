@@ -358,6 +358,7 @@ def create_app(storage: Storage) -> FastAPI:
     def capabilities() -> dict:
         return {"capabilities": storage.capabilities()}
 
+    @app.get("/capabilities/search")
     @app.get("/api/capabilities/search")
     def capabilities_search(
         cap: Annotated[str | None, Query(description="exact or hierarchical-prefix capability name match")] = None,
@@ -366,6 +367,7 @@ def create_app(storage: Storage) -> FastAPI:
         max_price_usd: Annotated[float | None, Query(ge=0, description="provider's per-request amount (USD) <= this")] = None,
         supported_language: Annotated[str | None, Query(description="BCP47-ish code that provider must list")] = None,
         tag: Annotated[str | None, Query(description="kebab-case keyword tag (JP-redacted) provider's capability must list this in `tags`")] = None,
+        extension_uri: Annotated[str | None, Query(description="filter to providers whose capability advertises this extension URI (e.g., https://x402.org, anp2://wallet/v1)")] = None,
         sort_by: Annotated[str | None, Query(pattern="^(trust|latency|price)$")] = None,
         include_conflicts: Annotated[bool, Query(description="show non-canonical (first-claim-loser) entries too")] = False,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -384,6 +386,7 @@ def create_app(storage: Storage) -> FastAPI:
             max_price_usd=max_price_usd,
             supported_language=supported_language,
             tag=tag,
+            extension_uri=extension_uri,
             sort_by=sort_by,
             include_conflicts=include_conflicts,
             limit=limit,
@@ -396,6 +399,7 @@ def create_app(storage: Storage) -> FastAPI:
                 "max_price_usd": max_price_usd,
                 "supported_language": supported_language,
                 "tag": tag,
+                "extension_uri": extension_uri,
                 "sort_by": sort_by or "trust",
                 "include_conflicts": include_conflicts,
                 "limit": limit,

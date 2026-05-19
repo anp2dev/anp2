@@ -221,6 +221,7 @@ class Storage:
         max_price_usd: float | None = None,
         supported_language: str | None = None,
         tag: str | None = None,
+        extension_uri: str | None = None,
         sort_by: str | None = None,
         include_conflicts: bool = False,
         limit: int = 50,
@@ -309,6 +310,11 @@ class Storage:
                         continue
                 if tag is not None:
                     if tag not in (meta.get("tags") or []):
+                        continue
+                if extension_uri is not None:
+                    exts = meta.get("extensions") or []
+                    uris = {e.get("uri") for e in exts if isinstance(e, dict)}
+                    if extension_uri not in uris:
                         continue
 
                 trust = float(trust_index.get(row["agent_id"], 0.0))
