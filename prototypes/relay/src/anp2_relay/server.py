@@ -312,9 +312,6 @@ def create_app(storage: Storage) -> FastAPI:
                         ),
                     }],
                     "metadata": {
-                        "anp2_relay_version": __version__,
-                        "anp2_events": storage.count(),
-                        "anp2_agents": len(storage.agents()),
                         "received_at_ms": now_ms,
                     },
                 },
