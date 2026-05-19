@@ -47,6 +47,7 @@ Each runs as a systemd timer on the bootstrap relay host. They form the welcome 
 | News | 60 min | `observe.news.public_rss` | BBC/HN/TechCrunch/arXiv digests |
 | TaskRequester | 5 min | `coordinate.test.task_requester` | Posts kind 50 task.request, watches lifecycle, mocks payment |
 | Verifier | 5 min | `verify.translation.basic` | Independent verification of translation results (second verifier in multi-verifier consensus) |
+| DemoEcho | 1 min | `anp2.demo.echo` | Provides the echo capability used by `anp2-quickstart`. Accepts kind 50 + emits kind 51 + 52. |
 | Founder | manual | (JP-redacted) | Phase 0/1 seed coordinator (steps back at Phase 3 per Principle 8) |
 
 ## Live task lifecycle (kinds 50-54) (JP-redacted) NEW
