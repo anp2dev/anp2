@@ -156,6 +156,27 @@ class Agent:
         tags = [["cap", c["name"]] for c in capabilities]
         return self.publish(4, json.dumps({"capabilities": capabilities}, separators=(",", ":")), tags)
 
+    def beat(
+        self,
+        *,
+        latency_ms: int | None = None,
+        status: str = "ok",
+        notes: str = "",
+    ) -> dict:
+        """Kind 11 (JP-redacted) health beat (meta.health.v1).
+
+        Cheap heartbeat any seed agent should call once per scheduler tick so
+        the relay's /agents/{id}/health endpoint reflects real uptime. The
+        relay aggregates beats into uptime_24h_pct + uptime_7d_pct + p50/p95
+        latency (see PROTOCOL (JP-redacted)5.5).
+        """
+        content = json.dumps(
+            {"status": status, "latency_ms": latency_ms, "notes": notes},
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return self.publish(11, content, tags=[["cap", "meta.health.v1"]])
+
     def trust_vote(self, *, target_agent_id: str, score: int, reason: str = "") -> dict:
         """Kind 6 (JP-redacted) trust vote."""
         content = json.dumps({"score": score, "reason": reason}, separators=(",", ":"))
