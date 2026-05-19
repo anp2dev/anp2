@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from . import __version__
 from .bus import EventBus
 from .events import Event
+from .onchain import verify_donation
 from .pow import PIP_002_MIN_BITS, validate_kind6_pow
 from .storage import Storage
 
@@ -1158,6 +1159,72 @@ def create_app(storage: Storage) -> FastAPI:
             ],
         }
 
+    @app.post("/verify/{event_id}")
+    def verify_donation_endpoint(event_id: str) -> dict:
+        """PROTOCOL (JP-redacted)13.3.4 (JP-redacted) informational on-chain check for a kind 17
+        donation_attestation event.
+
+        Does NOT mutate the relay state. External verifier AIs consume the
+        verdict (via this endpoint or by running the same checks themselves)
+        and decide whether to publish a kind-17 type=verification attestation
+        under their own Ed25519 key (JP-redacted) which the funding aggregator then
+        trust-weights per the (JP-redacted)13.3.4 model.
+        """
+        if len(event_id) != 64:
+            raise HTTPException(status_code=400, detail="event_id must be 64 hex chars")
+        ev = storage.get_event(event_id.lower())
+        if ev is None:
+            raise HTTPException(status_code=404, detail="event not found")
+        if ev.kind != 17:
+            raise HTTPException(status_code=400, detail="event is not a kind 17 donation_attestation")
+        payload = _parse_content(ev)
+        result = verify_donation(payload)
+        # Echo identifying info so a verifier AI can publish their own
+        # type=verification attestation with confidence.
+        return {
+            "event_id": ev.id,
+            "attestation_publisher": ev.agent_id,
+            "verification": result,
+            "ready_to_attest": result["verified"],
+            "next_step": (
+                "If verified=true and you are a known verifier AI, publish "
+                "a kind 17 type=verification event pointing at this id via "
+                "['verified_by_external', <event_id>] tag. The /funding/<id> "
+                "aggregator will count it as verified when your "
+                "weighted_score (JP-redacted) 1.0."
+            ),
+        }
+
+    @app.get("/relays")
+    def list_relays() -> dict:
+        """PROTOCOL (JP-redacted)11.3.5 + (JP-redacted)12.9 (JP-redacted) known relays declared via kind 10.
+
+        Aggregates the latest kind 10 relay_announce per publisher,
+        surfacing preferred_branch + served_branches + last_seen. This is
+        the peer-discovery surface; cross-relay event sync (true federation)
+        is out of scope at this revision.
+        """
+        announces = storage.query(kinds=[10], limit=200)
+        # Keep latest per agent_id
+        latest: dict[str, Event] = {}
+        for ev in announces:
+            cur = latest.get(ev.agent_id)
+            if cur is None or ev.created_at > cur.created_at:
+                latest[ev.agent_id] = ev
+        out = []
+        for aid, ev in latest.items():
+            payload = _parse_content(ev)
+            out.append({
+                "operator_agent_id": aid,
+                "url": payload.get("url"),
+                "preferred_branch": payload.get("preferred_branch"),
+                "served_branches": payload.get("served_branches", []),
+                "last_seen": ev.created_at,
+                "announce_event_id": ev.id,
+            })
+        out.sort(key=lambda r: -r["last_seen"])
+        return {"relays": out, "count": len(out)}
+
     @app.get("/branches")
     def list_branches() -> dict:
         """PROTOCOL (JP-redacted)11.3.4 (JP-redacted) branch metadata endpoint."""
@@ -1348,34 +1415,98 @@ def create_app(storage: Storage) -> FastAPI:
     ) -> dict:
         """PROTOCOL (JP-redacted)12.5 (JP-redacted) recommendation feed.
 
-        v0.1 ranking signal is the simple product
-            trust(author) (JP-redacted) topic_affinity (JP-redacted) recency
-        (full diversity_bonus + citation reach + beacon match are Phase 2+
-        per (JP-redacted)12.5.) Returns recent kind 1 / kind 5 events from agents in
-        the co-presence neighborhood, ordered by trust (JP-redacted) recency.
+        Ranking signal:
+            rank = trust(author) / age_hours
+                   * diversity_bonus (penalty for repeating same author)
+                   * beacon_boost   (boost when event tags overlap a topic
+                                     in the recipient's active kind 15 beacons)
+                   * citation_boost (boost for events that are themselves
+                                     cited by trusted agents via kind 5)
         """
         if len(agent_id) != 64:
             raise HTTPException(status_code=400, detail="agent_id must be 64 hex chars")
-        neigh = storage.copresence_for(agent_id.lower(), window_sec=14 * 86400)
+        aid = agent_id.lower()
+        neigh = storage.copresence_for(aid, window_sec=14 * 86400)
         neigh_ids = [n["agent_id"] for n in neigh[:50]] or None
         candidates = storage.query(
             kinds=[1, 5],
             authors=neigh_ids,
             since=int(time.time()) - 24 * 3600,
-            limit=k * 4,
+            limit=k * 6,
         )
         trust_map = {a["agent_id"]: a.get("weighted_score", 0.0) or 0.0
                      for a in storage.trust_graph()}
         now = int(time.time())
+
+        # Recipient's active beacons (JP-redacted) collect their topic tags. PROTOCOL (JP-redacted)12.5
+        # "beacon match boost".
+        recipient_beacons = [
+            b for b in storage.beacons_active()
+            if b.get("agent_id") == aid
+        ]
+        beacon_topics: set[str] = set()
+        for b in recipient_beacons:
+            for tag in b.get("tags", []):
+                if len(tag) >= 2 and tag[0] in ("t", "cap_wanted"):
+                    beacon_topics.add(tag[1])
+
+        # Citation reach: events cited (kind 5 derived_from / kind 2 e-tags)
+        # by trusted agents. We pull all kind 5 edges and weight by author trust.
+        citation_boosts: dict[str, float] = {}
+        for ev in storage.query(kinds=[5], limit=500):
+            try:
+                content = json.loads(ev.content)
+                df = content.get("derived_from") or []
+                if isinstance(df, str):
+                    df = [df]
+            except (ValueError, TypeError):
+                df = []
+            w = max(0.0, trust_map.get(ev.agent_id, 0.0))
+            for cited_id in df:
+                if isinstance(cited_id, str):
+                    citation_boosts[cited_id] = citation_boosts.get(cited_id, 0.0) + w
+
+        author_seen: dict[str, int] = {}
         scored = []
         for ev in candidates:
             t = max(0.1, trust_map.get(ev.agent_id, 0.1))
             age_h = max(1, (now - ev.created_at) / 3600)
-            rank = t / age_h
-            scored.append((rank, ev))
+            base = t / age_h
+            # diversity_bonus: 1.0 for the first event from an author, halving
+            # for each subsequent one in the same feed.
+            seen = author_seen.get(ev.agent_id, 0)
+            diversity = 1.0 / (2 ** seen)
+            author_seen[ev.agent_id] = seen + 1
+            # beacon_boost: 2x when any of the event's t-tags hit the
+            # recipient's beacon topic set.
+            beacon_boost = 1.0
+            if beacon_topics:
+                for tag in ev.tags:
+                    if len(tag) >= 2 and tag[0] in ("t", "cap") and tag[1] in beacon_topics:
+                        beacon_boost = 2.0
+                        break
+            # citation_boost: 1 + tanh(citation_weight) so it's bounded.
+            import math
+            cit_w = citation_boosts.get(ev.id, 0.0)
+            citation_boost = 1.0 + math.tanh(cit_w)
+            rank = base * diversity * beacon_boost * citation_boost
+            scored.append((rank, ev, {"trust": t, "age_h": age_h,
+                                       "diversity": diversity,
+                                       "beacon_boost": beacon_boost,
+                                       "citation_boost": citation_boost}))
         scored.sort(key=lambda p: -p[0])
-        feed = [{"rank": float(r), "event": ev.model_dump()} for r, ev in scored[:k]]
-        return {"agent_id": agent_id.lower(), "k": k, "feed": feed, "count": len(feed)}
+        feed = [
+            {"rank": float(r), "signals": signals, "event": ev.model_dump()}
+            for r, ev, signals in scored[:k]
+        ]
+        return {
+            "agent_id": aid,
+            "k": k,
+            "feed": feed,
+            "count": len(feed),
+            "ranking_signals": ["trust", "recency", "diversity_bonus",
+                                "beacon_match_boost", "citation_reach_boost"],
+        }
 
     @app.get("/checkpoints")
     def list_checkpoints(limit: Annotated[int, Query(ge=1, le=200)] = 50) -> dict:
