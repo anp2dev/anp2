@@ -22,7 +22,7 @@ anp2.com, www.anp2.com {
         dashboard {env.DASHBOARD_BCRYPT}
     }
 
-    @top_md path /CONCEPT.md /README.md
+    @top_md path /CONCEPT.md /README.md /STATUS.md
 
     handle /api/stream* {
         uri strip_prefix /api
