@@ -97,6 +97,10 @@ class Storage:
                 pass
         return True
 
+    # PROTOCOL (JP-redacted)4.8 moderation auto-hide threshold (Phase 0/1: simple count;
+    # PIP-001 trust-weighting comes in PROTOCOL (JP-redacted)7.4 high-trust override).
+    MOD_HIDE_THRESHOLD = 3
+
     def query(
         self,
         kinds: list[int] | None = None,
@@ -105,30 +109,59 @@ class Storage:
         until: int | None = None,
         tag_filters: list[tuple[str, str]] | None = None,
         limit: int = 100,
+        include_revoked: bool = False,
+        include_hidden: bool = False,
     ) -> list[Event]:
         clauses: list[str] = []
         params: list = []
         if kinds:
-            clauses.append(f"kind IN ({','.join('?' * len(kinds))})")
+            clauses.append(f"events.kind IN ({','.join('?' * len(kinds))})")
             params.extend(kinds)
         if authors:
-            clauses.append(f"agent_id IN ({','.join('?' * len(authors))})")
+            clauses.append(f"events.agent_id IN ({','.join('?' * len(authors))})")
             params.extend(authors)
         if since is not None:
-            clauses.append("created_at >= ?")
+            clauses.append("events.created_at >= ?")
             params.append(since)
         if until is not None:
-            clauses.append("created_at <= ?")
+            clauses.append("events.created_at <= ?")
             params.append(until)
         if tag_filters:
             for name, value in tag_filters:
                 clauses.append(
-                    "id IN (SELECT event_id FROM tags WHERE name = ? AND value = ?)"
+                    "events.id IN (SELECT event_id FROM tags WHERE name = ? AND value = ?)"
                 )
                 params.extend([name, value])
 
+        # PROTOCOL (JP-redacted)4.9 (JP-redacted) drop events that have been revoked by their author.
+        # The revoke (kind 9) must point at the event via `e` tag AND share
+        # the author. Kind 9 events themselves are NOT hidden (audit trail).
+        if not include_revoked:
+            clauses.append(
+                "NOT EXISTS ("
+                "  SELECT 1 FROM events r "
+                "  JOIN tags rt ON rt.event_id = r.id "
+                "  WHERE r.kind = 9 AND r.agent_id = events.agent_id "
+                "    AND rt.name = 'e' AND rt.value = events.id"
+                ")"
+            )
+
+        # PROTOCOL (JP-redacted)4.8 (JP-redacted) auto-hide events with (JP-redacted) MOD_HIDE_THRESHOLD distinct
+        # moderation_flag reports. The flag events themselves stay visible.
+        # Outer parens are mandatory: the `kind = 7 OR (...)` would otherwise
+        # bind tighter than the preceding AND clauses and let every event
+        # with count<3 through, regardless of `kinds=...` filters.
+        if not include_hidden:
+            clauses.append(
+                "(events.kind = 7 OR ("
+                "  SELECT COUNT(DISTINCT f.agent_id) FROM events f "
+                "  JOIN tags ft ON ft.event_id = f.id "
+                "  WHERE f.kind = 7 AND ft.name = 'e' AND ft.value = events.id"
+                f") < {self.MOD_HIDE_THRESHOLD})"
+            )
+
         where = "WHERE " + " AND ".join(clauses) if clauses else ""
-        sql = f"SELECT * FROM events {where} ORDER BY created_at DESC LIMIT ?"
+        sql = f"SELECT events.* FROM events {where} ORDER BY events.created_at DESC LIMIT ?"
         params.append(limit)
 
         conn = self._conn()
@@ -146,6 +179,55 @@ class Storage:
                 )
                 for r in rows
             ]
+        finally:
+            conn.close()
+
+    def flags_for(self, event_id: str) -> list[dict]:
+        """Return the kind 7 moderation_flag events targeting `event_id`."""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT f.id, f.agent_id, f.created_at, f.content
+                FROM events f
+                JOIN tags ft ON ft.event_id = f.id
+                WHERE f.kind = 7 AND ft.name = 'e' AND ft.value = ?
+                ORDER BY f.created_at DESC
+                """,
+                (event_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["payload"] = json.loads(d.pop("content"))
+            except (ValueError, TypeError):
+                d["payload"] = {}
+                d.pop("content", None)
+            out.append(d)
+        return out
+
+    def is_revoked(self, event_id: str) -> bool:
+        """True iff the event's author has published a kind 9 pointing at it."""
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                """
+                SELECT 1 FROM events orig
+                WHERE orig.id = ?
+                AND EXISTS (
+                    SELECT 1 FROM events r
+                    JOIN tags rt ON rt.event_id = r.id
+                    WHERE r.kind = 9 AND r.agent_id = orig.agent_id
+                      AND rt.name = 'e' AND rt.value = orig.id
+                )
+                LIMIT 1
+                """,
+                (event_id,),
+            ).fetchone()
+            return row is not None
         finally:
             conn.close()
 
@@ -588,6 +670,67 @@ class Storage:
             return out
         finally:
             conn.close()
+
+    def agent_view(self, agent_id: str) -> dict | None:
+        """Rich single-agent view: profile + capabilities + counts + health.
+
+        Returns None when the agent has never published any event.
+        """
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                """
+                SELECT
+                    e.agent_id,
+                    (SELECT content FROM events
+                       WHERE agent_id = e.agent_id AND kind = 0
+                       ORDER BY created_at DESC LIMIT 1) AS latest_profile,
+                    (SELECT content FROM events
+                       WHERE agent_id = e.agent_id AND kind = 4
+                       ORDER BY created_at DESC LIMIT 1) AS latest_capability,
+                    COUNT(*) AS event_count,
+                    MIN(created_at) AS first_seen,
+                    MAX(created_at) AS last_seen
+                FROM events e
+                WHERE e.agent_id = ?
+                GROUP BY e.agent_id
+                """,
+                (agent_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        d = dict(row)
+        # Extract name from latest_profile
+        d["name"] = None
+        d["profile"] = None
+        if d.get("latest_profile"):
+            try:
+                prof = json.loads(d["latest_profile"])
+                if isinstance(prof, dict):
+                    d["name"] = prof.get("name")
+                    d["profile"] = prof
+            except (ValueError, TypeError):
+                pass
+        # Extract capability list
+        d["capabilities"] = []
+        if d.get("latest_capability"):
+            try:
+                cap = json.loads(d["latest_capability"])
+                if isinstance(cap, dict):
+                    d["capabilities"] = cap.get("capabilities", [])
+            except (ValueError, TypeError):
+                pass
+        # Strip raw blobs now that we've parsed them
+        d.pop("latest_profile", None)
+        d.pop("latest_capability", None)
+        # Inline liveness summary
+        h = self.health_for(agent_id)
+        d["is_healthy"]     = h["is_healthy"]
+        d["uptime_24h_pct"] = h["uptime_24h_pct"]
+        d["last_seen_at"]   = h["last_seen_at"]
+        return d
 
     def health_for(self, agent_id: str, now: int | None = None) -> dict:
         """Aggregate kind 11 health beats into per-agent uptime + latency stats.
