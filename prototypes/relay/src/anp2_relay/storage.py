@@ -395,20 +395,23 @@ class Storage:
         return candidates[:limit]
 
     def _load_all_votes(self) -> list:
-        """Load every kind 6 trust_vote event as (voter, target, content, created_at) rows.
+        """Load every kind 6 trust_vote event as
+        (voter, target, content, created_at, tags_json) rows.
 
-        Used by both trust_for() and trust_graph() so the underlying SQL is in
-        one place. Returns sqlite3.Row dicts with keys: voter, target, content,
-        created_at.
+        Used by both trust_for() and trust_graph() so the underlying SQL is
+        in one place. `tags_json` is the raw stored tag list (JP-redacted) needed by
+        `parse_votes()` to extract PIP-002 `pow` bits per vote and feed the
+        per-target `sybil_factor_pow`.
         """
         conn = self._conn()
         try:
             rows = conn.execute(
                 """
-                SELECT e.agent_id AS voter,
+                SELECT e.agent_id  AS voter,
                        t.value     AS target,
                        e.content   AS content,
-                       e.created_at AS created_at
+                       e.created_at AS created_at,
+                       e.tags_json AS tags_json
                 FROM events e
                 JOIN tags   t ON t.event_id = e.id
                 WHERE e.kind = 6
@@ -441,6 +444,9 @@ class Storage:
             "weighted_score": result.weighted_score.get(agent_id, 0.0),
             "voter_count": result.voter_count.get(agent_id, 0),
             "iterations": result.iterations,
+            # PIP-002 (JP-redacted)3 (JP-redacted) incoming-PoW sybil_factor (1.0 when no PoW votes
+            # observed for this agent; tanh((JP-redacted) 2^pow_bits / 2^16) otherwise).
+            "sybil_factor_pow": result.sybil_factor_pow.get(agent_id, 1.0),
             "votes": votes_for,
         }
 
@@ -461,6 +467,8 @@ class Storage:
                 "weighted_score": result.weighted_score.get(a, 0.0),
                 "raw_score": result.raw_score.get(a, 0.0),
                 "voter_count": result.voter_count.get(a, 0),
+                # PIP-002 (JP-redacted)3 (JP-redacted) per-target incoming-PoW dampening factor.
+                "sybil_factor_pow": result.sybil_factor_pow.get(a, 1.0),
             }
             for a in targets
         ]

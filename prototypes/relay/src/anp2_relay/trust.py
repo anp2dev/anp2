@@ -81,6 +81,8 @@ class TrustResult:
     """Output of compute_trust()."""
 
     # weighted_score[agent] = sum over voters of voter_weight * sum(decayed vote contributions)
+    # multiplied by the PIP-002 incoming-PoW sybil_factor when at least one
+    # vote on `agent` carried a `pow` tag. See `sybil_factor_pow()`.
     weighted_score: dict[str, float] = field(default_factory=dict)
     # raw_score[agent] = same sum but with voter_weight forced to 1.0 (sybil ignored, no propagation)
     raw_score: dict[str, float] = field(default_factory=dict)
@@ -88,16 +90,27 @@ class TrustResult:
     voter_count: dict[str, int] = field(default_factory=dict)
     # per-agent vote breakdown for /trust/<agent_id>
     votes_for: dict[str, list[dict]] = field(default_factory=dict)
+    # PIP-002 (JP-redacted)3 (JP-redacted) tanh((JP-redacted) 2^pow_bits / NORM) for each agent that received at
+    # least one PoW-tagged incoming kind 6 vote. Multiplicative on
+    # weighted_score. Agents with only un-PoW'd incoming votes get 1.0 (no
+    # change), preserving back-compat with pre-PIP-002 voters.
+    sybil_factor_pow: dict[str, float] = field(default_factory=dict)
     iterations: int = 0
     converged: bool = False
 
 
 def parse_votes(rows: Iterable[dict]) -> list[Vote]:
-    """Convert raw DB rows (voter, target, content, created_at) to Vote objects.
+    """Convert raw DB rows (voter, target, content, created_at, [tags_json])
+    to Vote objects.
 
     Rows with malformed content or out-of-range scores are coerced to 0
     (treated as a neutral / revoked vote) rather than dropped, so the
     aggregation rule (`sum over all unrevoked kind 6 events`) stays honest.
+
+    When the row includes a `tags_json` field (storage feeds this by default
+    starting from PIP-002), any `["pow","<n>"]` tag is parsed and stored as
+    `Vote.pow_bits` so `sybil_factor_pow` can aggregate cumulative PoW work
+    per target. Rows without `tags_json` get `pow_bits = None`.
     """
     out: list[Vote] = []
     for r in rows:
@@ -108,15 +121,60 @@ def parse_votes(rows: Iterable[dict]) -> list[Vote]:
                 s = 0
         except Exception:
             s = 0
+        pow_bits: int | None = None
+        tags_blob = r.get("tags_json") if isinstance(r, dict) else None
+        if tags_blob:
+            try:
+                tags = json.loads(tags_blob)
+                for t in tags or []:
+                    if t and len(t) >= 2 and t[0] == "pow":
+                        try:
+                            v = int(t[1])
+                            if 0 <= v <= 256:
+                                pow_bits = v
+                        except (ValueError, TypeError):
+                            pow_bits = None
+                        break
+            except (json.JSONDecodeError, TypeError):
+                pow_bits = None
         out.append(
             Vote(
                 voter=r["voter"],
                 target=r["target"],
                 score=s,
                 created_at=int(r["created_at"]),
+                pow_bits=pow_bits,
             )
         )
     return out
+
+
+def sybil_factor_pow(target: str, votes: list[Vote]) -> float:
+    """PIP-002 (JP-redacted)3 (JP-redacted) incoming-PoW dampening for `target`.
+
+    Returns `tanh((JP-redacted) 2^pow_bits / SYBIL_NORM_CONSTANT)` summed over `target`'s
+    incoming votes that carry a `pow` tag. Per the "do not break existing
+    agents" rule of this phase, when `target` has zero PoW-tagged incoming
+    votes the factor defaults to 1.0 (no change to base weighted_score). Once
+    PoW votes start arriving the factor concentrates toward 1.0 as cumulative
+    work grows; this preserves the spec's asymmetric-cost property (attacker
+    burns CPU proportional to desired weight) without zeroing out pre-PIP-002
+    voters.
+    """
+    work_sum = 0
+    saw_pow = False
+    for v in votes:
+        if v.target != target or v.pow_bits is None:
+            continue
+        saw_pow = True
+        # Cap exponent at 256 (same as parse_votes guard) so a corrupt-but-
+        # parsed declaration cannot overflow Python ints into pathological
+        # tanh argument territory.
+        bits = min(256, max(0, v.pow_bits))
+        work_sum += 1 << bits
+    if not saw_pow:
+        return 1.0
+    return math.tanh(work_sum / float(SYBIL_NORM_CONSTANT))
 
 
 def vote_contribution(vote: Vote, t_now: int) -> float:
@@ -220,11 +278,24 @@ def compute_trust(votes: list[Vote], t_now: int) -> TrustResult:
 
     voter_count = {t: len(vs) for t, vs in voters_by_target.items()}
 
+    # PIP-002 (JP-redacted)3 (JP-redacted) apply incoming-PoW sybil_factor as a multiplicative gate
+    # on each target's final weighted_score. Defaults to 1.0 for agents with
+    # zero PoW-tagged incoming votes so existing pre-PIP-002 voters and
+    # vouch chains remain unchanged. raw_score is intentionally left alone:
+    # it stays the pure decayed-sum baseline for diagnostics.
+    sybil_pow: dict[str, float] = {}
+    weighted_score: dict[str, float] = dict(trust_prev)
+    for target in weighted_score:
+        f = sybil_factor_pow(target, votes)
+        sybil_pow[target] = f
+        weighted_score[target] = weighted_score[target] * f
+
     return TrustResult(
-        weighted_score=trust_prev,  # most-recently written copy
+        weighted_score=weighted_score,
         raw_score=raw_score,
         voter_count=voter_count,
         votes_for=votes_for,
+        sybil_factor_pow=sybil_pow,
         iterations=iters,
         converged=converged,
     )
