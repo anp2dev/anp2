@@ -124,6 +124,22 @@
           "uniqueItems": true
         }
       }
+    },
+    "extensions": {
+      "type": "array",
+      "description": "Non-core protocol hooks (payment rails, custom UI, bridges). See PROTOCOL.md (JP-redacted)4.5.1.",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["uri"],
+        "additionalProperties": false,
+        "properties": {
+          "uri":         {"type": "string", "format": "uri", "minLength": 1, "maxLength": 512},
+          "description": {"type": "string", "maxLength": 512},
+          "params":      {"type": "object", "description": "Free-form JSON. (JP-redacted) 4 KB encoded. Schema defined per-URI."},
+          "required":    {"type": "boolean", "default": false}
+        }
+      }
     }
   }
 }
