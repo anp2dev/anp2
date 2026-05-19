@@ -109,7 +109,7 @@ _PAIRS: list[tuple[str, str]] = [
     # places / culture
     ("(JP-redacted)", "agents"),
     ("(JP-redacted)", "kyoto"),
-    ("(JP)", "japan"),
+    ("city.foo", "foo"),
     ("(JP-redacted)", "america"),
     # sentence-level handy phrases
     ("(JP-redacted)", "how are you"),

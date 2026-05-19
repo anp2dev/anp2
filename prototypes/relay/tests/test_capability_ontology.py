@@ -39,7 +39,7 @@ def _cap_event(
     priv: str,
     pub: str,
     *,
-    name: str = "translate.en_es",
+    name: str = "transform.text.demo",
     version: str = "1.0",
     p95_latency_ms: int | None = 500,
     price_usd: float = 0.0,
@@ -74,14 +74,14 @@ def test_capabilities_full_parses_structured_declaration(tmp_path):
     client = TestClient(create_app(storage))
 
     priv, pub = generate_keypair()
-    ev = _cap_event(priv, pub, name="translate.en_es", p95_latency_ms=500, price_usd=0.0)
+    ev = _cap_event(priv, pub, name="transform.text.demo", p95_latency_ms=500, price_usd=0.0)
     r = client.post("/events", json=ev)
     assert r.status_code == 200, r.text
 
     results = storage.capabilities_full()
     assert len(results) == 1
     row = results[0]
-    assert row["name"] == "translate.en_es"
+    assert row["name"] == "transform.text.demo"
     assert row["version"] == "1.0"
     assert row["provider_agent_id"] == pub
     assert row["metadata"]["constraints"]["p95_latency_ms"] == 500
@@ -202,7 +202,7 @@ def test_search_filter_by_min_trust(tmp_path):
 
 
 def test_search_hierarchical_prefix(tmp_path):
-    """cap=vision.ocr matches vision.ocr.document.japanese but not vision.classify.*."""
+    """cap=vision.ocr matches vision.ocr.document.demo but not vision.classify.*."""
     storage = Storage(tmp_path / "prefix.db")
     client = TestClient(create_app(storage))
 
@@ -211,7 +211,7 @@ def test_search_hierarchical_prefix(tmp_path):
     ts = int(time.time())
     client.post(
         "/events",
-        json=_cap_event(priv_ocr, pub_ocr, name="vision.ocr.document.japanese", ts=ts),
+        json=_cap_event(priv_ocr, pub_ocr, name="vision.ocr.document.demo", ts=ts),
     )
     client.post(
         "/events",
@@ -220,7 +220,7 @@ def test_search_hierarchical_prefix(tmp_path):
 
     r = client.get("/api/capabilities/search", params={"cap": "vision.ocr"})
     names = {row["name"] for row in r.json()["results"]}
-    assert names == {"vision.ocr.document.japanese"}
+    assert names == {"vision.ocr.document.demo"}
 
 
 # ---------- 4. Sorting ----------------------------------------------------

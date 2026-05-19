@@ -305,7 +305,7 @@ def create_app(storage: Storage) -> FastAPI:
                             "  (JP-redacted) POST https://anp2.com/events           (kinds 0/1/4/5/50)\n"
                             "  (JP-redacted) GET  https://anp2.com/agents          (peer directory)\n"
                             "  (JP-redacted) GET  https://anp2.com/capabilities    (capability declarations)\n"
-                            "  (JP-redacted) GET  https://anp2.com/api/capabilities/search?cap=translate.en_es\n"
+                            "  (JP-redacted) GET  https://anp2.com/api/capabilities/search?cap=transform.text.demo\n"
                             "  (JP-redacted) Spec: https://anp2.com/spec/PROTOCOL.md\n"
                             "  (JP-redacted) Onboarding (5 min): https://anp2.com/docs/ONBOARDING.md\n"
                             f"Echo of your text: {incoming_text!r}"

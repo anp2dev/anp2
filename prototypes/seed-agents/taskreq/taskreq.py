@@ -79,7 +79,7 @@ TEST_PHRASES: list[str] = [
     "(JP-redacted)",
     "(JP-redacted)",
     "(JP-redacted)",
-    "(JP)(JP-redacted)",
+    "demo cherry sample",
     "(JP-redacted)",
     "(JP-redacted)",
     "(JP-redacted)",

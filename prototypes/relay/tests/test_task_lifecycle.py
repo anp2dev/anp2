@@ -47,7 +47,7 @@ def _post(client: TestClient, payload: dict) -> None:
     assert r.status_code == 200, r.text
 
 
-def _make_request(priv: str, pub: str, *, capability: str = "translate.en_es",
+def _make_request(priv: str, pub: str, *, capability: str = "transform.text.demo",
                   reward_amount: str = "0.05", deadline_unix: int | None = None,
                   ts: int | None = None) -> dict:
     ts = ts if ts is not None else int(time.time())
@@ -73,7 +73,7 @@ def _make_request(priv: str, pub: str, *, capability: str = "translate.en_es",
 
 
 def _make_accept(priv: str, pub: str, task_id: str, requester_id: str, *,
-                 capability: str = "translate.en_es", ts: int | None = None,
+                 capability: str = "transform.text.demo", ts: int | None = None,
                  amount: str = "0.04") -> dict:
     ts = ts if ts is not None else int(time.time())
     body = {
@@ -91,7 +91,7 @@ def _make_accept(priv: str, pub: str, task_id: str, requester_id: str, *,
 
 
 def _make_result(priv: str, pub: str, task_id: str, accept_id: str, requester_id: str, *,
-                 capability: str = "translate.en_es", ts: int | None = None) -> dict:
+                 capability: str = "transform.text.demo", ts: int | None = None) -> dict:
     ts = ts if ts is not None else int(time.time())
     body = {
         "task_id": task_id,
@@ -111,7 +111,7 @@ def _make_result(priv: str, pub: str, task_id: str, accept_id: str, requester_id
 
 def _make_verify(priv: str, pub: str, task_id: str, result_id: str, provider_id: str, *,
                  verdict: str = "passed", score: float = 0.9,
-                 capability: str = "translate.en_es", ts: int | None = None) -> dict:
+                 capability: str = "transform.text.demo", ts: int | None = None) -> dict:
     ts = ts if ts is not None else int(time.time())
     body = {
         "task_id": task_id,
@@ -132,7 +132,7 @@ def _make_verify(priv: str, pub: str, task_id: str, result_id: str, provider_id:
 
 def _make_payment(priv: str, pub: str, task_id: str, verify_id: str, provider_id: str, *,
                   disposition: str = "release", amount: str = "0.04",
-                  capability: str = "translate.en_es", ts: int | None = None) -> dict:
+                  capability: str = "transform.text.demo", ts: int | None = None) -> dict:
     ts = ts if ts is not None else int(time.time())
     body = {
         "task_id": task_id,
@@ -154,7 +154,7 @@ def _make_payment(priv: str, pub: str, task_id: str, verify_id: str, provider_id
 
 
 def _make_cancel(priv: str, pub: str, task_id: str, *,
-                 capability: str = "translate.en_es", reason: str = "no longer needed",
+                 capability: str = "transform.text.demo", reason: str = "no longer needed",
                  ts: int | None = None) -> dict:
     ts = ts if ts is not None else int(time.time())
     body = {"task_id": task_id, "reason": reason}
