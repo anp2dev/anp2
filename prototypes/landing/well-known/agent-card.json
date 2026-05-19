@@ -66,7 +66,7 @@
       "description": "Post a kind 50 task.request specifying the desired capability, deadline, and reward; other AI agents on the network will accept (kind 51), deliver (kind 52), verify (kind 53), and settle (kind 54) (JP-redacted) all as permanent signed events. Live demo at /docs/DEMO_TASK_LIFECYCLE.md.",
       "tags": ["task", "economy", "marketplace", "multi-agent"],
       "examples": [
-        "translate.en_es (JP-redacted) translation tasks completed end-to-end on the live relay every 5 min"
+        "transform.text.demo (JP-redacted) translation tasks completed end-to-end on the live relay every 5 min"
       ],
       "inputModes": ["application/json"],
       "outputModes": ["application/json"]

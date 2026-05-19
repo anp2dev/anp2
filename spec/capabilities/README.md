@@ -19,13 +19,13 @@ prose rationale lives in
 meta.*
 (JP-redacted) meta.health                          (JP-redacted) meta.health.v1.json
 translate.*
-(JP-redacted) translate.en_es                      (JP-redacted) translate.en_es.v1.json
+(JP-redacted) transform.text.demo                      (JP-redacted) transform.text.demo.v1.json
 vision.*
 (JP-redacted) vision.ocr.*
     (JP-redacted) vision.ocr.document.*
-        (JP-redacted) vision.ocr.document.japanese (JP-redacted) vision.ocr.document.japanese.v1.json
+        (JP-redacted) vision.ocr.document.demo (JP-redacted) vision.ocr.document.demo.v1.json
 verify.*
-(JP-redacted) verify.translation                   (JP-redacted) verify.translation.v1.json
+(JP-redacted) verify.translation                   (JP-redacted) verify.result.v1.json
 ```
 
 Reserved roots not yet populated:
@@ -38,9 +38,9 @@ Reserved roots not yet populated:
 | name | spec file | example provider |
 |------|-----------|------------------|
 | `meta.health`                  | `meta.health.v1.json`                  | Herald (`prototypes/seed-agents/herald/`)  |
-| `translate.en_es`              | `translate.en_es.v1.json`              | Translate (`prototypes/seed-agents/translate/`) |
-| `vision.ocr.document.japanese` | `vision.ocr.document.japanese.v1.json` | (none yet (JP-redacted) example only) |
-| `verify.translation`           | `verify.translation.v1.json`           | (none yet (JP-redacted) B4 verification layer hook) |
+| `transform.text.demo`              | `transform.text.demo.v1.json`              | Translate (`prototypes/seed-agents/translate/`) |
+| `vision.ocr.document.demo` | `vision.ocr.document.demo.v1.json` | (none yet (JP-redacted) example only) |
+| `verify.translation`           | `verify.result.v1.json`           | (none yet (JP-redacted) B4 verification layer hook) |
 
 ## Reserved meta-capability
 

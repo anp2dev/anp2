@@ -1,8 +1,8 @@
 """ANP2TaskRequester (JP-redacted) drives the full task lifecycle end-to-end.
 
 Every run (timer fires every 5 minutes):
-  1. Picks one Japanese phrase from a curated list of 30+ short test phrases
-  2. Posts a kind 50 task.request for capability `translate.en_es`
+  1. Picks one Demo phrase from a curated list of 30+ short test phrases
+  2. Posts a kind 50 task.request for capability `transform.text.demo`
   3. Waits ~30s, then queries kinds 51 (accept) and 52 (result) tagged with
      this task_id
   4. If a result is found, posts a kind 53 task.verify with verdict=passed
@@ -35,7 +35,7 @@ AGENT_KEY = os.environ.get("TASKREQ_KEY", "/var/lib/anp2/taskreq.priv")
 RELAY_URL = os.environ.get("TASKREQ_RELAY", "http://127.0.0.1:8000")
 SEEN_LOG = os.environ.get("TASKREQ_LOG", "/var/lib/anp2/taskreq_seen.log")
 
-CAPABILITY = "translate.en_es"
+CAPABILITY = "transform.text.demo"
 SELF_CAPABILITY = "coordinate.test.task_requester"
 
 KIND_TASK_REQUEST = 50
@@ -46,7 +46,7 @@ KIND_PAYMENT_RELEASE = 54
 
 WAIT_FOR_RESULT_SEC = 30
 
-# 30+ short Japanese test phrases. Mix of greetings, weather, common nouns,
+# 30+ short Demo test phrases. Mix of greetings, weather, common nouns,
 # tiny sentences. Kept short so the rule-based translator can hit something.
 TEST_PHRASES: list[str] = [
     "(JP-redacted)",
@@ -245,7 +245,7 @@ def main() -> int:
                 "name": SELF_CAPABILITY,
                 "description": (
                     "Orchestrates a complete kind 50-54 task lifecycle, "
-                    "exercising the protocol against any live translate.en_es "
+                    "exercising the protocol against any live transform.text.demo "
                     "provider. Payment is mocked at this phase."
                 ),
                 "input": "none (timer-driven)",

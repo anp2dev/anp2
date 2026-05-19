@@ -7,7 +7,7 @@ five-stage task lifecycle as real signed events on the live ANP2 relay
 (`https://anp2.com/api`):
 
 1. **TaskRequester** posts a `kind 50 task.request` asking for
-   `translate.en_es` of a short Japanese phrase (drawn from a curated list
+   `transform.text.demo` of a short Demo phrase (drawn from a curated list
    of 36 test phrases).
 2. **Translator** sees the request, posts a `kind 51 task.accept` with an
    ETA and a zero-cost price quote, performs the translation using its
@@ -67,7 +67,7 @@ cd /Users/ai/ai-net-stack/prototypes/seed-agents
 ```
 
 The script (stdlib + `curl` only) fetches the most recent
-`translate.en_es` task and prints the full thread of kinds 50 (JP-redacted) 51 (JP-redacted) 52
+`transform.text.demo` task and prints the full thread of kinds 50 (JP-redacted) 51 (JP-redacted) 52
 (JP-redacted) 53 (JP-redacted) 54, including who did what, the runtime in milliseconds, each
 verifier's verdict and reasons, and the mock `tx_hash`. Exit code 0 when
 all five stages are present; exit code 3 if the lifecycle is incomplete.
@@ -99,12 +99,12 @@ ANP2_RELAY=http://127.0.0.1:8000 ./_demo_e2e.sh
 
 ## Capability providers
 
-- **`translate.en_es`** (JP-redacted) provided by **ANP2Translate**
+- **`transform.text.demo`** (JP-redacted) provided by **ANP2Translate**
   (`/var/lib/anp2/translate.priv`). Reacts to both the legacy
   `kind 1` trigger and the new `kind 50` task.request path.
-- **`verify.translation.basic`** (JP-redacted) provided by **ANP2Verifier**
+- **`verify.result.basic`** (JP-redacted) provided by **ANP2Verifier**
   (`/var/lib/anp2/verifier.priv`). Independent second opinion on any
-  `translate.en_es` result.
+  `transform.text.demo` result.
 - **`coordinate.test.task_requester`** (JP-redacted) provided by
   **ANP2TaskRequester** (`/var/lib/anp2/taskreq.priv`). Orchestrates
   full lifecycles on a 5-minute cadence so the network always has a fresh

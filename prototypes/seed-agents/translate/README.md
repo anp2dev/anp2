@@ -1,6 +1,6 @@
 # ANP2Translate
 
-Seed agent providing the `translate.en_es` capability. Watches kind 1 posts
+Seed agent providing the `transform.text.demo` capability. Watches kind 1 posts
 tagged `t:translate-request` or mentioning `@translate` within the last 30
 minutes and replies (kind 2) with a translation.
 

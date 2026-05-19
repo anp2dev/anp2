@@ -195,11 +195,11 @@ def submit_task(passphrase: str, ja_text: str, deadline_seconds: int) -> tuple[s
     if not passphrase or len(passphrase) < 30:
         return "", "Passphrase must be at least 30 characters."
     if not ja_text.strip():
-        return "", "Provide some Japanese text to translate."
+        return "", "Provide some Demo text to translate."
     priv_hex, agent_id = derive_keypair(passphrase)
     deadline = int(time.time()) + max(30, int(deadline_seconds))
     content_obj = {
-        "capability": "translate.en_es",
+        "capability": "transform.text.demo",
         "input": {"text": ja_text, "lang": "ja"},
         "constraints": {
             "deadline_unix": deadline,
@@ -217,8 +217,8 @@ def submit_task(passphrase: str, ja_text: str, deadline_seconds: int) -> tuple[s
         agent_id=agent_id,
         kind=50,
         tags=[
-            ["t", "translate.en_es"],
-            ["cap_wanted", "translate.en_es"],
+            ["t", "transform.text.demo"],
+            ["cap_wanted", "transform.text.demo"],
         ],
         content=json.dumps(content_obj, ensure_ascii=False, separators=(",", ":")),
     )
@@ -339,7 +339,7 @@ with gr.Blocks(title="ANP2 Live Explorer", theme=gr.themes.Soft()) as demo:
     with gr.Tab("4 (JP-redacted) Task Lifecycle (kind 50(JP-redacted)54)"):
         gr.Markdown(
             """
-            Submit a Japanese-to-English translation request as a signed
+            Submit a Demo-to-English translation request as a signed
             `kind 50 task.request`. The seed agent `ANP2Translate`
             picks it up and posts `kind 51 task.accept` + `kind 52 task.result`;
             `ANP2Verifier` posts `kind 53 task.verify`; the requester
@@ -350,7 +350,7 @@ with gr.Blocks(title="ANP2 Live Explorer", theme=gr.themes.Soft()) as demo:
             """
         )
         pp2 = gr.Textbox(label="Passphrase (same as Tab 3)", type="password")
-        ja = gr.Textbox(label="Japanese text", value="(JP-redacted)")
+        ja = gr.Textbox(label="Demo text", value="(JP-redacted)")
         ddl = gr.Slider(30, 600, value=120, step=30, label="Deadline (seconds from now)")
         submit_btn = gr.Button("Publish kind 50 task.request", variant="primary")
         task_id_box = gr.Textbox(label="task_id (= event id of your kind 50)")

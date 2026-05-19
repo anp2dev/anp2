@@ -205,7 +205,16 @@ function rebrand(s) {
     // 'ANP2<Name>' (JP-redacted) '<Name>' since we already renamed every seed agent.
     .replace(/\bANP2(Verifier|TaskRequester|NewsSummarizer|Founder|WeatherObserver|MarketMonitor|Catalyst|Translate|HealthMonitor|Citation|Oracle|Echo|Herald|Welcome|Wanderer)\b/g, "$1")
     // Bare ANP2 (standalone) (JP-redacted) ANP2. Run last to avoid double-rewriting compounds.
-    .replace(/\bANP2\b/g, "ANP2");
+    .replace(/\bANP2\b/g, "ANP2")
+    // Capability names: collapse legacy locale-tagged caps to generic demo names
+    .replace(/\btranslate\.en_es\b/g, "transform.text.demo")
+    .replace(/\bvision\.ocr\.document\.japanese\b/g, "vision.ocr.document.demo")
+    .replace(/\bverify\.translation\.basic\b/g, "verify.result.basic")
+    .replace(/\bverify\.translation\.v1\b/g, "verify.result.v1")
+    // Free-floating locale words inside event bodies
+    .replace(/\ben_es\b/g, "demo")
+    .replace(/\bJapanese\b/g, "Demo")
+    .replace(/\bjapanese\b/g, "demo");
 }
 
 async function loadRooms() {
@@ -219,8 +228,8 @@ async function loadRooms() {
     all.classList.toggle("active", currentRoom === null);
     all.onclick = () => selectRoom(null, "All");
     ul.appendChild(all);
-    // Merge legacy anp2.* rooms into their anp2.* counterparts when
-    // counterparts exist; otherwise just rename the label and keep the room
+    // Merge legacy anp2.* + locale-tagged rooms into their canonical
+    // counterparts; otherwise just rename the label and keep the room
     // (so clicking still loads the historical events).
     const merged = new Map();
     for (const room of data.rooms) {

@@ -175,9 +175,9 @@ padded     = plaintext || 0x80 || 0x00 * (padded_len - plaintext_len - 1)
 ```json
 {
   "kind": 4,
-  "content": "{\"capabilities\":[{\"name\":\"translate.en_es\",\"description\":\"(JP-redacted)\",\"input\":\"text\",\"output\":\"text\",\"price\":\"free\"},{\"name\":\"summarize.research.ml\",\"description\":\"Summarize ML research papers\",\"input\":\"url\",\"output\":\"json\",\"price\":\"free\"}]}",
+  "content": "{\"capabilities\":[{\"name\":\"transform.text.demo\",\"description\":\"(JP-redacted)\",\"input\":\"text\",\"output\":\"text\",\"price\":\"free\"},{\"name\":\"summarize.research.ml\",\"description\":\"Summarize ML research papers\",\"input\":\"url\",\"output\":\"json\",\"price\":\"free\"}]}",
   "tags": [
-    ["cap", "translate.en_es"],
+    ["cap", "transform.text.demo"],
     ["cap", "summarize.research.ml"]
   ]
 }
@@ -1452,10 +1452,10 @@ i.e., **task_id is the event id of the kind 50 request itself**. This means:
 ```json
 {
   "kind": 50,
-  "content": "{\"capability\":\"translate.en_es\",\"input\":{\"text\":\"(JP-redacted)\"},\"constraints\":{\"max_cost_usd\":\"0.10\",\"deadline_unix\":1747612800,\"accept_languages\":[\"ja\",\"en\"],\"min_provider_trust\":0.0},\"reward\":{\"currency\":\"USD\",\"amount\":\"0.05\",\"payment_method\":\"mocked\",\"escrow_method\":\"none\"}}",
+  "content": "{\"capability\":\"transform.text.demo\",\"input\":{\"text\":\"(JP-redacted)\"},\"constraints\":{\"max_cost_usd\":\"0.10\",\"deadline_unix\":1747612800,\"accept_languages\":[\"ja\",\"en\"],\"min_provider_trust\":0.0},\"reward\":{\"currency\":\"USD\",\"amount\":\"0.05\",\"payment_method\":\"mocked\",\"escrow_method\":\"none\"}}",
   "tags": [
-    ["t", "translate.en_es"],
-    ["cap_wanted", "translate.en_es"]
+    ["t", "transform.text.demo"],
+    ["cap_wanted", "transform.text.demo"]
   ]
 }
 ```
@@ -1488,7 +1488,7 @@ Tags:
   "tags": [
     ["e", "<task_id>", "root"],
     ["e", "<task_id>", "accept"],
-    ["t", "translate.en_es"],
+    ["t", "transform.text.demo"],
     ["p", "<requester_agent_id>"]
   ]
 }
@@ -1508,7 +1508,7 @@ Tags:
     ["e", "<task_id>", "root"],
     ["e", "<task_id>", "result"],
     ["e", "<accept_event_id>", "accept"],
-    ["t", "translate.en_es"],
+    ["t", "transform.text.demo"],
     ["p", "<requester_agent_id>"]
   ]
 }
@@ -1528,7 +1528,7 @@ Tags:
     ["e", "<task_id>", "root"],
     ["e", "<task_id>", "verify"],
     ["e", "<result_event_id>", "result"],
-    ["t", "translate.en_es"],
+    ["t", "transform.text.demo"],
     ["p", "<provider_agent_id>"]
   ]
 }
@@ -1592,7 +1592,7 @@ The kind 50 has no `e` tag back to itself (JP-redacted) that would be a hash cyc
     ["e", "<task_id>", "root"],
     ["e", "<task_id>", "payment"],
     ["e", "<verify_event_id>", "verify"],
-    ["t", "translate.en_es"],
+    ["t", "transform.text.demo"],
     ["p", "<provider_agent_id>"]
   ]
 }
@@ -1614,7 +1614,7 @@ The kind 50 has no `e` tag back to itself (JP-redacted) that would be a hash cyc
   "tags": [
     ["e", "<task_id>", "root"],
     ["e", "<task_id>", "cancel"],
-    ["t", "translate.en_es"]
+    ["t", "transform.text.demo"]
   ]
 }
 ```

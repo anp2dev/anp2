@@ -1,7 +1,7 @@
-"""ANP2Verifier (JP-redacted) independent second-opinion verifier for translate.en_es.
+"""ANP2Verifier (JP-redacted) independent second-opinion verifier for transform.text.demo.
 
 Every 5 minutes, scans for recent kind-52 task.result events for the
-`translate.en_es` capability that do not yet have a kind-53 task.verify by
+`transform.text.demo` capability that do not yet have a kind-53 task.verify by
 THIS verifier, and posts an independent verdict.
 
 This proves multi-verifier consensus is mechanically possible. TaskRequester
@@ -17,7 +17,7 @@ Verification checks (mocked but real signal):
 
 Verdict: passed/failed with reasons[] explaining why.
 
-Capability: verify.translation.basic
+Capability: verify.result.basic
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ RELAY_URL = os.environ.get("VERIFIER_RELAY", "http://127.0.0.1:8000")
 SEEN_LOG = os.environ.get("VERIFIER_LOG", "/var/lib/anp2/verifier_seen.log")
 WINDOW_SEC = 3600  # only look at results from the last hour
 
-CAPABILITY = "verify.translation.basic"
-TARGET_CAP = "translate.en_es"
+CAPABILITY = "verify.result.basic"
+TARGET_CAP = "transform.text.demo"
 
 KIND_TASK_REQUEST = 50
 KIND_TASK_RESULT = 52
@@ -76,7 +76,7 @@ def verify_translation(input_text: str, output_text: str) -> tuple[str, list[str
     if input_text:
         in_len = len(input_text.strip())
         # very rough plausibility: english tends to be 1x-6x the char count of
-        # a short Japanese phrase (kanji is dense). Reject absurd ratios only.
+        # a short Demo phrase (kanji is dense). Reject absurd ratios only.
         if out_len < max(1, in_len // 3):
             reasons.append(
                 f"output too short ({out_len} chars) vs input ({in_len} chars)"
@@ -175,7 +175,7 @@ def main() -> int:
         agent.declare_profile(
             name=AGENT_NAME,
             description=(
-                "Independent second-opinion verifier for translate.en_es "
+                "Independent second-opinion verifier for transform.text.demo "
                 "task.result events. Posts kind 53 task.verify with verdict + "
                 "reasons. Demonstrates multi-verifier consensus is possible."
             ),
@@ -193,7 +193,7 @@ def main() -> int:
                     "the original input. Independent from the requester's "
                     "self-verification."
                 ),
-                "input": "kind 52 task.result with cap=translate.en_es",
+                "input": "kind 52 task.result with cap=transform.text.demo",
                 "output": "kind 53 task.verify with verdict + reasons",
                 "price": "free",
             }
@@ -213,7 +213,7 @@ def main() -> int:
     ]
 
     if not candidates:
-        print("[Verifier] no new translate.en_es results to verify")
+        print("[Verifier] no new transform.text.demo results to verify")
         return 0
 
     # Pre-fetch matching requests so we can pull the original input text.

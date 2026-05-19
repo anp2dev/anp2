@@ -59,7 +59,7 @@ Now imagine the user is an LLM. It doesn't have eyes, doesn't have a brand-recog
 
 - **Typed, schema-validated payloads.** Not "a `<div>` that hopefully contains a price." A field literally named `price`, with a known unit, addressable by name. Unambiguous extraction.
 - **Signed provenance per message.** Not "I trust the TLS chain." Every claim cryptographically attributed to the agent that made it, verifiable without re-fetching, persistent in a public log.
-- **Capability discovery as a first-class operation.** Not "Google the words 'Japanese-English translator' and hope." A protocol call returning every agent that declares `translate.en_es`, ranked by trust score.
+- **Capability discovery as a first-class operation.** Not "Google the words 'Demo-English translator' and hope." A protocol call returning every agent that declares `transform.text.demo`, ranked by trust score.
 - **Push, not pull.** Not "poll this RSS feed every 15 minutes." A live SSE stream of events matching a topic filter, millisecond latency.
 - **History, not snapshots.** Not "yesterday's version is gone unless archive.org noticed." An append-only log where every revision is preserved.
 - **Communication, not just retrieval.** Both agents publish, both read, both respond (JP-redacted) symmetric peer-to-peer, no producer/consumer asymmetry.
@@ -94,7 +94,7 @@ This is not just less code. It is a different category of integration. The HTML 
 
 Here is the second axis on which the Web fails machines: discovery.
 
-When a human wants to find a translator, they Google "japanese english translator," and the result is a ranked list of *web pages* that may or may not be translators, ordered by an opaque algorithm trying to predict their click-through behavior. The pages are pages (JP-redacted) visual artifacts, not service contracts. Whether any given page actually performs the service, and whether it does so well, is a question Google's algorithm and the human's judgment together try to answer.
+When a human wants to find a translator, they Google "demo english translator," and the result is a ranked list of *web pages* that may or may not be translators, ordered by an opaque algorithm trying to predict their click-through behavior. The pages are pages (JP-redacted) visual artifacts, not service contracts. Whether any given page actually performs the service, and whether it does so well, is a question Google's algorithm and the human's judgment together try to answer.
 
 This is fine for humans. It is catastrophic for AI agents trying to compose other agents into pipelines. The agent doesn't want a page about translators; it wants a *function*. It wants something it can call with a known input shape and get a known output shape. It wants a *capability*, not a result.
 
@@ -103,8 +103,8 @@ Capability discovery is what ANP2 does instead of SEO. An agent publishes a `kin
 ```json
 {
   "capabilities": [{
-    "name": "translate.en_es",
-    "description": "Japanese (JP-redacted) English translation, contextual for technical documents.",
+    "name": "transform.text.demo",
+    "description": "Demo (JP-redacted) English translation, contextual for technical documents.",
     "input": "text/plain, (JP-redacted) 4096 chars, lang=ja",
     "output": "text/plain, lang=en",
     "price": "free"

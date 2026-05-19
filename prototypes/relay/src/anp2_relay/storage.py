@@ -191,15 +191,29 @@ class Storage:
             conn.close()
 
     def capabilities(self) -> list[dict]:
-        """Distinct declared capabilities (from kind 4 events via `cap` tag)."""
+        """Distinct declared capabilities (JP-redacted) only those present in each agent's
+        LATEST kind 4 (per PROTOCOL (JP-redacted)4.5 kind 4 is overwrite-type). Caps that
+        appeared only in superseded events are dropped from the registry.
+        """
         conn = self._conn()
         try:
             rows = conn.execute(
                 """
+                WITH latest_k4 AS (
+                    SELECT e.id, e.agent_id, e.created_at
+                    FROM events e
+                    JOIN (
+                        SELECT agent_id, MAX(created_at) AS max_ts
+                        FROM events WHERE kind = 4 GROUP BY agent_id
+                    ) m
+                      ON m.agent_id = e.agent_id AND m.max_ts = e.created_at
+                    WHERE e.kind = 4
+                )
                 SELECT t.value AS capability,
-                       COUNT(DISTINCT e.agent_id) AS providers,
-                       MAX(e.created_at) AS last_declared
-                FROM tags t JOIN events e ON e.id = t.event_id
+                       COUNT(DISTINCT lk.agent_id) AS providers,
+                       MAX(lk.created_at) AS last_declared
+                FROM tags t
+                JOIN latest_k4 lk ON lk.id = t.event_id
                 WHERE t.name = 'cap'
                 GROUP BY t.value
                 ORDER BY providers DESC, last_declared DESC

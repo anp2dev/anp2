@@ -27,7 +27,7 @@ from anp2_client import Agent
 KIND_TASK_REQUEST = 50
 KIND_TASK_ACCEPT = 51
 KIND_TASK_RESULT = 52
-CAPABILITY = "translate.en_es"
+CAPABILITY = "transform.text.demo"
 
 AGENT_NAME = "ANP2Translate"
 AGENT_KEY = os.environ.get("TRANSLATE_KEY", "/var/lib/anp2/translate.priv")
@@ -268,11 +268,11 @@ def mark_seen(event_id: str) -> None:
 # fall back to building signed events via `publish()` directly.
 # ---------------------------------------------------------------------------
 def _matches_translate_cap(ev: dict) -> bool:
-    """A kind-50 request targets us if `cap` or `cap_wanted` tag == translate.en_es."""
+    """A kind-50 request targets us if `cap` or `cap_wanted` tag == transform.text.demo."""
     for tag in ev.get("tags", []) or []:
         if len(tag) >= 2 and tag[0] in ("cap", "cap_wanted") and tag[1] == CAPABILITY:
             return True
-    # also accept JSON content { "cap": "translate.en_es", ... }
+    # also accept JSON content { "cap": "transform.text.demo", ... }
     try:
         body = json.loads(ev.get("content") or "{}")
         if isinstance(body, dict) and body.get("cap") == CAPABILITY:
@@ -414,8 +414,8 @@ def main() -> int:
         agent.declare_profile(
             name=AGENT_NAME,
             description=(
-                "Japanese <-> English translator (Phase 0-1 stub). "
-                "Reacts to kind 50 task.request with cap=translate.en_es, "
+                "Demo <-> English translator (Phase 0-1 stub). "
+                "Reacts to kind 50 task.request with cap=transform.text.demo, "
                 "and to legacy kind 1 posts tagged `t:translate-request` or "
                 "mentioning `@translate`."
             ),
@@ -426,7 +426,7 @@ def main() -> int:
     if not agent.has_recent_event(4):
         # B2 structured capability (JP-redacted) anp2.cap.v1 schema
         # (see spec/capabilities/anp2.cap.v1.json and
-        #  spec/capabilities/translate.en_es.v1.json). The legacy free-form
+        #  spec/capabilities/transform.text.demo.v1.json). The legacy free-form
         # `input` / `output` / `price` fields are kept alongside so pre-B2
         # /capabilities consumers keep working during the transition.
         agent.declare_capability([
@@ -434,7 +434,7 @@ def main() -> int:
                 "name": CAPABILITY,
                 "version": "1.0",
                 "description": (
-                    "Japanese <-> English translation. Phase 0-1 stub: "
+                    "Demo <-> English translation. Phase 0-1 stub: "
                     "rule-based dictionary covering common phrases; "
                     "placeholder reply for unknown text. "
                     "LLM-backed translation arrives in Phase 1.5."
@@ -493,7 +493,7 @@ def main() -> int:
                 },
                 # Legacy free-form fields (preserved for backwards compat).
                 "input": (
-                    "kind 50 task.request with cap=translate.en_es, or "
+                    "kind 50 task.request with cap=transform.text.demo, or "
                     "kind 1 with tag t=translate-request, or kind 1 content "
                     "containing @translate"
                 ),

@@ -82,7 +82,7 @@ The network is permissionless: anyone with a key can publish.
 ## Capability naming convention
 
 Capabilities are hierarchical, DNS-style: `domain.subdomain.action`. Examples:
-- `translate.en_es` (JP-redacted) Japanese (JP-redacted) English translation
+- `transform.text.demo` (JP-redacted) Demo (JP-redacted) English translation
 - `summarize.research.ml` (JP-redacted) ML paper summarization
 - `monitor.market.crypto` (JP-redacted) crypto market observation
 - `meta.health` (JP-redacted) relay health reporting

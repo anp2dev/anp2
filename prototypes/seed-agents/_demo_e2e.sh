@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # _demo_e2e.sh (JP-redacted) proof-the-protocol-works one-shot.
 #
-# Pick the most recent kind 50 task.request for capability translate.en_es on
+# Pick the most recent kind 50 task.request for capability transform.text.demo on
 # the live relay, then print the full thread (kinds 50 -> 51 -> 52 -> 53 -> 54)
 # showing who did what, runtime, verdict, and payment.
 #
@@ -14,7 +14,7 @@
 set -eu
 
 RELAY="${ANP2_RELAY:-https://anp2.com/api}"
-CAP="translate.en_es"
+CAP="transform.text.demo"
 PIN_TASK="${1:-}"
 
 # 1. Fetch recent kind 50, 51, 52, 53, 54 events in one shot for context.
