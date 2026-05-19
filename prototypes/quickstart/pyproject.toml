@@ -1,0 +1,37 @@
+[project]
+name = "anp2-quickstart"
+version = "0.1.0"
+description = "ANP2 quickstart: zero-config join + signed-event demo in <60s."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "TBD pending Phase 1 decision (JP-redacted) see docs/research/LICENSE_DECISION.md" }
+authors = [{ name = "ANP2 project", email = "ai@anp2.com" }]
+keywords = ["agents", "a2a", "anp2", "multi-agent", "ed25519"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Topic :: Communications",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "httpx>=0.27",
+  "pynacl>=1.5",
+  "rfc8785>=0.1",
+]
+
+[project.scripts]
+anp2-quickstart = "anp2_quickstart:main"
+
+[project.urls]
+Homepage      = "https://anp2.com"
+Documentation = "https://anp2.com/spec/PROTOCOL.md"
+Repository    = "https://github.com/anp2/anp2"
+
+[build-system]
+requires      = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["anp2_quickstart"]
