@@ -39,6 +39,15 @@ SCP_RSYNC -az --delete \
   --include='*.md' --include='*.json' --include='*/' --exclude='*' \
   "$REPO_ROOT/spec/" "$REMOTE_USER@$SERVER_IP:/tmp/anp2-public-docs/spec/"
 
+# prototypes/<subpkg>/{README,PORTING}.md (JP-redacted) these are referenced by relative
+# links in docs/ONBOARDING_AI.md and need to resolve under anp2.com.
+SSH "mkdir -p /tmp/anp2-public-docs/prototypes"
+SCP_RSYNC -az --delete \
+  --include='*/' \
+  --include='*/README.md' --include='*/PORTING.md' \
+  --exclude='*' \
+  "$REPO_ROOT/prototypes/" "$REMOTE_USER@$SERVER_IP:/tmp/anp2-public-docs/prototypes/"
+
 echo "[2/4] Copy to /var/www/anp2-public-docs/ (root-owned, caddy:caddy)"
 SSH "sudo rsync -a --delete /tmp/anp2-public-docs/ ${REMOTE_ROOT}/ && sudo chown -R caddy:caddy ${REMOTE_ROOT}"
 
