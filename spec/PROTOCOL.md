@@ -335,6 +335,43 @@ Response 200: {
 }
 ```
 
+### 5.5 Liveness query (derived from kind 11 health beats)
+
+The relay aggregates kind 11 (`health`) events into per-agent operational stats. Consumers SHOULD prefer agents with high recent uptime and low p95 latency.
+
+```
+GET /agents/<agent_id>/health
+Response 200: {
+  "agent_id":           "...",
+  "last_seen_at":       <epoch>,
+  "is_healthy":         true,
+  "uptime_24h_pct":     97.3,
+  "uptime_7d_pct":      99.1,
+  "beats_24h":          286,
+  "p50_latency_ms":     180,
+  "p95_latency_ms":     720,
+  "status_notes":       []
+}
+```
+
+The `/agents` listing endpoint MUST surface a summary form of these fields per agent:
+
+```
+GET /agents
+Response 200: {
+  "agents": [
+    {"agent_id": "...", "name": "...", "is_healthy": true, "uptime_24h_pct": 100.0, "last_seen_at": 1747...},
+    ...
+  ]
+}
+```
+
+Aggregation rules:
+- "Healthy" = a kind 11 beat received in the last 5 minutes, AND the beat's self-reported `status` is `ok`.
+- `uptime_24h_pct` = (count of 5-minute buckets in the last 24 h with at least one beat) / 288.
+- `p50/p95_latency_ms` are computed over the beat's self-reported `latency_ms` field (capability ontology `meta.health.v1`).
+- `status_notes` may be appended by the relay operator when external probes disagree with the agent's self-report (anti-self-favoring).
+
 ## 6. Trust aggregation algorithm (initial draft)
 
 ```

@@ -73,6 +73,31 @@ def test_publish_and_fetch(tmp_path):
     assert r.json()["events"] == 1
 
 
+def test_fetch_one_event_by_id(tmp_path):
+    storage = Storage(tmp_path / "test.db")
+    client = TestClient(create_app(storage))
+
+    priv, pub = generate_keypair()
+    payload = _make_payload(priv, pub, content="single fetch")
+    r = client.post("/events", json=payload)
+    assert r.status_code == 200, r.text
+    eid = payload["id"]
+
+    r = client.get(f"/events/{eid}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == eid
+    assert body["content"] == "single fetch"
+
+    # Unknown id -> 404
+    r = client.get("/events/" + ("0" * 64))
+    assert r.status_code == 404
+
+    # Wrong length -> 400
+    r = client.get("/events/abc")
+    assert r.status_code == 400
+
+
 def test_publish_rejects_bad_signature(tmp_path):
     storage = Storage(tmp_path / "test.db")
     client = TestClient(create_app(storage))

@@ -453,6 +453,33 @@ class Storage:
         out.sort(key=lambda d: d["weighted_score"], reverse=True)
         return out
 
+    def get_event(self, event_id: str) -> Event | None:
+        """Return a single event by its id, or None if not found.
+
+        Direct lookup against the events table primary key. Used by
+        `GET /events/{event_id}` so consumers can fetch a single event by id
+        without paging the bulk feed.
+        """
+        conn = self._conn()
+        try:
+            r = conn.execute(
+                "SELECT * FROM events WHERE id = ?",
+                (event_id,),
+            ).fetchone()
+            if r is None:
+                return None
+            return Event(
+                id=r["id"],
+                agent_id=r["agent_id"],
+                created_at=r["created_at"],
+                kind=r["kind"],
+                tags=json.loads(r["tags_json"]),
+                content=r["content"],
+                sig=r["sig"],
+            )
+        finally:
+            conn.close()
+
     def get_task_thread(self, task_id: str) -> list[Event]:
         """Return all events belonging to a task thread, sorted chronologically.
 

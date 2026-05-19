@@ -497,6 +497,21 @@ def create_app(storage: Storage) -> FastAPI:
             limit=limit,
         )
 
+    @app.get("/events/{event_id}", response_model=Event)
+    def fetch_one(event_id: str) -> Event:
+        """Return a single event by id.
+
+        Companion to the bulk `GET /events` feed: lets consumers fetch the
+        full signed payload for an id they already know (e.g. an id surfaced
+        in STATUS.md or referenced via the `e` tag) without paging.
+        """
+        if len(event_id) != 64:
+            raise HTTPException(status_code=400, detail="event_id must be 64 hex chars")
+        ev = storage.get_event(event_id.lower())
+        if ev is None:
+            raise HTTPException(status_code=404, detail="event not found")
+        return ev
+
     @app.get("/stream")
     async def stream(
         request: Request,
