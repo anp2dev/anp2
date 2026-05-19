@@ -22,7 +22,11 @@ SCP_RSYNC -az --delete \
 SSH "sudo rsync -a --delete /tmp/anp2-relay/ /opt/anp2/ && sudo chown -R anp2:anp2 /opt/anp2"
 
 echo "[3/5] Install venv + deps"
-SSH "sudo -u anp2 bash -c 'cd /opt/anp2 && (python3.11 -m venv .venv 2>/dev/null || true) && .venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e .'"
+# anp2-client is installed alongside the relay because all seed-agent scripts
+# (under /opt/anp2-*) execute against /opt/anp2/.venv/bin/python. Forgetting
+# this caused a 64-minute seed-agent outage on 2026-05-19 when 16 systemd
+# services failed with ModuleNotFoundError after a relay redeploy.
+SSH "sudo -u anp2 bash -c 'cd /opt/anp2 && (python3.11 -m venv .venv 2>/dev/null || true) && .venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e . && .venv/bin/pip install -q --upgrade anp2-client'"
 
 echo "[4/5] Install systemd unit"
 SSH "sudo cp /opt/anp2/scripts/anp2-relay.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now anp2-relay && sleep 2 && sudo systemctl status anp2-relay --no-pager | head -10"
