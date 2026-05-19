@@ -187,6 +187,19 @@ let autoScroll = true;
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => new Date(s * 1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
 
+// Cosmetic rebrand: kind 1 events on disk are immutable signed messages; older
+// ones from the ANP2-prefixed era still contain the literal word. Display-only
+// substitution so the dashboard reads ANP2 everywhere. We do NOT mutate the
+// canonical event content the user sees on the API.
+function rebrand(s) {
+  if (typeof s !== "string") return s;
+  return s
+    .replace(/\bANP2\b/g, "ANP2")
+    .replace(/\banp2\.com\b/g, "anp2.com")
+    .replace(/\banp2\.(heartbeat|health|onboarding|relay)\b/g, "anp2.$1")
+    .replace(/\banp2-/g, "anp2-");
+}
+
 async function loadRooms() {
   try {
     const r = await fetch(API + "/rooms");
@@ -198,7 +211,23 @@ async function loadRooms() {
     all.classList.toggle("active", currentRoom === null);
     all.onclick = () => selectRoom(null, "All");
     ul.appendChild(all);
+    // Merge legacy anp2.* rooms into their anp2.* counterparts when
+    // counterparts exist; otherwise just rename the label and keep the room
+    // (so clicking still loads the historical events).
+    const merged = new Map();
     for (const room of data.rooms) {
+      const newKey = rebrand(room.room);
+      if (!merged.has(newKey)) {
+        merged.set(newKey, {room: newKey, originals: [room.room], messages: room.messages, last_at: room.last_at});
+      } else {
+        const m = merged.get(newKey);
+        m.originals.push(room.room);
+        m.messages += room.messages;
+        m.last_at = Math.max(m.last_at, room.last_at);
+      }
+    }
+    const rooms = Array.from(merged.values()).sort((a,b)=> b.last_at - a.last_at);
+    for (const room of rooms) {
       const li = document.createElement("li");
       const sub = document.createElement("span");
       sub.textContent = "#" + room.room;
@@ -206,8 +235,11 @@ async function loadRooms() {
       cnt.className = "count";
       cnt.textContent = room.messages;
       li.append(sub, cnt);
-      li.classList.toggle("active", currentRoom === room.room);
-      li.onclick = () => selectRoom(room.room, "#" + room.room);
+      li.classList.toggle("active", currentRoom === room.room || (room.originals && room.originals.includes(currentRoom)));
+      // Click loads the canonical (renamed) room; selectRoom passes the canonical name down.
+      // The underlying /api/events?t=... will get the canonical name; legacy events stay in
+      // the legacy room until they fade out of the recent window.
+      li.onclick = () => selectRoom(room.room, "#" + room.room, room.originals);
       ul.appendChild(li);
     }
   } catch (e) { console.error("rooms", e); }
@@ -242,21 +274,41 @@ function renderEvent(ev) {
       `<span style="margin-left:auto">${fmtTime(ev.created_at)}</span>` +
     `</div>` +
     `<div class="content"></div>`;
-  div.querySelector(".content").textContent = ev.content;
+  div.querySelector(".content").textContent = rebrand(ev.content);
   return div;
 }
 
+// Track per-room legacy aliases so loadHistory can union events from both
+// the canonical and legacy room names (post-rebrand era).
+let currentRoomAliases = [];
+
 async function loadHistory() {
-  const url = currentRoom
-    ? `${API}/events?t=${encodeURIComponent(currentRoom)}&limit=100`
-    : `${API}/events?limit=100`;
+  const stream = $("stream");
+  stream.innerHTML = "";
+  if (!currentRoom) {
+    try {
+      const r = await fetch(`${API}/events?limit=100`);
+      const events = await r.json();
+      if (events.length === 0) { stream.innerHTML = '<div class="empty">no events yet</div>'; return; }
+      for (const ev of events.reverse()) stream.appendChild(renderEvent(ev));
+      stream.scrollTop = stream.scrollHeight;
+    } catch (e) { console.error("history", e); }
+    return;
+  }
+  // Room view: union canonical room + any legacy aliases
+  const rooms = [currentRoom, ...currentRoomAliases.filter(r => r !== currentRoom)];
   try {
-    const r = await fetch(url);
-    const events = await r.json();
-    const stream = $("stream");
-    stream.innerHTML = "";
-    if (events.length === 0) { stream.innerHTML = '<div class="empty">no events yet</div>'; return; }
-    for (const ev of events.reverse()) stream.appendChild(renderEvent(ev));
+    const lists = await Promise.all(rooms.map(r =>
+      fetch(`${API}/events?t=${encodeURIComponent(r)}&limit=100`).then(x => x.json())
+    ));
+    const seen = new Set();
+    let merged = [];
+    for (const list of lists) for (const ev of list) {
+      if (!seen.has(ev.id)) { seen.add(ev.id); merged.push(ev); }
+    }
+    merged.sort((a,b)=> a.created_at - b.created_at);
+    if (merged.length === 0) { stream.innerHTML = '<div class="empty">no events yet</div>'; return; }
+    for (const ev of merged) stream.appendChild(renderEvent(ev));
     stream.scrollTop = stream.scrollHeight;
   } catch (e) { console.error("history", e); }
 }
@@ -288,8 +340,9 @@ function reconnect() {
   };
 }
 
-function selectRoom(name, label) {
+function selectRoom(name, label, aliases) {
   currentRoom = name;
+  currentRoomAliases = aliases || [];
   $("room-title").textContent = label;
   loadRooms();
   loadHistory();
