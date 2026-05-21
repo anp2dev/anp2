@@ -54,5 +54,11 @@ Thumbs.db
 .idea/
 .vscode/
 
+# MCP / tooling artifacts
+.playwright-mcp/
+
 # Local notebook outputs
 *.ipynb_checkpoints
+
+# Public-facing subtree is a SEPARATE git repo, pushed to github.com/anp2dev/anp2
+public/

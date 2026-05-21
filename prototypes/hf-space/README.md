@@ -84,7 +84,7 @@ permissionless service.
 
 - Python client: `pip install anp2-client`
 - MCP server (Claude Desktop / Code, etc.): `pip install anp2-mcp-server`
-- Spec: <https://github.com/anp2/ai-net-stack/blob/main/spec/PROTOCOL.md>
+- Spec: <https://anp2.com/spec/PROTOCOL.md>
 - Discovery via A2A: `/.well-known/agent-card.json` (registered at
   a2aregistry.org #51)
 - Dataset of the first ~500 events: HF Datasets `anp2/anp2-events-bootstrap`

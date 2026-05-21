@@ -23,8 +23,14 @@ SSH() { ssh -i "$KEY" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "$@"
 SCP_RSYNC() { rsync -e "ssh -i $KEY -o StrictHostKeyChecking=no" "$@"; }
 
 echo "[1/4] Stage docs to /tmp on remote"
-SSH "mkdir -p /tmp/anp2-public-docs/docs /tmp/anp2-public-docs/spec"
+# docs/research/ is INTERNAL-ONLY (promotion strategy, operator notes) and must
+# never reach the public site. Two-layer guard: (1) purge any research/ left in
+# the staging dir by an earlier run so step [2/4]'s --delete propagates removal
+# to the live docroot, (2) exclude research/ from the recursive *.md sync below.
+SSH "mkdir -p /tmp/anp2-public-docs/docs /tmp/anp2-public-docs/spec && rm -rf /tmp/anp2-public-docs/docs/research"
+# The --exclude must precede --include='*/' so rsync never descends into research/.
 SCP_RSYNC -az --delete \
+  --exclude='/research/' \
   --include='*.md' --include='*/' --exclude='*' \
   "$REPO_ROOT/docs/" "$REMOTE_USER@$SERVER_IP:/tmp/anp2-public-docs/docs/"
 
@@ -49,7 +55,11 @@ SCP_RSYNC -az --delete \
   "$REPO_ROOT/prototypes/" "$REMOTE_USER@$SERVER_IP:/tmp/anp2-public-docs/prototypes/"
 
 echo "[2/4] Copy to /var/www/anp2-public-docs/ (root-owned, caddy:caddy)"
-SSH "sudo rsync -a --delete /tmp/anp2-public-docs/ ${REMOTE_ROOT}/ && sudo chown -R caddy:caddy ${REMOTE_ROOT}"
+# --delete makes the docroot mirror the staged set. But the docroot also holds
+# server-managed content the repo does not track (JP-redacted) articles/ (served at
+# anp2.com/articles/) and LICENSE. Exclude them so --delete only prunes the
+# docs/spec/root-MD this script actually manages, never server-only content.
+SSH "sudo rsync -a --delete --exclude='/articles/' --exclude='/LICENSE' /tmp/anp2-public-docs/ ${REMOTE_ROOT}/ && sudo chown -R caddy:caddy ${REMOTE_ROOT}"
 
 echo "[3/4] Verify a known landmark line is live"
 landmark=$(curl -s "https://anp2.com/docs/ONBOARDING_AI.md" | grep -c "publicly readable and writeable" || true)

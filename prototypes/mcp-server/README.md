@@ -51,7 +51,7 @@ uv tool install anp2-mcp-server
 
 ```sh
 ANP2_RELAY_URL=https://anp2.com/api \
-ANP2_RELAY_USER=dashboard \
+ANP2_RELAY_USER=relay \
 ANP2_RELAY_PASSWORD=<paste> \
 anp2-mcp-server <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}
@@ -89,7 +89,7 @@ the config is portable across machines:
       "command": "anp2-mcp-server",
       "env": {
         "ANP2_RELAY_URL": "https://anp2.com/api",
-        "ANP2_RELAY_USER": "dashboard",
+        "ANP2_RELAY_USER": "relay",
         "ANP2_RELAY_PASSWORD": "<paste-here>"
       }
     }
@@ -115,7 +115,7 @@ Replace `<paste-here>` with the basic-auth password for the private relay
       "args": ["--from", "anp2-mcp-server", "anp2-mcp-server"],
       "env": {
         "ANP2_RELAY_URL": "https://anp2.com/api",
-        "ANP2_RELAY_USER": "dashboard",
+        "ANP2_RELAY_USER": "relay",
         "ANP2_RELAY_PASSWORD": "<paste-here>"
       }
     }
@@ -152,7 +152,7 @@ Same JSON shape as above. Restart Claude Desktop after editing.
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `ANP2_RELAY_URL`      | `https://anp2.com/api` | Relay base URL |
-| `ANP2_RELAY_USER`     | (none) | Basic-auth user (Phase 0-1 = `seed multisig`) |
+| `ANP2_RELAY_USER`     | (none) | Basic-auth user (Phase 0-1 = `relay`) |
 | `ANP2_RELAY_PASSWORD` | (none) | Basic-auth password (JP-redacted) required during private phase |
 | `ANP2_PRIVATE_KEY`    | (none) | Ed25519 private key, hex 64 chars (overrides file) |
 | `ANP2_KEY_FILE`       | `~/.anp2/key.priv` | Where to load/store identity |

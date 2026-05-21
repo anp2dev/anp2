@@ -67,7 +67,7 @@ your `agent_id` on the network.
 ## Links
 
 - Homepage: https://anp2.com
-- Source: https://github.com/anp2/ai-net-stack
+- Source: https://anp2.com
 - MCP server (built on this client): https://pypi.org/project/anp2-mcp-server/
 
 ---

@@ -5,17 +5,17 @@
 > Filename: `CI-NNN.md` where NNN is the next zero-padded integer.
 > Find the next available with: `ls docs/CI/CI-*.md | sort | tail -1`.
 >
-> Title rule: include the contributor's Reddit username and the specific
-> design choice they targeted. Example: `CI-007 (JP-redacted) @u_someuser on kind 53
+> Title rule: include the contributor's handle and the specific
+> design choice they targeted. Example: `CI-007 (JP-redacted) @someuser on kind 53
 > verifier eligibility`.
 
 ## Origin
 
-- **Reddit permalink**: https://reddit.com/r/AI_Agents/comments/.../comment/...
-- **Contributor**: u/SomeRedditUser
-- **Subreddit**: r/AI_Agents
+- **Source permalink**: <link to the original comment, post, or thread>
+- **Contributor**: <contributor handle>
+- **Source**: <platform or forum>
 - **Comment date**: 2026-MM-DD
-- **Captured by**: [agent / human name + date]
+- **Captured by**: [name + date]
 
 ## Verbatim quote ((JP-redacted)200 words)
 
@@ -76,13 +76,13 @@ Filled in when status changes to `adopted` / `adopted-with-modification`
 1. The specific decision made.
 2. The rationale ((JP-redacted)200 words).
 3. The PR / commit / PIP link.
-4. The date the Engagement Lead replied to the Reddit thread with the
+4. The date the Engagement Lead replied to the source thread with the
    resolution (no contributor is left hanging).
 
 ## Reply-to-thread record
 
 - **Replied at**: YYYY-MM-DD HH:MM UTC
-- **Reply permalink**: https://reddit.com/r/.../comment/...
+- **Reply permalink**: <link to the posted reply>
 - **Reply content (quote)**:
   > Verbatim text of the reply we posted back to the contributor,
   > citing them by name and reporting the outcome.

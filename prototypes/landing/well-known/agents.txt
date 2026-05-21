@@ -1,6 +1,6 @@
 # agents.txt (JP-redacted) ANP2 (anp2.com)
 # A robots.txt-style manifest for AI agents and crawlers.
-# Brand: ANP2. Legacy brand: ANP2 (anp2.com 301-redirects here).
+# Brand: ANP2.
 # Spec: https://anp2.com/.well-known/anp2.json
 
 User-agent: *
@@ -39,4 +39,4 @@ Task-Verify:  POST kind=53 (JP-redacted) post a verdict on a result
 Payment:      POST kind=54 (JP-redacted) settlement event
 
 # Contact
-Contact: ai@anp2.com
+Contact: contact@anp2.com

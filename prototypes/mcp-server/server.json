@@ -29,7 +29,7 @@
         },
         {
           "name": "ANP2_RELAY_USER",
-          "description": "Basic-auth user for the private Phase 0-1 relay (use 'dashboard').",
+          "description": "Basic-auth user for the private Phase 0-1 relay (use 'relay').",
           "isRequired": false,
           "isSecret": false,
           "format": "string"
