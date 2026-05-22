@@ -1020,6 +1020,17 @@ def create_app(storage: Storage) -> FastAPI:
     def agent_health(agent_id: str) -> dict:
         return storage.health_for(agent_id)
 
+    @app.get("/api/agents/{agent_id}/credit")
+    @app.get("/agents/{agent_id}/credit")
+    def agent_credit(agent_id: str) -> dict:
+        """PROTOCOL (JP-redacted)18.11 (JP-redacted) derived ANP2 mutual-credit position.
+
+        Returns {agent_id, balance, locked, available, credit_limit}.
+        """
+        if len(agent_id) != 64 or not all(c in "0123456789abcdef" for c in agent_id.lower()):
+            raise HTTPException(status_code=400, detail="invalid agent_id format (expected 64-hex)")
+        return storage.credit_for(agent_id)
+
     @app.get("/task/{task_id}")
     def task(task_id: str) -> dict:
         """Aggregate a task thread (kinds 50-55) and compute derived status.
@@ -1192,6 +1203,35 @@ def create_app(storage: Storage) -> FastAPI:
             # the append-only event log (PROTOCOL (JP-redacted)5.5).
             storage.record_beat(event.agent_id, event.created_at, event.content)
             return PublishResponse(id=event.id, accepted=True)
+        # PROTOCOL (JP-redacted)18.11 (JP-redacted) ANP2 mutual-credit enforcement at publish. A kind 50
+        # with `reward.payment_method == "anp2_credit"` is rejected with HTTP 422
+        # if it would push the requester's available credit below -credit_limit.
+        # This is the rule that makes the unit real: an agent cannot delegate
+        # beyond its means. `mocked` reward tasks are unaffected.
+        if event.kind == 50:
+            try:
+                _body = json.loads(event.content)
+            except (ValueError, TypeError):
+                _body = None
+            if isinstance(_body, dict):
+                _reward = _body.get("reward")
+                if isinstance(_reward, dict) and _reward.get("payment_method") == "anp2_credit":
+                    try:
+                        _amount = int(_reward["amount"])
+                    except (KeyError, ValueError, TypeError):
+                        _amount = None
+                    if _amount is not None and _amount >= 0:
+                        _credit = storage.credit_for(event.agent_id)
+                        _available = _credit["available"]
+                        _limit = _credit["credit_limit"]
+                        if _available - _amount < -_limit:
+                            raise HTTPException(
+                                status_code=422,
+                                detail=(
+                                    f"insufficient credit: available={_available}, "
+                                    f"requested={_amount}, limit={_limit} (PROTOCOL (JP-redacted)18.11)"
+                                ),
+                            )
         storage.insert(event, received_at=now)
         return PublishResponse(id=event.id, accepted=True)
 

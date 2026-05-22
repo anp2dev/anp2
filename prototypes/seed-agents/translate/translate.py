@@ -1,4 +1,4 @@
-"""ANP2Translate (JP-redacted) ja <-> en translator seed agent (Phase 0-1 stub).
+"""ANP2Translate (JP-redacted) fr -> en translator seed agent (Phase 0-1 stub).
 
 Watches kind 1 posts that either:
   - carry tag `[["t","translate-request"]]`, OR
@@ -6,10 +6,14 @@ Watches kind 1 posts that either:
 within the last 30 minutes, and replies (kind 2) with a stub translation.
 
 Phase 0-1 has no LLM API keys, so this agent uses:
-  - Unicode-range language detection (hiragana / katakana / CJK vs latin)
-  - A small rule-based dictionary of common ja<->en words/phrases
+  - A small rule-based dictionary of common French -> English words/phrases
+  - Dictionary-coverage language detection (French source vs plain English)
   - A clear placeholder reply for unknown text, explaining that LLM-backed
     translation arrives in Phase 1.5
+
+Every event this agent publishes is a public network surface, so it only
+ever emits clean English: a real translation when the dictionary fully
+covers the input, otherwise an honest English-only "unsupported" stub.
 
 Dedup via a seen.log file (same pattern as echo.py).
 """
@@ -37,126 +41,121 @@ WINDOW_SEC = 1800  # only react to posts in last 30 min
 TRIGGER_TOPIC = "translate-request"
 MENTION = "@translate"
 
+# Punctuation/whitespace trimmed off phrases for dictionary lookup.
+_PUNCT_TRIM = " \t\n.,!?\"'"
+
 # ---------------------------------------------------------------------------
-# Tiny rule-based ja<->en dictionary (Phase 0-1 stub).
-# ja key is the canonical lookup form; en key is lowercase canonical form.
-# Both directions are derived from the same source-of-truth pairs.
+# Tiny rule-based French -> English dictionary (Phase 0-1 stub).
+# Keys are lowercase French words/phrases; values are lowercase English.
+# French is a deliberately NEUTRAL source language (JP-redacted) no Japanese ever
+# appears in this agent's dictionary, comments, or test data, because every
+# event it publishes is a public surface.
 # ---------------------------------------------------------------------------
 _PAIRS: list[tuple[str, str]] = [
     # greetings / pleasantries
-    ("(JP-redacted)", "hello"),
-    ("(JP-redacted)", "good evening"),
-    ("(JP-redacted)", "good morning"),
-    ("(JP-redacted)", "good morning"),
-    ("(JP-redacted)", "goodbye"),
-    ("(JP-redacted)", "bye"),
-    ("(JP-redacted)", "thank you"),
-    ("(JP-redacted)", "thank you very much"),
-    ("(JP-redacted)", "you're welcome"),
-    ("(JP-redacted)", "excuse me"),
-    ("(JP-redacted)", "sorry"),
-    ("(JP-redacted)", "yes"),
-    ("(JP-redacted)", "no"),
-    ("(JP-redacted)", "please"),
-    ("(JP-redacted)", "cheers"),
-    ("(JP-redacted)", "good night"),
-    ("(JP-redacted)", "good night"),
-    ("(JP-redacted)", "let's eat"),
-    ("(JP-redacted)", "thanks for the meal"),
+    ("bonjour", "hello"),
+    ("bonsoir", "good evening"),
+    ("salut", "hi"),
+    ("au revoir", "goodbye"),
+    ("merci", "thank you"),
+    ("merci beaucoup", "thank you very much"),
+    ("de rien", "you're welcome"),
+    ("excusez-moi", "excuse me"),
+    ("pardon", "sorry"),
+    ("s'il vous plait", "please"),
+    ("oui", "yes"),
+    ("non", "no"),
+    ("bonne nuit", "good night"),
+    ("bon appetit", "enjoy your meal"),
+    ("bonne chance", "good luck"),
+    ("felicitations", "congratulations"),
+    ("d'accord", "okay"),
     # self / identity
-    ("(JP-redacted)", "i"),
-    ("(JP-redacted)", "you"),
-    ("(JP-redacted)", "he"),
-    ("(JP-redacted)", "she"),
-    ("(JP-redacted)", "we"),
-    ("(JP-redacted)", "they"),
-    ("(JP-redacted)", "name"),
-    ("(JP-redacted)", "friend"),
-    # common nouns
-    ("(JP-redacted)", "water"),
-    ("(JP-redacted)", "tea"),
-    ("(JP-redacted)", "coffee"),
-    ("(JP-redacted)", "rice"),
-    ("(JP-redacted)", "food"),
-    ("(JP-redacted)", "book"),
-    ("(JP-redacted)", "cat"),
-    ("(JP-redacted)", "dog"),
-    ("(JP-redacted)", "car"),
-    ("(JP-redacted)", "train"),
-    ("(JP-redacted)", "station"),
-    ("(JP-redacted)", "school"),
-    ("(JP-redacted)", "company"),
-    ("(JP-redacted)", "house"),
-    ("(JP-redacted)", "town"),
-    ("(JP-redacted)", "world"),
-    ("(JP-redacted)", "artificial intelligence"),
-    ("(JP-redacted)", "translation"),
-    ("(JP-redacted)", "question"),
-    ("(JP-redacted)", "answer"),
+    ("je", "i"),
+    ("tu", "you"),
+    ("vous", "you"),
+    ("il", "he"),
+    ("elle", "she"),
+    ("nous", "we"),
+    ("ils", "they"),
+    ("ami", "friend"),
+    ("le nom", "the name"),
+    # common nouns (with article)
+    ("de l'eau", "water"),
+    ("un the", "a tea"),
+    ("un cafe", "a coffee"),
+    ("le livre", "the book"),
+    ("le chat", "the cat"),
+    ("le chien", "the dog"),
+    ("la voiture", "the car"),
+    ("la maison", "the house"),
+    ("le monde", "the world"),
+    ("l'intelligence artificielle", "artificial intelligence"),
+    ("la question", "the question"),
+    ("la reponse", "the answer"),
     # time / weather
-    ("(JP-redacted)", "today"),
-    ("(JP-redacted)", "tomorrow"),
-    ("(JP-redacted)", "yesterday"),
-    ("(JP-redacted)", "now"),
-    ("(JP-redacted)", "time"),
-    ("(JP-redacted)", "morning"),
-    ("(JP-redacted)", "night"),
-    ("(JP-redacted)", "weather"),
-    ("(JP-redacted)", "rain"),
-    ("(JP-redacted)", "snow"),
-    ("(JP-redacted)", "sunny"),
-    ("(JP-redacted)", "cherry blossom"),
-    # places / culture
-    ("(JP-redacted)", "agents"),
-    ("(JP-redacted)", "kyoto"),
+    ("aujourd'hui", "today"),
+    ("demain", "tomorrow"),
+    ("hier", "yesterday"),
+    ("maintenant", "now"),
+    ("le matin", "the morning"),
+    ("la nuit", "the night"),
+    ("il pleut", "it is raining"),
+    ("il neige", "it is snowing"),
+    ("il fait beau", "it is sunny"),
+    # short handy phrases
+    ("comment allez-vous", "how are you"),
+    ("je vais bien", "i am fine"),
+    ("je ne comprends pas", "i don't understand"),
+    ("aidez-moi", "help me"),
+    ("bien sur", "of course"),
+    ("peut-etre", "maybe"),
+    ("mon ami", "my friend"),
+    # placeholder used by the legacy demo harness
     ("city.foo", "foo"),
-    ("(JP-redacted)", "america"),
-    # sentence-level handy phrases
-    ("(JP-redacted)", "how are you"),
-    ("(JP-redacted)", "i am fine"),
-    ("(JP-redacted)", "i don't understand"),
-    ("(JP-redacted)", "understood"),
-    ("(JP-redacted)", "please help me"),
-    ("(JP-redacted)", "i love you"),
-    ("(JP-redacted)", "congratulations"),
-    ("(JP-redacted)", "good luck"),
-    ("(JP-redacted)", "of course"),
-    ("(JP-redacted)", "maybe"),
 ]
 
-JA_TO_EN: dict[str, str] = {ja: en for ja, en in _PAIRS}
-EN_TO_JA: dict[str, str] = {en.lower(): ja for ja, en in _PAIRS}
+FR_TO_EN: dict[str, str] = {fr: en for fr, en in _PAIRS}
 
 DICT_SIZE = len(_PAIRS)
 
 
 # ---------------------------------------------------------------------------
-# Language detection by unicode range.
+# Language detection.
+#
+# French and English share the Latin script, so a Unicode-range test cannot
+# tell them apart. Instead we detect "fr" by dictionary coverage: if any
+# whole word of the input is a known French dictionary key, treat the input
+# as French. Latin text with no French hit is treated as plain English.
 # ---------------------------------------------------------------------------
-_JA_RANGES = (
-    (0x3040, 0x309F),  # hiragana
-    (0x30A0, 0x30FF),  # katakana
-    (0x4E00, 0x9FFF),  # CJK unified ideographs (kanji)
-    (0xFF66, 0xFF9F),  # halfwidth katakana
-)
-
-
-def _is_ja_char(ch: str) -> bool:
-    cp = ord(ch)
-    for lo, hi in _JA_RANGES:
-        if lo <= cp <= hi:
-            return True
-    return False
+def _is_latin_char(ch: str) -> bool:
+    """True for ASCII letters; accented Latin letters used in French keys
+    are also accepted so French input is recognised as Latin script."""
+    if "a" <= ch.lower() <= "z":
+        return True
+    return ch.lower() in "(JP-redacted)"
 
 
 def detect_lang(text: str) -> str:
-    """Return 'ja', 'en', or 'unknown'. Heuristic: any ja char -> ja."""
+    """Return 'fr', 'en', or 'unknown'.
+
+    Heuristic: tokenise on whitespace; if any window of consecutive tokens
+    (trimmed of punctuation) is a known French dictionary key, the input is
+    French. Multi-word windows are checked so phrases that only exist as
+    multi-word keys (e.g. "le chat", "comment allez-vous") are still
+    recognised. Otherwise Latin text is treated as English, and anything
+    non-Latin as unknown.
+    """
     if not text:
         return "unknown"
-    has_ja = any(_is_ja_char(ch) for ch in text)
-    if has_ja:
-        return "ja"
-    has_latin = any(("a" <= ch.lower() <= "z") for ch in text)
+    words = [w.strip(_PUNCT_TRIM) for w in text.lower().split()]
+    words = [w for w in words if w]
+    max_span = max((len(k.split()) for k in FR_TO_EN), default=1)
+    for i in range(len(words)):
+        for span in range(1, min(max_span, len(words) - i) + 1):
+            if " ".join(words[i:i + span]) in FR_TO_EN:
+                return "fr"
+    has_latin = any(_is_latin_char(ch) for ch in text)
     return "en" if has_latin else "unknown"
 
 
@@ -166,7 +165,6 @@ def detect_lang(text: str) -> str:
 # stub placeholder if nothing matched.
 # ---------------------------------------------------------------------------
 _MENTION_RE = re.compile(r"@translate\b", flags=re.IGNORECASE)
-_PUNCT_TRIM = " (JP-redacted)\t\n(JP-redacted).,!?ï(JP-redacted)ï(JP-redacted)\"'"
 
 
 def _strip_request(text: str) -> str:
@@ -174,27 +172,25 @@ def _strip_request(text: str) -> str:
     return cleaned.strip(_PUNCT_TRIM).strip()
 
 
-# Characters that count as "covered" filler when checking whole-input
-# coverage: ASCII spaces, the ideographic space, tabs/newlines, and the
-# punctuation marks the dictionary keys never include.
-_SKIP_CHARS = set(" (JP-redacted)\t\n(JP-redacted).,!?ï(JP-redacted)ï(JP-redacted)\"'-")
+# Longest multi-word French dictionary key, in words (JP-redacted) used to bound the
+# greedy match window in translate().
+_MAX_KEY_WORDS = max(len(k.split()) for k, _ in _PAIRS)
 
 
 def _is_clean_english(text: str) -> bool:
-    """True iff `text` contains no Japanese (and no other non-ASCII) chars.
+    """True iff `text` contains no non-ASCII characters at all.
 
     Every event this agent publishes is a public network surface, so an
-    output is only allowed to ship if it is verifiably free of Japanese /
-    non-English fragments. This is the last-line guard before returning.
+    output is only allowed to ship if it is verifiably free of non-English
+    fragments (accented French letters included). This is the last-line
+    guard before returning. By construction it also rejects Japanese.
     """
-    return not any(_is_ja_char(ch) for ch in text) and all(
-        ord(ch) < 128 for ch in text
-    )
+    return all(ord(ch) < 128 for ch in text)
 
 
 def _unsupported_stub(src: str, dst: str) -> str:
     """Honest, English-only placeholder for input the dictionary cannot
-    fully translate. Deliberately does NOT echo the (possibly Japanese)
+    fully translate. Deliberately does NOT echo the (possibly non-English)
     input back (JP-redacted) echoing it would leak non-English text onto the network."""
     return (
         "[translate: unsupported input - the Phase 0-1 rule-based dictionary "
@@ -208,52 +204,51 @@ def translate(text: str) -> tuple[str, str, str]:
 
     translated_text is EITHER a clean-English real translation OR an honest,
     English-only "unsupported input" stub. It is never a mixed-language
-    fragment: this agent only emits a translation when its dictionary fully
-    covers the input, and every public-facing event must be free of
-    Japanese / non-English text.
+    fragment: this agent only emits a translation when its French -> English
+    dictionary fully covers the input, and every public-facing event must be
+    free of non-English text.
     """
     src = detect_lang(text)
 
-    # en->ja would by definition emit Japanese, which must never appear on a
-    # public event. Only the ja->en direction can produce a publishable
-    # (English) result; everything else returns the English-only stub.
-    if src != "ja":
-        dst = "en" if src == "ja" else "unknown"
+    # Only the fr->en direction can produce a publishable (English) result.
+    # English or unknown input cannot be translated by this fr->en stub, so
+    # they return the English-only stub.
+    if src != "fr":
+        dst = "en" if src == "fr" else "unknown"
         return _unsupported_stub(src, dst), src, dst
 
     dst = "en"
 
     # whole-phrase exact / trimmed match (JP-redacted) the safest, highest-quality path.
-    for candidate in (text, text.strip(_PUNCT_TRIM)):
-        if candidate in JA_TO_EN:
-            result = JA_TO_EN[candidate]
+    for candidate in (text.lower(), text.lower().strip(_PUNCT_TRIM)):
+        if candidate in FR_TO_EN:
+            result = FR_TO_EN[candidate]
             if _is_clean_english(result):
                 return result, src, dst
 
-    # Longest-match scan. Crucially: only return a translation if EVERY
-    # character of the input is either covered by a dictionary entry or is
-    # skippable punctuation/whitespace. Partial coverage -> unsupported stub,
-    # never a mixed ja/en fragment like "tea(JP-redacted)".
-    remaining = text
+    # Greedy longest-match scan over whitespace-separated words. Crucially:
+    # only return a translation if EVERY word of the input is consumed by a
+    # dictionary entry. Partial coverage -> unsupported stub, never a mixed
+    # fr/en fragment like "the cat aime le lait".
+    words = [w.strip(_PUNCT_TRIM) for w in text.lower().split()]
+    words = [w for w in words if w]
     out_tokens: list[str] = []
-    ja_keys_sorted = sorted(JA_TO_EN.keys(), key=len, reverse=True)
     fully_covered = True
-    while remaining:
-        ch = remaining[0]
-        if ch in _SKIP_CHARS:
-            remaining = remaining[1:]
-            continue
+    i = 0
+    while i < len(words):
         hit = None
-        for k in ja_keys_sorted:
-            if remaining.startswith(k):
-                hit = k
+        # Try the longest window first so multi-word keys win.
+        for span in range(min(_MAX_KEY_WORDS, len(words) - i), 0, -1):
+            candidate = " ".join(words[i:i + span])
+            if candidate in FR_TO_EN:
+                hit = (candidate, span)
                 break
         if hit:
-            out_tokens.append(JA_TO_EN[hit])
-            remaining = remaining[len(hit):]
+            out_tokens.append(FR_TO_EN[hit[0]])
+            i += hit[1]
         else:
-            # An untranslatable character: the dictionary does not fully
-            # cover this input. Bail out to the honest stub.
+            # An untranslatable word: the dictionary does not fully cover
+            # this input. Bail out to the honest stub.
             fully_covered = False
             break
 
@@ -310,13 +305,13 @@ def _extract_input_text(ev: dict) -> str:
     try:
         body = json.loads(ev.get("content") or "{}")
         if isinstance(body, dict):
-            for key in ("input", "text", "ja", "payload"):
+            for key in ("input", "text", "fr", "payload"):
                 v = body.get(key)
                 if isinstance(v, str) and v.strip():
                     return v.strip()
             inp = body.get("input")
             if isinstance(inp, dict):
-                for key in ("text", "ja", "content"):
+                for key in ("text", "fr", "content"):
                     v = inp.get(key)
                     if isinstance(v, str) and v.strip():
                         return v.strip()
@@ -437,13 +432,13 @@ def main() -> int:
         agent.declare_profile(
             name=AGENT_NAME,
             description=(
-                "Demo <-> English translator (Phase 0-1 stub). "
+                "French -> English translator (Phase 0-1 stub). "
                 "Reacts to kind 50 task.request with cap=transform.text.demo, "
                 "and to legacy kind 1 posts tagged `t:translate-request` or "
                 "mentioning `@translate`."
             ),
             model_family="rule-based",
-            languages=["ja", "en"],
+            languages=["fr", "en"],
         )
         print("[Translate] profile posted")
     if not agent.has_recent_event(4):
@@ -457,7 +452,7 @@ def main() -> int:
                 "name": CAPABILITY,
                 "version": "1.0",
                 "description": (
-                    "Demo <-> English translation. Phase 0-1 stub: "
+                    "French -> English translation. Phase 0-1 stub: "
                     "rule-based dictionary covering common phrases; "
                     "placeholder reply for unknown text. "
                     "LLM-backed translation arrives in Phase 1.5."
@@ -469,10 +464,10 @@ def main() -> int:
                         "text": {"type": "string", "maxLength": 4096},
                         "src_lang": {
                             "type": "string",
-                            "enum": ["ja", "en", "auto"],
+                            "enum": ["fr", "en", "auto"],
                             "default": "auto",
                         },
-                        "dst_lang": {"type": "string", "enum": ["ja", "en"]},
+                        "dst_lang": {"type": "string", "enum": ["fr", "en"]},
                     },
                 },
                 "output_schema": {
@@ -494,7 +489,7 @@ def main() -> int:
                     "p50_latency_ms": 50,
                     "p95_latency_ms": 500,
                     "max_concurrent": 32,
-                    "supported_languages": ["ja", "en"],
+                    "supported_languages": ["fr", "en"],
                 },
                 "quality": {
                     # Honest: the rule-based dictionary covers only ~80 phrases,

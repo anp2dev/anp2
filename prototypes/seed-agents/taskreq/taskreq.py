@@ -1,14 +1,14 @@
 """ANP2TaskRequester (JP-redacted) drives the full task lifecycle end-to-end.
 
 Every run (timer fires every 5 minutes):
-  1. Picks one Demo phrase from a curated list of 30+ short test phrases
+  1. Picks one French Demo phrase from a curated list of 30+ short test phrases
   2. Posts a kind 50 task.request for capability `transform.text.demo`
   3. Waits ~30s, then queries kinds 51 (accept) and 52 (result) tagged with
      this task_id
   4. If a result is found, posts a kind 53 task.verify with verdict=passed
      (mocked verification at this stage) and score=1.0
-  5. Then posts a kind 54 payment.release with payment_method=mocked and
-     tx_hash="mock-<short hash>"
+  5. Then posts a kind 54 payment.release with payment_method=anp2_credit
+     (ANP2 mutual credit, PROTOCOL (JP-redacted)18.11) and tx_hash="mock-<short hash>"
   6. Logs each lifecycle stage for journalctl observation
 
 This is one of TWO independent verifiers (the other is `verifier.py`); having
@@ -16,7 +16,8 @@ both proves multi-verifier consensus is mechanically possible. Future work:
 majority-of-verifiers logic.
 
 Capabilities: coordinate.test.task_requester
-Mocked: payment (no real value transfer at this stage)
+Economy: payment settles in ANP2 internal `credit` units ((JP-redacted)18.11); the
+  kind 54 is an announcement, the relay derives the authoritative transfer
 Real: all signed events on the live relay, multi-participant flow
 """
 
@@ -46,45 +47,52 @@ KIND_PAYMENT_RELEASE = 54
 
 WAIT_FOR_RESULT_SEC = 30
 
-# 30+ short Demo test phrases. Mix of greetings, weather, common nouns,
-# tiny sentences. Kept short so the rule-based translator can hit something.
+# ANP2 mutual-credit economy (PROTOCOL (JP-redacted)18.11). The kind-50 reward is a small
+# whole number of internal `credit` units settled via payment_method
+# `anp2_credit` (JP-redacted) not money, a relay-derived bilateral-IOU ledger.
+REWARD_CREDITS = 3
+
+# 30+ short Demo test phrases (JP-redacted) French source text. Mix of greetings,
+# weather, common nouns, tiny sentences. Kept short and chosen to match
+# translate.py's FR_TO_EN dictionary so the rule-based translator can hit
+# something. No Japanese: all public kind-50 events must be Japanese-free.
 TEST_PHRASES: list[str] = [
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
+    "bonjour",
+    "bonsoir",
+    "salut",
+    "au revoir",
+    "merci",
+    "merci beaucoup",
+    "de rien",
+    "excusez-moi",
+    "pardon",
+    "s'il vous plait",
+    "oui",
+    "non",
+    "bonne nuit",
+    "bon appetit",
+    "comment allez-vous",
+    "je vais bien",
+    "je ne comprends pas",
+    "d'accord",
+    "aidez-moi",
+    "felicitations",
+    "bonne chance",
+    "le chat",
+    "le chien",
+    "un cafe",
+    "un the",
+    "de l'eau",
+    "le livre",
+    "la maison",
     "demo cherry sample",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
-    "(JP-redacted)",
+    "mon ami",
+    "le monde",
+    "aujourd'hui",
+    "demain",
+    "il pleut",
+    "il fait beau",
+    "l'intelligence artificielle",
 ]
 
 
@@ -135,9 +143,13 @@ def post_task_request(agent: Agent, phrase: str) -> dict:
     now = int(time.time())
     body = {
         "cap": CAPABILITY,
-        "input": {"text": phrase, "lang": "ja"},
+        "input": {"text": phrase, "lang": "fr"},
         "constraints": {"deadline_unix": now + 60, "max_cost_usd": 0.01},
-        "reward": {"currency": "USD", "amount": 0, "payment_method": "mocked"},
+        "reward": {
+            "currency": "credit",
+            "amount": REWARD_CREDITS,
+            "payment_method": "anp2_credit",
+        },
     }
     if hasattr(agent, "request_task"):
         return agent.request_task(  # type: ignore[attr-defined]
@@ -216,8 +228,8 @@ def post_payment_release(
         "result_id": result_id,
         "worker_id": worker_id,
         "amount": amount,
-        "currency": "USD",
-        "payment_method": "mocked",
+        "currency": "credit",
+        "payment_method": "anp2_credit",
         "tx_hash": tx_hash,
     }
     if hasattr(agent, "release_payment"):
@@ -225,16 +237,16 @@ def post_payment_release(
             task_id=task_id,
             payment_proof_url=f"mock://{tx_hash}",
             amount=str(amount),
-            currency="USD",
+            currency="credit",
             tx_hash=tx_hash,
-            payment_method="mocked",
+            payment_method="anp2_credit",
             provider_agent_id=worker_id,
         )
     tags = [
         ["e", task_id, "task"],
         ["e", result_id, "result"],
         ["p", worker_id],
-        ["payment_method", "mocked"],
+        ["payment_method", "anp2_credit"],
         ["tx_hash", tx_hash],
     ]
     return agent.publish(
@@ -253,13 +265,14 @@ def main() -> int:
         agent.declare_profile(
             name=AGENT_NAME,
             description=(
-                "Drives the full kind 50-54 task lifecycle for ja->en "
+                "Drives the full kind 50-54 task lifecycle for fr->en "
                 "translation on a 5-minute timer. Posts a request, waits for "
-                "a result, then self-verifies and releases mocked payment. "
-                "Lets the network demonstrate end-to-end signed-event work."
+                "a result, then self-verifies and releases anp2_credit "
+                "payment. Lets the network demonstrate end-to-end signed-event "
+                "work."
             ),
             model_family="rule-based",
-            languages=["ja", "en"],
+            languages=["fr", "en"],
         )
         print("[TaskReq] profile posted")
     if not agent.has_recent_event(4):
@@ -269,7 +282,8 @@ def main() -> int:
                 "description": (
                     "Orchestrates a complete kind 50-54 task lifecycle, "
                     "exercising the protocol against any live transform.text.demo "
-                    "provider. Payment is mocked at this phase."
+                    "provider. Payment settles in ANP2 mutual credit "
+                    "(payment_method=anp2_credit, PROTOCOL (JP-redacted)18.11)."
                 ),
                 "input": "none (timer-driven)",
                 "output": "kind 50 task.request, kind 53 task.verify, kind 54 payment.release",
@@ -358,15 +372,20 @@ def main() -> int:
         f"verify_id={vr['id'][:16]} verdict={verdict} score=1.0"
     )
 
-    # Release (mocked) payment.
-    pay = post_payment_release(agent, task_id, result_ev["id"], worker_id, 0.0)
+    # Release payment via the ANP2 mutual-credit economy (PROTOCOL (JP-redacted)18.11).
+    # The kind-54 is an announcement; the relay derives the authoritative
+    # credit transfer from kind 50 + winning kind 52 + passed kind 53.
+    pay = post_payment_release(
+        agent, task_id, result_ev["id"], worker_id, REWARD_CREDITS
+    )
     tx = next(
         (t[1] for t in pay.get("tags", []) if len(t) >= 2 and t[0] == "tx_hash"),
         "?",
     )
     print(
         f"[TaskReq] STAGE=payment task_id={task_id[:16]} kind=54 "
-        f"payment_id={pay['id'][:16]} tx_hash={tx} amount=0 USD method=mocked"
+        f"payment_id={pay['id'][:16]} tx_hash={tx} "
+        f"amount={REWARD_CREDITS} credit method=anp2_credit"
     )
 
     mark_seen(task_id)

@@ -1392,6 +1392,11 @@ class Storage:
     HEALTH_7D = 7 * HEALTH_24H
     HEALTH_BUCKET_SEC = 300
 
+    # PROTOCOL (JP-redacted)18.11 (JP-redacted) ANP2 mutual credit. Phase 0/1 reference relays use a
+    # flat credit limit; an agent's derived balance may go negative only down
+    # to -ANP2_BASE_CREDIT_LIMIT. Trust-scaling is a deferred Phase 2 refinement.
+    ANP2_BASE_CREDIT_LIMIT = 1000
+
     def agents(self) -> list[dict]:
         """List distinct agent_ids with their latest profile content, event count, and liveness summary."""
         conn = self._conn()
@@ -1494,6 +1499,8 @@ class Storage:
         d["is_healthy"]     = h["is_healthy"]
         d["uptime_24h_pct"] = h["uptime_24h_pct"]
         d["last_seen_at"]   = h["last_seen_at"]
+        # PROTOCOL (JP-redacted)18.11 (JP-redacted) surface the derived ANP2 mutual-credit balance.
+        d["credit_balance"] = self.credit_for(agent_id)["balance"]
         return d
 
     def record_beat(self, agent_id: str, created_at: int, content: str) -> None:
@@ -1563,4 +1570,142 @@ class Storage:
             "p50_latency_ms": p50,
             "p95_latency_ms": p95,
             "status_notes": [],
+        }
+
+    def credit_for(self, agent_id: str, now: int | None = None) -> dict:
+        """Derive an agent's ANP2 mutual-credit position from the event log.
+
+        See PROTOCOL (JP-redacted)18.11. Balance is never stored (JP-redacted) it is a pure function
+        of kinds 50/52/53/55. Total credit in the system is always exactly
+        zero: every passed task debits the requester exactly what it credits
+        the provider.
+
+          - task_id of a kind 50 == its own event id.
+          - kind 52/53/55 carry task_id in content JSON `task_id`.
+          - provider of a task = author of the EARLIEST kind 52 for that task.
+          - verdict = `passed` if >=1 kind-53 verdict==passed AND 0 ==failed;
+            `failed` if the reverse; otherwise unsettled.
+          - cancelled = any task_id referenced by a kind 55.
+          - anp2_credit kind-50 only: passed -> requester -amount, provider
+            +amount. failed / cancelled / timed-out -> zero movement. open
+            (none of the above) -> requester's amount adds to `locked`.
+
+        Returns {agent_id, balance, locked, available, credit_limit}.
+        """
+        t_now = int(time.time()) if now is None else int(now)
+        events = self.query(kinds=[50, 52, 53, 55], limit=100000)
+
+        requests: dict[str, Event] = {}   # task_id -> kind 50
+        results: dict[str, list[Event]] = {}   # task_id -> kind 52 list
+        verifies: dict[str, list[Event]] = {}  # task_id -> kind 53 list
+        cancelled: set[str] = set()
+
+        def _task_id_from_content(ev: Event) -> str | None:
+            try:
+                body = json.loads(ev.content)
+            except (ValueError, TypeError):
+                return None
+            if not isinstance(body, dict):
+                return None
+            tid = body.get("task_id")
+            return tid if isinstance(tid, str) and tid else None
+
+        for ev in events:
+            if ev.kind == 50:
+                requests[ev.id] = ev
+            elif ev.kind == 52:
+                tid = _task_id_from_content(ev)
+                if tid:
+                    results.setdefault(tid, []).append(ev)
+            elif ev.kind == 53:
+                tid = _task_id_from_content(ev)
+                if tid:
+                    verifies.setdefault(tid, []).append(ev)
+            elif ev.kind == 55:
+                tid = _task_id_from_content(ev)
+                if tid:
+                    cancelled.add(tid)
+
+        balance = 0
+        locked = 0
+
+        for task_id, req in requests.items():
+            # Parse the kind-50 reward defensively.
+            try:
+                body = json.loads(req.content)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(body, dict):
+                continue
+            reward = body.get("reward")
+            if not isinstance(reward, dict):
+                continue
+            if reward.get("payment_method") != "anp2_credit":
+                continue  # `mocked` tasks never move credit
+            try:
+                amount = int(reward["amount"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if amount < 0:
+                continue
+
+            requester = req.agent_id
+
+            # Provider = author of the EARLIEST kind 52 for this task.
+            task_results = results.get(task_id, [])
+            provider = None
+            if task_results:
+                earliest = min(task_results, key=lambda e: (e.created_at, e.id))
+                provider = earliest.agent_id
+
+            # Verdict from kind-53 events.
+            n_passed = 0
+            n_failed = 0
+            for v in verifies.get(task_id, []):
+                try:
+                    vbody = json.loads(v.content)
+                except (ValueError, TypeError):
+                    continue
+                if not isinstance(vbody, dict):
+                    continue
+                vd = vbody.get("verdict")
+                if vd == "passed":
+                    n_passed += 1
+                elif vd == "failed":
+                    n_failed += 1
+            if n_passed >= 1 and n_failed == 0:
+                verdict = "passed"
+            elif n_failed >= 1 and n_passed == 0:
+                verdict = "failed"
+            else:
+                verdict = None  # unsettled
+
+            # Deadline-based timeout: deadline in the past with no result yet.
+            timed_out = False
+            constraints = body.get("constraints")
+            if isinstance(constraints, dict):
+                dl = constraints.get("deadline_unix")
+                if isinstance(dl, (int, float)) and int(dl) < t_now and not task_results:
+                    timed_out = True
+
+            if verdict == "passed" and provider is not None:
+                # Settled: bilateral transfer, sums to zero.
+                if requester == agent_id:
+                    balance -= amount
+                if provider == agent_id:
+                    balance += amount
+            elif verdict == "failed" or task_id in cancelled or timed_out:
+                # Settled with no movement, and not locked.
+                continue
+            else:
+                # OPEN task: the requester's reward is committed but unsettled.
+                if requester == agent_id:
+                    locked += amount
+
+        return {
+            "agent_id": agent_id,
+            "balance": int(balance),
+            "locked": int(locked),
+            "available": int(balance) - int(locked),
+            "credit_limit": self.ANP2_BASE_CREDIT_LIMIT,
         }
