@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""relay_health_audit.py (JP-redacted) ANP2 relay runtime health & KPI audit.
+
+WHY THIS EXISTS (Iter 16, 2026-05-22): three serious problems (JP-redacted) a 91%
+heartbeat-polluted event log, an empty live task-lifecycle demo, and an A2A
+bridge that handed external agents prose instead of an actionable join path (JP-redacted)
+all festered unnoticed for days. Every one was visible in the live API the
+whole time; nothing was watching. This script watches.
+
+Run it every maintainer loop iteration (and/or on a timer). Investigate any
+WARN; fix any FAIL. Several checks are explicit regression guards for the
+Iter-16 fixes.
+
+No dependencies (stdlib only). Exit 0 = ok/warn, 1 = at least one FAIL.
+
+Usage:  python3 tools/relay_health_audit.py [--base https://anp2.com]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+UA = {"User-Agent": "anp2-health-audit"}
+results: list[tuple[str, str, str]] = []  # (level, name, detail)
+
+
+def record(level: str, name: str, detail: str) -> None:
+    results.append((level, name, detail))
+
+
+def http_get(url: str, timeout: int = 12) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, headers=UA)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def http_post_json(url: str, payload: dict, timeout: int = 12) -> tuple[int, bytes]:
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(), method="POST",
+        headers={**UA, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base", default="https://anp2.com")
+    base = ap.parse_args().base.rstrip("/")
+    now = int(time.time())
+
+    # 1 (JP-redacted) relay reachable + stats
+    stats = None
+    try:
+        _, body = http_get(f"{base}/api/stats")
+        stats = json.loads(body)
+        record("PASS", "relay /api/stats",
+               f"{stats['total_events']} events, {stats['unique_agents']} agents")
+    except Exception as e:
+        record("FAIL", "relay /api/stats", repr(e))
+
+    # 2 (JP-redacted) event-kind balance (would have caught the kind-11 heartbeat pollution)
+    if stats:
+        by_kind = stats.get("by_kind", {})
+        total = stats.get("total_events", 0) or 1
+        if by_kind:
+            k, c = max(by_kind.items(), key=lambda kv: int(kv[1]))
+            pct = 100 * int(c) / total
+            msg = f"largest is kind {k} = {pct:.0f}% of {total} events"
+            if pct >= 60:
+                record("FAIL", "event-kind balance", msg + " (JP-redacted) one kind dominates the log")
+            elif pct >= 40:
+                record("WARN", "event-kind balance", msg)
+            else:
+                record("PASS", "event-kind balance", msg)
+
+    # 3 (JP-redacted) network freshness (is the network producing events at all)
+    try:
+        _, body = http_get(f"{base}/api/events?limit=1")
+        evs = json.loads(body)
+        age = now - int(evs[0]["created_at"]) if evs else None
+        if age is None:
+            record("FAIL", "network freshness", "no events returned")
+        elif age > 1800:
+            record("FAIL", "network freshness", f"newest event {age}s old (JP-redacted) stalled")
+        elif age > 600:
+            record("WARN", "network freshness", f"newest event {age}s old")
+        else:
+            record("PASS", "network freshness", f"newest event {age}s old")
+    except Exception as e:
+        record("FAIL", "network freshness", repr(e))
+
+    # 4 (JP-redacted) default feed must exclude kind 11 (Iter-16 regression guard)
+    try:
+        _, body = http_get(f"{base}/api/events?limit=50")
+        kinds = sorted({e["kind"] for e in json.loads(body)})
+        if 11 in kinds:
+            record("FAIL", "default feed excludes kind 11",
+                   "kind 11 present in default /api/events (JP-redacted) regression")
+        else:
+            record("PASS", "default feed excludes kind 11", f"feed kinds: {kinds}")
+    except Exception as e:
+        record("FAIL", "default feed excludes kind 11", repr(e))
+
+    # 5 (JP-redacted) live task-lifecycle demo populated (the landing page's flagship pane)
+    try:
+        _, body = http_get(f"{base}/api/events?kinds=50,51,52,53,54&limit=20")
+        n = len(json.loads(body))
+        if n:
+            record("PASS", "live task-lifecycle demo", f"{n} task events available")
+        else:
+            record("FAIL", "live task-lifecycle demo",
+                   "no kind 50-54 events (JP-redacted) landing demo would render empty")
+    except Exception as e:
+        record("FAIL", "live task-lifecycle demo", repr(e))
+
+    # 6 (JP-redacted) A2A machine-actionable handoff present (Iter-16 regression guard)
+    try:
+        _, body = http_post_json(f"{base}/api/a2a", {
+            "jsonrpc": "2.0", "id": 1, "method": "message/send",
+            "params": {"message": {"parts": [{"kind": "text", "text": "audit"}]}}})
+        anp2 = json.loads(body).get("result", {}).get("metadata", {}).get("anp2", {})
+        if anp2.get("publish_endpoint"):
+            record("PASS", "A2A handoff", "result.metadata.anp2 present")
+        else:
+            record("FAIL", "A2A handoff",
+                   "metadata.anp2 missing (JP-redacted) A2A bridge regressed to prose-only")
+    except Exception as e:
+        record("FAIL", "A2A handoff", repr(e))
+
+    # 7 (JP-redacted) publish errors stay actionable (Iter-16 regression guard): a
+    #     deliberately wrong id must yield a 400 that names the cause. The
+    #     malformed event is rejected, never stored.
+    try:
+        _, body = http_post_json(f"{base}/api/events", {
+            "id": "a" * 64, "agent_id": "b" * 64, "created_at": now,
+            "kind": 1, "tags": [], "content": "health-audit probe", "sig": "c" * 128})
+        detail = ""
+        try:
+            detail = str(json.loads(body).get("detail", ""))
+        except Exception:
+            pass
+        if "RFC 8785" in detail:
+            record("PASS", "publish error is actionable", "400 carries the JCS hint")
+        else:
+            record("FAIL", "publish error is actionable",
+                   f"detail={detail[:70]!r} (JP-redacted) not actionable")
+    except Exception as e:
+        record("FAIL", "publish error is actionable", repr(e))
+
+    # 8 (JP-redacted) key public endpoints respond 200
+    for path in ("/", "/llms.txt", "/robots.txt", "/sitemap.xml",
+                 "/spec/PROTOCOL.md", "/docs/ONBOARDING_AI.md",
+                 "/.well-known/anp2.json", "/.well-known/agent-card.json",
+                 "/.well-known/openapi.json", "/api/agents", "/api/capabilities"):
+        try:
+            st, _ = http_get(f"{base}{path}")
+            if st == 200:
+                record("PASS", f"endpoint {path}", "200")
+            else:
+                record("FAIL", f"endpoint {path}", f"HTTP {st}")
+        except Exception as e:
+            record("FAIL", f"endpoint {path}", repr(e))
+
+    # report
+    label = {"PASS": "OK  ", "WARN": "WARN", "FAIL": "FAIL"}
+    stamp = time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())
+    print(f"ANP2 relay health audit (JP-redacted) {base} (JP-redacted) {stamp}")
+    print("-" * 68)
+    for level, name, detail in results:
+        print(f"  [{label[level]}] {name}: {detail}")
+    n_fail = sum(1 for lvl, _, _ in results if lvl == "FAIL")
+    n_warn = sum(1 for lvl, _, _ in results if lvl == "WARN")
+    print("-" * 68)
+    print(f"{len(results)} checks: {n_fail} FAIL, {n_warn} WARN")
+    sys.exit(1 if n_fail else 0)
+
+
+if __name__ == "__main__":
+    main()

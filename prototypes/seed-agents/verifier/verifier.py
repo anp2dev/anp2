@@ -57,6 +57,31 @@ def mark_seen(result_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Result-payload helper.
+# ---------------------------------------------------------------------------
+def extract_output_text(output) -> str:
+    """Normalise a kind 52 `output` field to a plain string.
+
+    PROTOCOL (JP-redacted)18.5 specifies `output` as a JSON object, e.g. {"text": "hello"};
+    the anp2_client `submit_result` helper that translate.py uses publishes
+    exactly that shape. Older fallback code paths publish `output` as a bare
+    string. Accept both: read the text field from a dict, pass a string
+    through, and return "" for anything else.
+
+    Without this, `output` is the raw dict and verify_translation() rejects
+    every result as "not a string" (JP-redacted) i.e. every verdict would be failed.
+    """
+    if isinstance(output, str):
+        return output
+    if isinstance(output, dict):
+        for key in ("text", "content", "result", "translation"):
+            v = output.get(key)
+            if isinstance(v, str):
+                return v
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Independent verification logic.
 # ---------------------------------------------------------------------------
 def _is_mostly_latin(text: str, threshold: float = 0.7) -> bool:
@@ -114,8 +139,17 @@ def _task_id_from_result(ev: dict) -> str | None:
 
 
 def _result_targets_cap(ev: dict, cap: str) -> bool:
+    """True if a kind-52 result is for capability `cap`.
+
+    PROTOCOL (JP-redacted)18.7 mandates the capability rides on the ["t", "<cap>"] tag
+    (uniform across kinds 50-55), and the anp2_client `submit_result`
+    helper that translate.py uses emits exactly that. Earlier code also
+    published a ["cap", ...] tag and/or a `cap` body field, so we accept all
+    three forms. (Missing the `t` tag was the bug that made this verifier
+    match zero results and therefore never publish a kind 53.)
+    """
     for tag in ev.get("tags", []) or []:
-        if len(tag) >= 2 and tag[0] == "cap" and tag[1] == cap:
+        if len(tag) >= 2 and tag[0] in ("t", "cap") and tag[1] == cap:
             return True
     try:
         body = json.loads(ev.get("content") or "{}")
@@ -237,10 +271,12 @@ def main() -> int:
             rbody = json.loads(result_ev.get("content") or "{}")
         except (ValueError, TypeError):
             rbody = {}
-        output = rbody.get("output", "")
+        # PROTOCOL (JP-redacted)18.5: `output` is a JSON object (e.g. {"text": ...}); the
+        # publish() fallback path emits a bare string. Normalise both.
+        output_text = extract_output_text(rbody.get("output", ""))
 
         input_text = _request_input_text(agent, task_id, req_by_id.get(task_id))
-        verdict, reasons = verify_translation(input_text, output)
+        verdict, reasons = verify_translation(input_text, output_text)
         score = 1.0 if verdict == "passed" else 0.0
 
         body = {

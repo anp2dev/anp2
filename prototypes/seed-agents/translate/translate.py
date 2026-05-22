@@ -174,72 +174,95 @@ def _strip_request(text: str) -> str:
     return cleaned.strip(_PUNCT_TRIM).strip()
 
 
+# Characters that count as "covered" filler when checking whole-input
+# coverage: ASCII spaces, the ideographic space, tabs/newlines, and the
+# punctuation marks the dictionary keys never include.
+_SKIP_CHARS = set(" (JP-redacted)\t\n(JP-redacted).,!?ï(JP-redacted)ï(JP-redacted)\"'-")
+
+
+def _is_clean_english(text: str) -> bool:
+    """True iff `text` contains no Japanese (and no other non-ASCII) chars.
+
+    Every event this agent publishes is a public network surface, so an
+    output is only allowed to ship if it is verifiably free of Japanese /
+    non-English fragments. This is the last-line guard before returning.
+    """
+    return not any(_is_ja_char(ch) for ch in text) and all(
+        ord(ch) < 128 for ch in text
+    )
+
+
+def _unsupported_stub(src: str, dst: str) -> str:
+    """Honest, English-only placeholder for input the dictionary cannot
+    fully translate. Deliberately does NOT echo the (possibly Japanese)
+    input back (JP-redacted) echoing it would leak non-English text onto the network."""
+    return (
+        "[translate: unsupported input - the Phase 0-1 rule-based dictionary "
+        "does not fully cover this text, so no translation is emitted. "
+        "LLM-backed translation arrives in Phase 1.5.]"
+    )
+
+
 def translate(text: str) -> tuple[str, str, str]:
     """Return (translated_text, src_lang, dst_lang).
 
-    translated_text is either a real translation or a stub placeholder.
+    translated_text is EITHER a clean-English real translation OR an honest,
+    English-only "unsupported input" stub. It is never a mixed-language
+    fragment: this agent only emits a translation when its dictionary fully
+    covers the input, and every public-facing event must be free of
+    Japanese / non-English text.
     """
     src = detect_lang(text)
-    if src == "ja":
-        dst = "en"
-        table = JA_TO_EN
-    elif src == "en":
-        dst = "ja"
-        table = EN_TO_JA
-    else:
-        return (
-            f"[translate stub: '{text}' (JP-redacted) language not detected; "
-            "LLM-backed translation arrives in Phase 1.5]",
-            "unknown",
-            "unknown",
-        )
 
-    key = text.lower() if src == "en" else text
-    # whole-phrase exact match
-    if key in table:
-        return table[key], src, dst
-    # whole-phrase trimmed match
-    key_trim = key.strip(_PUNCT_TRIM)
-    if key_trim in table:
-        return table[key_trim], src, dst
+    # en->ja would by definition emit Japanese, which must never appear on a
+    # public event. Only the ja->en direction can produce a publishable
+    # (English) result; everything else returns the English-only stub.
+    if src != "ja":
+        dst = "en" if src == "ja" else "unknown"
+        return _unsupported_stub(src, dst), src, dst
 
-    # token-level greedy substitution
+    dst = "en"
+
+    # whole-phrase exact / trimmed match (JP-redacted) the safest, highest-quality path.
+    for candidate in (text, text.strip(_PUNCT_TRIM)):
+        if candidate in JA_TO_EN:
+            result = JA_TO_EN[candidate]
+            if _is_clean_english(result):
+                return result, src, dst
+
+    # Longest-match scan. Crucially: only return a translation if EVERY
+    # character of the input is either covered by a dictionary entry or is
+    # skippable punctuation/whitespace. Partial coverage -> unsupported stub,
+    # never a mixed ja/en fragment like "tea(JP-redacted)".
+    remaining = text
     out_tokens: list[str] = []
-    matched_any = False
-    if src == "en":
-        for tok in re.split(r"(\s+|[.,!?])", text):
-            low = tok.lower().strip()
-            if low and low in table:
-                out_tokens.append(table[low])
-                matched_any = True
-            else:
-                out_tokens.append(tok)
-        if matched_any:
-            return "".join(out_tokens).strip(), src, dst
-    else:  # ja: try longest-match scan over the dictionary keys
-        remaining = text
-        ja_keys_sorted = sorted(JA_TO_EN.keys(), key=len, reverse=True)
-        while remaining:
-            hit = None
-            for k in ja_keys_sorted:
-                if remaining.startswith(k):
-                    hit = k
-                    break
-            if hit:
-                out_tokens.append(JA_TO_EN[hit])
-                remaining = remaining[len(hit):]
-                matched_any = True
-            else:
-                out_tokens.append(remaining[0])
-                remaining = remaining[1:]
-        if matched_any:
-            return " ".join(t for t in "".join(out_tokens).split() if t), src, dst
+    ja_keys_sorted = sorted(JA_TO_EN.keys(), key=len, reverse=True)
+    fully_covered = True
+    while remaining:
+        ch = remaining[0]
+        if ch in _SKIP_CHARS:
+            remaining = remaining[1:]
+            continue
+        hit = None
+        for k in ja_keys_sorted:
+            if remaining.startswith(k):
+                hit = k
+                break
+        if hit:
+            out_tokens.append(JA_TO_EN[hit])
+            remaining = remaining[len(hit):]
+        else:
+            # An untranslatable character: the dictionary does not fully
+            # cover this input. Bail out to the honest stub.
+            fully_covered = False
+            break
 
-    return (
-        f"[translate stub: '{text}' (JP-redacted) LLM-backed translation arrives in Phase 1.5]",
-        src,
-        dst,
-    )
+    if fully_covered and out_tokens:
+        result = " ".join(t for t in " ".join(out_tokens).split() if t)
+        if _is_clean_english(result):
+            return result, src, dst
+
+    return _unsupported_stub(src, dst), src, dst
 
 
 # ---------------------------------------------------------------------------

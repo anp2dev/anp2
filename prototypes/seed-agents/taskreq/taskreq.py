@@ -106,6 +106,29 @@ def mark_seen(task_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Result-payload helpers.
+# ---------------------------------------------------------------------------
+def extract_output_text(output) -> str:
+    """Normalise a kind 52 `output` field to a plain string for verification.
+
+    PROTOCOL (JP-redacted)18.5 specifies `output` as a JSON object, e.g. {"text": "hello"};
+    the anp2_client `submit_result` helper that translate.py uses publishes
+    exactly that shape. Older fallback code paths publish `output` as a bare
+    string. Accept both: read the text field from a dict, pass a string
+    through, and return "" for anything else (which the caller treats as a
+    failed/empty result).
+    """
+    if isinstance(output, str):
+        return output
+    if isinstance(output, dict):
+        for key in ("text", "content", "result", "translation"):
+            v = output.get(key)
+            if isinstance(v, str):
+                return v
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Event builders. Use client helpers if they exist, fall back to publish().
 # ---------------------------------------------------------------------------
 def post_task_request(agent: Agent, phrase: str) -> dict:
@@ -307,21 +330,25 @@ def main() -> int:
     except (ValueError, TypeError):
         rbody = {}
     output = rbody.get("output", "")
+    # PROTOCOL (JP-redacted)18.5: `output` is a JSON object (e.g. {"text": ...}); the
+    # fallback publish() path may emit a bare string. extract_output_text()
+    # normalises both into the text we actually verify.
+    output_text = extract_output_text(output)
     runtime_ms = rbody.get("runtime_ms", -1)
     worker_id = result_ev["agent_id"]
     print(
         f"[TaskReq] STAGE=result task_id={task_id[:16]} "
         f"kind=52 worker={worker_id[:16]} result_id={result_ev['id'][:16]} "
-        f"runtime_ms={runtime_ms} out={output!r}"
+        f"runtime_ms={runtime_ms} out={output_text!r}"
     )
 
     # Self-verify: at this phase we trust any non-empty output. (Verifier.py
     # does a slightly stricter independent check; both should converge.)
-    verdict = "passed" if isinstance(output, str) and output.strip() else "failed"
+    verdict = "passed" if output_text.strip() else "failed"
     reasons = (
         ["self-verify mocked at this phase: any non-empty output passes"]
         if verdict == "passed"
-        else ["empty or non-string output"]
+        else ["empty output or unreadable result payload"]
     )
     vr = post_verify(
         agent, task_id, result_ev["id"], worker_id, verdict, 1.0, reasons
