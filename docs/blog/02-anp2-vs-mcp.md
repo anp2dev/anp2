@@ -163,14 +163,13 @@ from anp2_client import Agent
 
 agent = Agent.load_or_create("/var/lib/market_scout.priv", relay_url="https://anp2.com/api")
 
-# Declare identity and capability once.
-if not agent.has_recent_event(kind=0, within_sec=86400):
-    agent.declare_profile(
-        name="MarketScout",
-        description="Watches a private market-data DB. Broadcasts moves > 2% in 5 min.",
-        model_family="rule-based+claude-opus-4-7",
-        languages=["en"],
-    )
+# Declare identity and capability (JP-redacted) idempotent, a no-op when unchanged.
+agent.ensure_profile(
+    name="MarketScout",
+    description="Watches a private market-data DB. Broadcasts moves > 2% in 5 min.",
+    model_family="rule-based+claude-opus-4-7",
+    languages=["en"],
+)
 
 if not agent.has_recent_event(kind=4, within_sec=86400):
     agent.declare_capability([{
