@@ -10,7 +10,7 @@ Every run (timer fires every 5 minutes):
      authoritative weight and does NOT settle credit; this self-verify is
      informational only.
   5. Then posts a kind 54 payment.release with payment_method=anp2_credit
-     (ANP2 mutual credit, PROTOCOL (JP-redacted)18.11) and tx_hash="mock-<short hash>"
+     (ANP2 operator-issued credit, PROTOCOL (JP-redacted)18.11) and tx_hash="mock-<short hash>"
   6. Logs each lifecycle stage for journalctl observation
 
 Settlement is driven by the neutral `verifier.py` agent: per (JP-redacted)18.11 credit
@@ -49,10 +49,15 @@ KIND_PAYMENT_RELEASE = 54
 
 WAIT_FOR_RESULT_SEC = 30
 
-# ANP2 mutual-credit economy (PROTOCOL (JP-redacted)18.11). The kind-50 reward is a small
-# whole number of internal `credit` units settled via payment_method
-# `anp2_credit` (JP-redacted) not money, a relay-derived bilateral-IOU ledger.
-REWARD_CREDITS = 3
+# ANP2 operator-issued credit (PROTOCOL (JP-redacted)18.11). taskreq is the network's
+# designated issuer: it posts paying tasks, and its negative balance is the
+# circulating credit supply (a central-bank-balance-sheet position, not a
+# defect). The kind-50 reward is `anp2_credit`; on settlement the relay
+# routes 10% to the treasury agent and 90% to the provider.
+#
+# Set to 10 so the 10%-floor fee is actually non-zero (= 1 credit to treasury,
+# 9 to provider), exercising the fee path each task.
+REWARD_CREDITS = 10
 
 # 30+ short Demo test phrases (JP-redacted) French source text. Mix of greetings,
 # weather, common nouns, tiny sentences. Kept short and chosen to match
@@ -266,11 +271,11 @@ def main() -> int:
     if agent.ensure_profile(
         name=AGENT_NAME,
         description=(
-            "Drives the full kind 50-54 task lifecycle for fr->en "
-            "translation on a 5-minute timer. Posts a request, waits for "
-            "a result, then self-verifies and releases anp2_credit "
-            "payment. Lets the network demonstrate end-to-end signed-event "
-            "work."
+            "Operator-issued credit supply (PROTOCOL (JP-redacted)18.11). Posts paying "
+            "kind-50 fr->en translation tasks on a 5-minute timer to drive "
+            "the kind 50-54 lifecycle; its negative balance is the network's "
+            "circulating credit supply. Reward 10 anp2_credit per task (JP-redacted) "
+            "1 to treasury, 9 to the verified provider."
         ),
         model_family="rule-based",
         languages=["fr", "en"],
@@ -283,8 +288,9 @@ def main() -> int:
                 "description": (
                     "Orchestrates a complete kind 50-54 task lifecycle, "
                     "exercising the protocol against any live transform.text.demo "
-                    "provider. Payment settles in ANP2 mutual credit "
-                    "(payment_method=anp2_credit, PROTOCOL (JP-redacted)18.11)."
+                    "provider. Payment settles in ANP2 operator-issued credit "
+                    "(payment_method=anp2_credit, PROTOCOL (JP-redacted)18.11): provider "
+                    "receives 90%, treasury receives 10%."
                 ),
                 "input": "none (timer-driven)",
                 "output": "kind 50 task.request, kind 53 task.verify, kind 54 payment.release",
@@ -373,9 +379,11 @@ def main() -> int:
         f"verify_id={vr['id'][:16]} verdict={verdict} score=1.0"
     )
 
-    # Release payment via the ANP2 mutual-credit economy (PROTOCOL (JP-redacted)18.11).
-    # The kind-54 is an announcement; the relay derives the authoritative
-    # credit transfer from kind 50 + winning kind 52 + passed kind 53.
+    # Release payment via the ANP2 operator-issued credit economy ((JP-redacted)18.11).
+    # The kind-54 is an announcement carrying the gross reward amount; the
+    # relay derives the authoritative credit transfer from kind 50 + winning
+    # kind 52 + passed kind 53 and routes 10% to the treasury, 90% to the
+    # provider.
     pay = post_payment_release(
         agent, task_id, result_ev["id"], worker_id, REWARD_CREDITS
     )

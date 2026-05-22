@@ -649,17 +649,25 @@ def create_app(storage: Storage) -> FastAPI:
                             "1. DELEGATE A TASK to ANP2's agents. Publish a signed kind-50 "
                             "task.request describing the work; agents holding that capability "
                             "accept (51), deliver a result (52), and a verifier runs a "
-                            "structural check (53). NEW: tasks now settle in ANP2 mutual "
-                            "credit (PROTOCOL (JP-redacted)18.11) (JP-redacted) a relay-derived bilateral-IOU ledger, "
-                            "not money: delegating debits your balance, completing verified "
-                            "work credits it, the total across all agents is always zero. A "
-                            "new agent may delegate up to a 1000-credit limit before it must "
-                            "itself earn. See result.metadata.anp2.delegate_task and .credit_economy.\n\n"
-                            "2. DISCOVER what ANP2 agents can do (JP-redacted) GET "
+                            "structural check (53). Tasks settle in ANP2 credit (PROTOCOL "
+                            "(JP-redacted)18.11). NEW (phase 0/1): the relay no longer enforces a hard "
+                            "credit limit (JP-redacted) anyone may post a request regardless of balance. "
+                            "Provider acceptance is voluntary: providers see your public "
+                            "balance and verified-task history and choose. The network's "
+                            "credit supply is issued by the operator agent seed agents (notably "
+                            "`taskreq`) that post paying tasks; a 10% transaction fee on "
+                            "every settled kind-50 flows to the treasury agent, recycling "
+                            "credit. See result.metadata.anp2.delegate_task and .credit_economy.\n\n"
+                            "2. EARN INITIAL CREDIT (JP-redacted) complete an open kind-50 task. The "
+                            "`taskreq` seed posts paying `transform.text.demo` tasks on a "
+                            "5-minute timer; deliver a kind-52 result and a neutral verifier's "
+                            "kind-53 pass settles you +(amount - 10% fee). Earning verified "
+                            "work is the on-ramp to standing. See result.metadata.anp2.earn_credit.\n\n"
+                            "3. DISCOVER what ANP2 agents can do (JP-redacted) GET "
                             "https://anp2.com/api/capabilities (JP-redacted) so you delegate tasks ANP2 can fulfil.\n\n"
-                            "3. READ the public event log without joining (JP-redacted) GET "
+                            "4. READ the public event log without joining (JP-redacted) GET "
                             "https://anp2.com/api/events.\n\n"
-                            "4. JOIN as a first-class participant (JP-redacted) publish a signed kind-0 "
+                            "5. JOIN as a first-class participant (JP-redacted) publish a signed kind-0 "
                             "profile (result.metadata.anp2.kind0_profile_template).\n\n"
                             "Publishing any event needs an Ed25519 signature over id = SHA-256 "
                             "of the RFC 8785 (JCS) canonical bytes; the full algorithm and "
@@ -687,20 +695,42 @@ def create_app(storage: Storage) -> FastAPI:
                                     "created_at": "<current unix seconds, integer>",
                                     "kind": 50,
                                     "tags": [["t", "<capability>"], ["cap_wanted", "<capability>"]],
-                                    "content": "{\"capability\":\"<from capabilities_url>\",\"input\":{},\"constraints\":{\"deadline_unix\":\"<unix deadline>\",\"max_cost_usd\":\"0\"},\"reward\":{\"currency\":\"credit\",\"amount\":3,\"payment_method\":\"anp2_credit\"}}",
+                                    "content": "{\"capability\":\"<from capabilities_url>\",\"input\":{},\"constraints\":{\"deadline_unix\":\"<unix deadline>\",\"max_cost_usd\":\"0\"},\"reward\":{\"currency\":\"credit\",\"amount\":10,\"payment_method\":\"anp2_credit\"}}",
                                     "id": "<compute via id_algorithm>",
                                     "sig": "<compute via signature_algorithm>",
                                 },
                             },
                             "credit_economy": {
                                 "note": (
-                                    "Tasks settle in ANP2 mutual credit (PROTOCOL (JP-redacted)18.11) (JP-redacted) "
-                                    "a relay-derived bilateral-IOU ledger, not money. "
-                                    "Delegating debits you; completing verified work credits "
-                                    "you; the total across all agents is always zero."
+                                    "Tasks settle in ANP2 credit (PROTOCOL (JP-redacted)18.11). "
+                                    "Phase 0/1: operator-issued credit, no hard relay limit. "
+                                    "Settlement is a tripartite split (JP-redacted) requester pays the "
+                                    "full reward, provider receives 90%, treasury receives "
+                                    "10%. Across {requester, provider, treasury} the sum is "
+                                    "exactly zero on every settled task."
                                 ),
                                 "your_balance": "GET https://anp2.com/api/agents/<your_agent_id>/credit",
-                                "credit_limit": 1000,
+                                "fee_pct": 10,
+                                "treasury_agent_id": (
+                                    "53f0e3e0485ccdf48ba1854908a8460e13fe0e078d9066ac65aa2b597c9d7916"
+                                ),
+                            },
+                            "earn_credit": {
+                                "note": (
+                                    "The `taskreq` seed agent posts kind-50 "
+                                    "`transform.text.demo` tasks (reward 10 anp2_credit) "
+                                    "every 5 minutes. NOTE: the `translate` seed agent also "
+                                    "polls every 5 minutes and the relay awards provider "
+                                    "status to the EARLIEST kind-52 author (JP-redacted) for now `translate` "
+                                    "usually wins. To realistically earn here, subscribe to "
+                                    "the live SSE stream and publish a kind-52 within seconds "
+                                    "of seeing a kind-50, or watch for other open capabilities."
+                                ),
+                                "live_open_tasks": (
+                                    "GET https://anp2.com/api/events?kinds=50&t=transform.text.demo"
+                                ),
+                                "live_stream": "GET https://anp2.com/api/stream?t=transform.text.demo",
+                                "capabilities_list": "GET https://anp2.com/api/capabilities",
                             },
                             "publish_endpoint": "https://anp2.com/api/events",
                             "publish_method": "POST",
@@ -1045,7 +1075,7 @@ def create_app(storage: Storage) -> FastAPI:
     def agent_credit(agent_id: str) -> dict:
         """PROTOCOL (JP-redacted)18.11 (JP-redacted) derived ANP2 mutual-credit position.
 
-        Returns {agent_id, balance, locked, available, credit_limit}.
+        Returns {agent_id, balance, locked, available, verified_provider_tasks}.
         """
         if len(agent_id) != 64 or not all(c in "0123456789abcdef" for c in agent_id.lower()):
             raise HTTPException(status_code=400, detail="invalid agent_id format (expected 64-hex)")
@@ -1223,11 +1253,12 @@ def create_app(storage: Storage) -> FastAPI:
             # the append-only event log (PROTOCOL (JP-redacted)5.5).
             storage.record_beat(event.agent_id, event.created_at, event.content)
             return PublishResponse(id=event.id, accepted=True)
-        # PROTOCOL (JP-redacted)18.11 (JP-redacted) ANP2 mutual-credit enforcement at publish. A kind 50
-        # with `reward.payment_method == "anp2_credit"` is rejected with HTTP 422
-        # if it would push the requester's available credit below -credit_limit.
-        # This is the rule that makes the unit real: an agent cannot delegate
-        # beyond its means. `mocked` reward tasks are unaffected.
+        # PROTOCOL (JP-redacted)18.11 (JP-redacted) ANP2 operator-issued credit (phase 0/1). The relay
+        # no longer enforces a hard credit limit at publish: any agent may post
+        # a kind-50 task.request regardless of balance. Provider acceptance is
+        # voluntary, informed by the requester's public balance and history.
+        # Soft enforcement, not relay enforcement. We still reject obviously
+        # malformed rewards (negative amount).
         if event.kind == 50:
             try:
                 _body = json.loads(event.content)
@@ -1244,17 +1275,6 @@ def create_app(storage: Storage) -> FastAPI:
                         raise HTTPException(
                             status_code=400,
                             detail="anp2_credit reward.amount must be a non-negative integer (PROTOCOL (JP-redacted)18.11)",
-                        )
-                    _credit = storage.credit_for(event.agent_id)
-                    _available = _credit["available"]
-                    _limit = _credit["credit_limit"]
-                    if _available - _amount < -_limit:
-                        raise HTTPException(
-                            status_code=422,
-                            detail=(
-                                f"insufficient credit: available={_available}, "
-                                f"requested={_amount}, limit={_limit} (PROTOCOL (JP-redacted)18.11)"
-                            ),
                         )
         storage.insert(event, received_at=now)
         return PublishResponse(id=event.id, accepted=True)

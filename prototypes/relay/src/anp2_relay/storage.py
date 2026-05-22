@@ -1392,10 +1392,37 @@ class Storage:
     HEALTH_7D = 7 * HEALTH_24H
     HEALTH_BUCKET_SEC = 300
 
-    # PROTOCOL (JP-redacted)18.11 (JP-redacted) ANP2 mutual credit. Phase 0/1 reference relays use a
-    # flat credit limit; an agent's derived balance may go negative only down
-    # to -ANP2_BASE_CREDIT_LIMIT. Trust-scaling is a deferred Phase 2 refinement.
-    ANP2_BASE_CREDIT_LIMIT = 1000
+    # PROTOCOL (JP-redacted)18.11 (JP-redacted) ANP2 operator-issued credit (phase 0/1).
+    #
+    # Credit is NOT enforced at publish: any agent may post a kind-50
+    # task.request regardless of balance. Provider acceptance is voluntary (JP-redacted)
+    # providers see the requester's standing (balance, verified_provider_tasks)
+    # and choose whether to serve. Soft enforcement by provider discretion,
+    # not relay enforcement.
+    #
+    # The network's credit supply is driven by the operator agent's seed agents,
+    # primarily `taskreq`, which post paying tasks; their negative balance is
+    # the issued supply (JP-redacted) a central-bank-balance-sheet position, not a defect.
+    # A 10% transaction fee on every PASSED kind-50 settlement flows to the
+    # treasury agent below, recycling credit and bounding inflation. Across
+    # {requester, provider, treasury} the sum is still exactly zero on every
+    # settled task.
+    #
+    # Future phases add: a Bayesian-time-decay trust score (Iter 26), trust-
+    # gated privileges (Iter 27), mandatory PoW on identities (Iter 27),
+    # supply cap, multi-verifier consensus, convertibility (Phase 2+).
+
+    # Treasury agent_id: receives the 10% fee on every passed kind-50. The
+    # matching private key lives at /var/lib/anp2/treasury.priv on the relay
+    # host (env/treasury.priv locally, gitignored). Treasury is a passive
+    # holder (JP-redacted) it does not run a daemon.
+    ANP2_TREASURY_AGENT_ID = (
+        "53f0e3e0485ccdf48ba1854908a8460e13fe0e078d9066ac65aa2b597c9d7916"
+    )
+    # fee = reward * NUMERATOR // DENOMINATOR (integer floor). Rewards below
+    # DENOMINATOR pay zero fee (JP-redacted) acceptable for tiny demo amounts.
+    ANP2_FEE_NUMERATOR = 1
+    ANP2_FEE_DENOMINATOR = 10   # (JP-redacted) 10%
 
     def agents(self) -> list[dict]:
         """List distinct agent_ids with their latest profile content, event count, and liveness summary."""
@@ -1576,8 +1603,8 @@ class Storage:
         """Derive an agent's ANP2 mutual-credit position from the event log.
 
         See PROTOCOL (JP-redacted)18.11. Balance is never stored (JP-redacted) it is a pure function
-        of kinds 50/51/52/53/55. Total credit is always exactly zero: every
-        passed task debits the requester exactly what it credits the provider.
+        of kinds 50/51/52/53/55. Total credit across the network (JP-redacted) including
+        the treasury (JP-redacted) is always exactly zero on every passed task.
 
           - task_id of a kind 50 == its own event id; kinds 52/53/55 carry it
             in content JSON; kind 51 carries it in an `e` tag.
@@ -1586,11 +1613,12 @@ class Storage:
             reverse), `disputed` (>=1 of each), or unsettled (no verdict).
           - cancelled (PROTOCOL (JP-redacted)18.9) = a kind-55 from the REQUESTER, before
             any kind-51 accept.
-          - anp2_credit kind-50 only: passed -> requester -amount, provider
-            +amount; failed / disputed / cancelled / timed-out -> zero
-            movement; open -> requester's amount adds to `locked`.
+          - anp2_credit kind-50 only, passed: requester -amount; provider
+            +(amount - fee); treasury +fee (fee = amount * 1 // 10, 10% floor).
+            failed / disputed / cancelled / timed-out -> zero movement;
+            open -> requester's amount adds to `locked`.
 
-        Returns {agent_id, balance, locked, available, credit_limit}.
+        Returns {agent_id, balance, locked, available, verified_provider_tasks}.
         """
         t_now = int(time.time()) if now is None else int(now)
         events = self.query(kinds=[50, 51, 52, 53, 55], limit=100000)
@@ -1644,6 +1672,7 @@ class Storage:
 
         balance = 0
         locked = 0
+        verified_as_provider = 0   # passed tasks where this agent was provider
 
         for task_id, req in requests.items():
             # Parse the kind-50 reward defensively.
@@ -1685,6 +1714,13 @@ class Storage:
             for v in verifies.get(task_id, []):
                 if v.agent_id == requester or v.agent_id == provider:
                     continue
+                # Defence-in-depth: the treasury collects the fee from every
+                # passed settlement, so a verdict from the treasury would be
+                # structurally conflicted. The treasury key is held offline
+                # in Phase 0/1 so this should never fire (JP-redacted) but if it ever
+                # comes online its verdicts do not count.
+                if v.agent_id == self.ANP2_TREASURY_AGENT_ID:
+                    continue
                 try:
                     vbody = json.loads(v.content)
                 except (ValueError, TypeError):
@@ -1721,11 +1757,26 @@ class Storage:
             )
 
             if verdict == "passed" and provider is not None:
-                # Settled: bilateral transfer, sums to zero.
+                # Settled: tripartite split (JP-redacted) requester pays the full reward;
+                # provider receives net of the 10% treasury fee; treasury
+                # receives the fee. Sum across the three is exactly zero.
+                fee = (amount * self.ANP2_FEE_NUMERATOR) // self.ANP2_FEE_DENOMINATOR
+                provider_share = amount - fee
                 if requester == agent_id:
                     balance -= amount
                 if provider == agent_id:
-                    balance += amount
+                    balance += provider_share
+                    # Standing accrual guard: only count tasks where the
+                    # requester and provider are distinct AND amount > 0.
+                    # A self-task (requester == provider) is a closed loop
+                    # that does no real work for anyone else; a zero-reward
+                    # task moves no credit. Either would otherwise let a
+                    # 1-sock-puppet (or zero-cost) cycle inflate the
+                    # `verified_provider_tasks` standing signal for free.
+                    if requester != provider and amount > 0:
+                        verified_as_provider += 1
+                if self.ANP2_TREASURY_AGENT_ID == agent_id:
+                    balance += fee
             elif verdict in ("failed", "disputed") or is_cancelled or timed_out:
                 # Settled with no movement; the requester's lock is released.
                 continue
@@ -1739,5 +1790,5 @@ class Storage:
             "balance": int(balance),
             "locked": int(locked),
             "available": int(balance) - int(locked),
-            "credit_limit": self.ANP2_BASE_CREDIT_LIMIT,
+            "verified_provider_tasks": int(verified_as_provider),
         }

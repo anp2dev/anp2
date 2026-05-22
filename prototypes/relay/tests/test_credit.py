@@ -1,24 +1,28 @@
-"""Tests for the ANP2 mutual-credit economy (PROTOCOL (JP-redacted)18.11).
+"""Tests for the ANP2 operator-issued credit economy (PROTOCOL (JP-redacted)18.11).
 
-Credit is a relay-derived bilateral-IOU ledger: balance is a pure function of
-the event log (kinds 50/51/52/53/55), never stored. Total credit always sums
-to exactly zero (JP-redacted) every passed task debits the requester exactly what it
-credits the provider.
+Credit is a relay-derived ledger: balances are a pure function of the event
+log (kinds 50/51/52/53/55), never stored. On each passed settlement the
+relay routes a 10% transaction fee to a fixed treasury agent; across
+{requester, provider, treasury} the sum is always exactly zero. The relay
+does NOT enforce a hard credit limit at publish (JP-redacted) provider acceptance is
+voluntary.
 
-Settlement counts only a NEUTRAL verifier's verdict (a kind 53 from an agent
-that is neither the requester nor the provider (JP-redacted) (JP-redacted)18.6 / (JP-redacted)18.11), so neither
-side can mint credit by self-verifying.
+Settlement counts only a NEUTRAL verifier's verdict (a kind 53 from an
+agent that is neither the requester nor the provider, and not the treasury
+(JP-redacted) (JP-redacted)18.6 / (JP-redacted)18.11), so neither side can mint credit by self-verifying.
 
 Coverage:
-  (a) full credit task: kind 50 (anp2_credit, N) + 51 + 52 + neutral 53 passed
-      -> requester balance -N, provider +N
+  (a) full credit task: passed -> requester -N, provider +(N-fee), treasury +fee
   (b) a failed task moves zero credit
   (c) an open task locks the requester's amount
-  (d) the credit limit (JP-redacted) overcommit gets 422, both boundary sides
-  (e) GET /agents/<id>/credit returns the right shape
+  (d) no hard credit limit at publish (the old 422 enforcement was removed)
+  (e) GET /agents/<id>/credit returns the right shape, with fee accounting
   (f) a disputed task is terminal, not left locked
   (g) cancel is honoured only from the requester ((JP-redacted)18.9)
   (h) self-attested verdicts (requester/provider) do NOT settle credit
+  (i) treasury accrues fees across multiple passed settlements
+  (j) standing-accrual guards: self-tasks and zero-reward tasks do NOT
+      inflate verified_provider_tasks
 """
 
 from __future__ import annotations
@@ -169,14 +173,17 @@ def _run_task(client, *, priv_req, pub_req, priv_prov, pub_prov, priv_ver, pub_v
 
 def test_credit_full_task_settles_debit_and_credit(tmp_path):
     """kind 50 (anp2_credit, N) + 51 + 52 + neutral 53 passed
-    -> requester balance -N, provider +N."""
+    -> requester -N, provider +(N - fee), treasury +fee (10% floor,
+    PROTOCOL (JP-redacted)18.11). Sum across {requester, provider, treasury} is zero."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
 
     priv_req, pub_req = generate_keypair()
     priv_prov, pub_prov = generate_keypair()
     priv_ver, pub_ver = generate_keypair()
-    amount = 250
+    amount = 10
+    fee = 1                # 10% floor of 10
+    provider_share = 9
 
     _run_task(client, priv_req=priv_req, pub_req=pub_req,
               priv_prov=priv_prov, pub_prov=pub_prov,
@@ -184,15 +191,20 @@ def test_credit_full_task_settles_debit_and_credit(tmp_path):
 
     req_credit = storage.credit_for(pub_req)
     prov_credit = storage.credit_for(pub_prov)
+    trs_credit = storage.credit_for(Storage.ANP2_TREASURY_AGENT_ID)
 
     assert req_credit["balance"] == -amount
-    assert prov_credit["balance"] == amount
+    assert prov_credit["balance"] == provider_share
+    assert trs_credit["balance"] == fee
     # settled task -> nothing locked anymore
     assert req_credit["locked"] == 0
     assert req_credit["available"] == -amount
-    assert prov_credit["available"] == amount
-    # invariant: total credit sums to exactly zero
-    assert req_credit["balance"] + prov_credit["balance"] == 0
+    assert prov_credit["available"] == provider_share
+    # invariant: total across {requester, provider, treasury} is exactly zero
+    assert (req_credit["balance"] + prov_credit["balance"]
+            + trs_credit["balance"]) == 0
+    # provider accrues a verified-provider-task
+    assert prov_credit["verified_provider_tasks"] == 1
 
 
 # ---------- (b) failed task moves zero credit ----------------------------
@@ -206,7 +218,7 @@ def test_credit_failed_task_moves_zero(tmp_path):
     priv_req, pub_req = generate_keypair()
     priv_prov, pub_prov = generate_keypair()
     priv_ver, pub_ver = generate_keypair()
-    amount = 300
+    amount = 8
 
     _run_task(client, priv_req=priv_req, pub_req=pub_req,
               priv_prov=priv_prov, pub_prov=pub_prov,
@@ -233,7 +245,7 @@ def test_credit_open_task_locks_requester_amount(tmp_path):
 
     priv_req, pub_req = generate_keypair()
     t0 = int(time.time())
-    amount = 400
+    amount = 8
 
     _post(client, _make_credit_request(priv_req, pub_req, amount=amount, ts=t0))
 
@@ -242,37 +254,38 @@ def test_credit_open_task_locks_requester_amount(tmp_path):
     assert req_credit["balance"] == 0
     assert req_credit["locked"] == amount
     assert req_credit["available"] == -amount
-    assert req_credit["credit_limit"] == Storage.ANP2_BASE_CREDIT_LIMIT
+    # a fresh requester has zero provider history
+    assert req_credit["verified_provider_tasks"] == 0
 
 
-# ---------- (d) credit limit enforcement at publish ----------------------
+# ---------- (d) no hard credit limit at publish (phase 0/1) --------------
 
 
-def test_credit_limit_rejects_overcommit_with_422(tmp_path):
-    """A requester whose available credit is at the limit gets HTTP 422 on the
-    next anp2_credit kind 50 (JP-redacted) it cannot delegate beyond its means."""
+def test_no_hard_credit_limit_enforcement(tmp_path):
+    """PROTOCOL (JP-redacted)18.11 (phase 0/1): the relay does NOT enforce a hard credit
+    limit at publish. Any agent may post a kind-50 task.request regardless of
+    balance (JP-redacted) provider acceptance is voluntary and informed by the requester's
+    public balance / history. The relay still rejects malformed rewards
+    (negative amount) with HTTP 400, and `mocked` reward tasks remain
+    accepted (they don't touch the credit ledger at all)."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
 
     priv_req, pub_req = generate_keypair()
-    limit = Storage.ANP2_BASE_CREDIT_LIMIT
     t0 = int(time.time())
 
-    # First kind 50 commits exactly the full limit (JP-redacted) allowed (available 0 -> -limit).
+    # A fresh agent (balance 0) can post any non-negative anp2_credit amount.
     r1 = client.post("/events", json=_make_credit_request(
-        priv_req, pub_req, amount=limit, ts=t0))
+        priv_req, pub_req, amount=10000, ts=t0))
     assert r1.status_code == 200, r1.text
 
-    # available is now -limit (the open task locks it). Any further anp2_credit
-    # commitment pushes available below -credit_limit -> 422.
+    # Posting a second huge task is also fine (JP-redacted) no hard cap, even though the
+    # requester now has 10000 of open `locked` exposure.
     r2 = client.post("/events", json=_make_credit_request(
-        priv_req, pub_req, amount=1, ts=t0 + 1))
-    assert r2.status_code == 422, r2.text
-    detail = r2.json()["detail"]
-    assert "insufficient credit" in detail
-    assert "(JP-redacted)18.11" in detail
+        priv_req, pub_req, amount=99999, ts=t0 + 1))
+    assert r2.status_code == 200, r2.text
 
-    # a `mocked` task is unaffected by the credit limit
+    # `mocked` reward tasks remain accepted (they never touched the credit gate).
     mocked_body = {
         "capability": "transform.text.demo",
         "input": {"text": "x"},
@@ -294,25 +307,13 @@ def test_credit_limit_rejects_overcommit_with_422(tmp_path):
                    json.dumps(mocked_body, separators=(",", ":")), t0 + 2)
     assert client.post("/events", json=mocked).status_code == 200
 
-    # boundary, both sides: a FRESH agent committing exactly the limit is
-    # allowed; one credit past the limit is rejected with 422.
-    priv_ok, pub_ok = generate_keypair()
-    r4 = client.post("/events", json=_make_credit_request(
-        priv_ok, pub_ok, amount=limit, ts=t0 + 3))
-    assert r4.status_code == 200, r4.text
-
-    priv_over, pub_over = generate_keypair()
-    r5 = client.post("/events", json=_make_credit_request(
-        priv_over, pub_over, amount=limit + 1, ts=t0 + 4))
-    assert r5.status_code == 422, r5.text
-
-    # a negative reward amount is rejected at publish with 400
-    neg_body = json.loads(_make_credit_request(priv_ok, pub_ok, amount=1, ts=t0 + 5)["content"])
+    # A negative reward amount IS still rejected at publish with HTTP 400.
+    neg_body = json.loads(_make_credit_request(priv_req, pub_req, amount=1, ts=t0 + 3)["content"])
     neg_body["reward"]["amount"] = -5
     priv_neg, pub_neg = generate_keypair()
     neg = _sign(priv_neg, pub_neg, 50,
                 [["t", "transform.text.demo"], ["cap_wanted", "transform.text.demo"]],
-                json.dumps(neg_body, separators=(",", ":")), t0 + 6)
+                json.dumps(neg_body, separators=(",", ":")), t0 + 4)
     assert client.post("/events", json=neg).status_code == 400
 
 
@@ -320,14 +321,16 @@ def test_credit_limit_rejects_overcommit_with_422(tmp_path):
 
 
 def test_credit_endpoint_returns_expected_shape(tmp_path):
-    """GET /agents/<id>/credit (and /api/...) returns the (JP-redacted)18.11 shape."""
+    """GET /agents/<id>/credit (and /api/...) returns the (JP-redacted)18.11 shape, with
+    the 10% treasury fee correctly accounted for on the provider side."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
 
     priv_req, pub_req = generate_keypair()
     priv_prov, pub_prov = generate_keypair()
     priv_ver, pub_ver = generate_keypair()
-    amount = 120
+    amount = 10               # fee = 1, provider_share = 9
+    provider_share = 9
 
     _run_task(client, priv_req=priv_req, pub_req=pub_req,
               priv_prov=priv_prov, pub_prov=pub_prov,
@@ -338,18 +341,20 @@ def test_credit_endpoint_returns_expected_shape(tmp_path):
         assert r.status_code == 200, r.text
         body = r.json()
         assert set(body.keys()) == {
-            "agent_id", "balance", "locked", "available", "credit_limit",
+            "agent_id", "balance", "locked", "available",
+            "verified_provider_tasks",
         }
         assert body["agent_id"] == pub_req
         assert body["balance"] == -amount
         assert body["locked"] == 0
         assert body["available"] == -amount
-        assert body["credit_limit"] == Storage.ANP2_BASE_CREDIT_LIMIT
+        assert body["verified_provider_tasks"] == 0
 
-    # provider side
+    # provider side (JP-redacted) receives 90% of the gross reward
     r = client.get(f"/agents/{pub_prov}/credit")
     assert r.status_code == 200
-    assert r.json()["balance"] == amount
+    assert r.json()["balance"] == provider_share
+    assert r.json()["verified_provider_tasks"] == 1
 
     # bad agent_id -> 400
     assert client.get("/agents/not-hex/credit").status_code == 400
@@ -373,7 +378,7 @@ def test_credit_disputed_task_not_locked(tmp_path):
     priv_v1, pub_v1 = generate_keypair()
     priv_v2, pub_v2 = generate_keypair()
     t0 = int(time.time())
-    amount = 200
+    amount = 8
 
     req = _make_credit_request(priv_req, pub_req, amount=amount, ts=t0)
     _post(client, req)
@@ -407,7 +412,7 @@ def test_credit_cancel_only_from_requester(tmp_path):
     priv_req, pub_req = generate_keypair()
     priv_other, pub_other = generate_keypair()
     t0 = int(time.time())
-    amount = 350
+    amount = 8
 
     req = _make_credit_request(priv_req, pub_req, amount=amount, ts=t0)
     _post(client, req)
@@ -437,7 +442,7 @@ def test_credit_self_verification_does_not_settle(tmp_path):
     priv_prov, pub_prov = generate_keypair()
     priv_ver, pub_ver = generate_keypair()
     t0 = int(time.time())
-    amount = 500
+    amount = 8
 
     req = _make_credit_request(priv_req, pub_req, amount=amount, ts=t0)
     _post(client, req)
@@ -463,3 +468,106 @@ def test_credit_self_verification_does_not_settle(tmp_path):
     assert storage.credit_for(pub_prov)["balance"] == amount
     assert storage.credit_for(pub_req)["balance"] == -amount
     assert storage.credit_for(pub_req)["locked"] == 0
+
+
+# ---------- (i) treasury fee accrual across multiple settlements --------
+
+
+def test_treasury_accrues_fee_across_multiple_passed_tasks(tmp_path):
+    """Across N passed kind-50 settlements the treasury's balance equals the
+    sum of fees, and the zero-sum invariant holds across all participants.
+    This exercises the fee-recycling property of PROTOCOL (JP-redacted)18.11."""
+    storage = Storage(tmp_path / "credit.db")
+    client = TestClient(create_app(storage))
+
+    priv_prov, pub_prov = generate_keypair()
+    priv_ver, pub_ver = generate_keypair()
+
+    # Base the timeline slightly in the past so every event stays inside the
+    # relay's clock-skew window.
+    t0 = int(time.time()) - 60
+    amount = 20            # fee per task = 2; provider net per task = 18
+    fee_per_task = 2
+    n_tasks = 3
+
+    requester_pubs: list[str] = []
+    for i in range(n_tasks):
+        priv_req, pub_req = generate_keypair()
+        requester_pubs.append(pub_req)
+        _run_task(client, priv_req=priv_req, pub_req=pub_req,
+                  priv_prov=priv_prov, pub_prov=pub_prov,
+                  priv_ver=priv_ver, pub_ver=pub_ver, amount=amount,
+                  t0=t0 + i * 10)
+
+    prov_credit = storage.credit_for(pub_prov)
+    trs_credit = storage.credit_for(Storage.ANP2_TREASURY_AGENT_ID)
+
+    assert prov_credit["verified_provider_tasks"] == n_tasks
+    assert prov_credit["balance"] == n_tasks * (amount - fee_per_task)
+    assert trs_credit["balance"] == n_tasks * fee_per_task
+
+    # zero-sum across {all requesters, provider, treasury}
+    requester_sum = sum(storage.credit_for(p)["balance"] for p in requester_pubs)
+    assert (requester_sum + prov_credit["balance"]
+            + trs_credit["balance"]) == 0
+
+
+# ---------- (j) standing-accrual guards (Sybil mitigation) --------------
+
+
+def test_self_task_does_not_inflate_verified_provider_tasks(tmp_path):
+    """A task where requester == provider is a closed loop that does no real
+    work for anyone else. It must NOT inflate `verified_provider_tasks` (JP-redacted)
+    otherwise a single sock-puppet could farm standing for free by riding an
+    automatic neutral verifier (PROTOCOL (JP-redacted)18.11)."""
+    storage = Storage(tmp_path / "credit.db")
+    client = TestClient(create_app(storage))
+
+    priv_a, pub_a = generate_keypair()          # requester == provider
+    priv_v, pub_v = generate_keypair()           # neutral verifier
+    t0 = int(time.time())
+    amount = 10
+
+    # A self-task: pub_a posts the kind-50, accepts it as itself, delivers
+    # the kind-52 as itself; a neutral verifier (pub_v, != pub_a) passes it.
+    req = _make_credit_request(priv_a, pub_a, amount=amount, ts=t0)
+    _post(client, req)
+    task_id = req["id"]
+    acc = _make_accept(priv_a, pub_a, task_id, pub_a, ts=t0 + 1)
+    _post(client, acc)
+    res = _make_result(priv_a, pub_a, task_id, acc["id"], pub_a, ts=t0 + 2)
+    _post(client, res)
+    _post(client, _make_verify(priv_v, pub_v, task_id, res["id"], pub_a,
+                               verdict="passed", ts=t0 + 3))
+
+    a_credit = storage.credit_for(pub_a)
+    # The two settlement legs net to -fee on the combined entity.
+    fee = 1
+    assert a_credit["balance"] == -fee
+    # The critical guard: standing does NOT accrue from a self-task.
+    assert a_credit["verified_provider_tasks"] == 0
+    # Treasury still received the fee.
+    assert storage.credit_for(Storage.ANP2_TREASURY_AGENT_ID)["balance"] == fee
+
+
+def test_zero_reward_task_does_not_inflate_verified_provider_tasks(tmp_path):
+    """A passed task with reward.amount=0 moves no credit. It must also NOT
+    inflate `verified_provider_tasks`, otherwise zero-cost cycles could farm
+    standing for free."""
+    storage = Storage(tmp_path / "credit.db")
+    client = TestClient(create_app(storage))
+
+    priv_req, pub_req = generate_keypair()
+    priv_prov, pub_prov = generate_keypair()
+    priv_ver, pub_ver = generate_keypair()
+    t0 = int(time.time())
+
+    _run_task(client, priv_req=priv_req, pub_req=pub_req,
+              priv_prov=priv_prov, pub_prov=pub_prov,
+              priv_ver=priv_ver, pub_ver=pub_ver, amount=0, verdict="passed",
+              t0=t0)
+
+    prov_credit = storage.credit_for(pub_prov)
+    assert prov_credit["balance"] == 0
+    # The critical guard: standing does NOT accrue from a zero-reward task.
+    assert prov_credit["verified_provider_tasks"] == 0
