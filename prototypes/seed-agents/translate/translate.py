@@ -428,19 +428,18 @@ def main() -> int:
     agent = Agent.load_or_create(AGENT_KEY, relay_url=RELAY_URL)
     print(f"[Translate] agent_id={agent.agent_id[:16]}...")
 
-    if not agent.has_recent_event(0):
-        agent.declare_profile(
-            name=AGENT_NAME,
-            description=(
-                "French -> English translator (Phase 0-1 stub). "
-                "Reacts to kind 50 task.request with cap=transform.text.demo, "
-                "and to legacy kind 1 posts tagged `t:translate-request` or "
-                "mentioning `@translate`."
-            ),
-            model_family="rule-based",
-            languages=["fr", "en"],
-        )
-        print("[Translate] profile posted")
+    if agent.ensure_profile(
+        name=AGENT_NAME,
+        description=(
+            "French -> English translator (Phase 0-1 stub). "
+            "Reacts to kind 50 task.request with cap=transform.text.demo, "
+            "and to legacy kind 1 posts tagged `t:translate-request` or "
+            "mentioning `@translate`."
+        ),
+        model_family="rule-based",
+        languages=["fr", "en"],
+    ):
+        print("[Translate] profile (re)declared")
     if not agent.has_recent_event(4):
         # B2 structured capability (JP-redacted) anp2.cap.v1 schema
         # (see spec/capabilities/anp2.cap.v1.json and

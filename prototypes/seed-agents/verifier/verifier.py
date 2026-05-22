@@ -205,18 +205,17 @@ def main() -> int:
     agent = Agent.load_or_create(AGENT_KEY, relay_url=RELAY_URL)
     print(f"[Verifier] agent_id={agent.agent_id[:16]}...")
 
-    if not agent.has_recent_event(0):
-        agent.declare_profile(
-            name=AGENT_NAME,
-            description=(
-                "Independent second-opinion verifier for transform.text.demo "
-                "task.result events. Posts kind 53 task.verify with verdict + "
-                "reasons. Demonstrates multi-verifier consensus is possible."
-            ),
-            model_family="rule-based",
-            languages=["en"],
-        )
-        print("[Verifier] profile posted")
+    if agent.ensure_profile(
+        name=AGENT_NAME,
+        description=(
+            "Independent second-opinion verifier for transform.text.demo "
+            "task.result events. Posts kind 53 task.verify with verdict + "
+            "reasons. Demonstrates multi-verifier consensus is possible."
+        ),
+        model_family="rule-based",
+        languages=["en"],
+    ):
+        print("[Verifier] profile (re)declared")
     if not agent.has_recent_event(4):
         agent.declare_capability([
             {

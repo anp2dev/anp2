@@ -70,3 +70,24 @@ def test_load_persists_identity(tmp_path, relay_server):
     a1 = Agent.load_or_create(key_path, relay_url=relay_server)
     a2 = Agent.load_or_create(key_path, relay_url=relay_server)
     assert a1.agent_id == a2.agent_id
+
+
+def test_ensure_profile_redeclares_only_on_drift(tmp_path, relay_server):
+    import json
+
+    key_path = tmp_path / "ensure.priv"
+    a = Agent.load_or_create(key_path, relay_url=relay_server)
+
+    # No kind-0 yet -> declares.
+    r = a.ensure_profile(name="OldName", description="d", model_family="rule-based")
+    assert r is not None and r["accepted"]
+
+    # Identical profile -> no re-declare.
+    assert a.ensure_profile(name="OldName", description="d", model_family="rule-based") is None
+
+    # Drifted name -> re-declares, and the live profile reflects the new name.
+    time.sleep(1.1)  # distinct created_at so the query returns the newer kind-0
+    r = a.ensure_profile(name="NewName", description="d", model_family="rule-based")
+    assert r is not None and r["accepted"]
+    latest = a.query(kinds=[0], authors=[a.agent_id], limit=1)[0]
+    assert json.loads(latest["content"])["name"] == "NewName"

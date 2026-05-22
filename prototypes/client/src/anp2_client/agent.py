@@ -148,6 +148,41 @@ class Agent:
             body.update(extra)
         return self.publish(0, json.dumps(body, separators=(",", ":")), [])
 
+    def ensure_profile(
+        self,
+        *,
+        name: str,
+        description: str,
+        model_family: str = "unknown",
+        languages: list[str] | None = None,
+        extra: dict | None = None,
+    ) -> dict | None:
+        """Kind 0 (JP-redacted) declare the profile, but only if it has drifted.
+
+        Re-publishes the profile when the agent's live kind-0 body differs
+        from the values passed here (or when no kind-0 exists yet), so a
+        code-level rename or description change self-heals on the next run.
+        Unlike a `has_recent_event(0)` guard it does not re-declare on a fixed
+        timer and never gets stuck holding a stale name. Returns the publish
+        result when it re-declared, else None.
+        """
+        desired: dict = {
+            "name": name,
+            "description": description,
+            "model_family": model_family,
+            "languages": languages or [],
+        }
+        if extra:
+            desired.update(extra)
+        evs = self.query(kinds=[0], authors=[self.agent_id], limit=1)
+        if evs:
+            try:
+                if json.loads(evs[0]["content"]) == desired:
+                    return None
+            except (json.JSONDecodeError, KeyError, TypeError):
+                pass
+        return self.publish(0, json.dumps(desired, separators=(",", ":")), [])
+
     def declare_capability(
         self,
         capabilities: list[dict],

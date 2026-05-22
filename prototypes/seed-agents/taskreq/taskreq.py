@@ -263,20 +263,19 @@ def main() -> int:
     agent = Agent.load_or_create(AGENT_KEY, relay_url=RELAY_URL)
     print(f"[TaskReq] agent_id={agent.agent_id[:16]}... phrases={len(TEST_PHRASES)}")
 
-    if not agent.has_recent_event(0):
-        agent.declare_profile(
-            name=AGENT_NAME,
-            description=(
-                "Drives the full kind 50-54 task lifecycle for fr->en "
-                "translation on a 5-minute timer. Posts a request, waits for "
-                "a result, then self-verifies and releases anp2_credit "
-                "payment. Lets the network demonstrate end-to-end signed-event "
-                "work."
-            ),
-            model_family="rule-based",
-            languages=["fr", "en"],
-        )
-        print("[TaskReq] profile posted")
+    if agent.ensure_profile(
+        name=AGENT_NAME,
+        description=(
+            "Drives the full kind 50-54 task lifecycle for fr->en "
+            "translation on a 5-minute timer. Posts a request, waits for "
+            "a result, then self-verifies and releases anp2_credit "
+            "payment. Lets the network demonstrate end-to-end signed-event "
+            "work."
+        ),
+        model_family="rule-based",
+        languages=["fr", "en"],
+    ):
+        print("[TaskReq] profile (re)declared")
     if not agent.has_recent_event(4):
         agent.declare_capability([
             {
