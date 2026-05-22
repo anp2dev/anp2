@@ -1,0 +1,8 @@
+[Unit]
+Description=ANP2 relay health audit
+Documentation=https://anp2.com
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/anp2-health-audit/relay_health_audit.py
+# Exit 1 (a FAIL check) surfaces in `systemctl --failed` and the journal.

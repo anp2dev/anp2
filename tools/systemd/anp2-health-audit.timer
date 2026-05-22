@@ -1,0 +1,10 @@
+[Unit]
+Description=ANP2 relay health audit (JP-redacted) hourly
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

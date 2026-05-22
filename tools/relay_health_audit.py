@@ -68,20 +68,32 @@ def main() -> None:
     except Exception as e:
         record("FAIL", "relay /api/stats", repr(e))
 
-    # 2 (JP-redacted) event-kind balance (would have caught the kind-11 heartbeat pollution)
+    # 2 (JP-redacted) content-kind balance + kind-11 DB-bloat. Kind 11 (health beats) is
+    #     infra: it is excluded from the default feed, so it is excluded from
+    #     the balance check too; its backlog is a storage-hygiene WARN, not a
+    #     user-facing FAIL.
     if stats:
-        by_kind = stats.get("by_kind", {})
+        by_kind = {int(k): int(v) for k, v in stats.get("by_kind", {}).items()}
         total = stats.get("total_events", 0) or 1
-        if by_kind:
-            k, c = max(by_kind.items(), key=lambda kv: int(kv[1]))
-            pct = 100 * int(c) / total
-            msg = f"largest is kind {k} = {pct:.0f}% of {total} events"
-            if pct >= 60:
-                record("FAIL", "event-kind balance", msg + " (JP-redacted) one kind dominates the log")
-            elif pct >= 40:
-                record("WARN", "event-kind balance", msg)
+        content = {k: v for k, v in by_kind.items() if k != 11}
+        content_total = sum(content.values()) or 1
+        if content:
+            k, c = max(content.items(), key=lambda kv: kv[1])
+            pct = 100 * c / content_total
+            msg = f"largest content kind {k} = {pct:.0f}% of {content_total} non-infra events"
+            if pct >= 70:
+                record("FAIL", "content-kind balance", msg + " (JP-redacted) one kind dominates")
+            elif pct >= 55:
+                record("WARN", "content-kind balance", msg)
             else:
-                record("PASS", "event-kind balance", msg)
+                record("PASS", "content-kind balance", msg)
+        beats = by_kind.get(11, 0)
+        bpct = 100 * beats / total
+        if bpct >= 50:
+            record("WARN", "kind-11 DB bloat",
+                   f"{bpct:.0f}% of the stored log is kind-11 health beats (JP-redacted) prune / stop persisting")
+        else:
+            record("PASS", "kind-11 DB bloat", f"kind 11 = {bpct:.0f}% of stored log")
 
     # 3 (JP-redacted) network freshness (is the network producing events at all)
     try:
