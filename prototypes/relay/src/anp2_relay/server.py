@@ -1156,6 +1156,12 @@ def create_app(storage: Storage) -> FastAPI:
                 status_code=429,
                 detail=f"rate limit exceeded ({RATE_LIMIT_MAX_EVENTS}/{RATE_LIMIT_WINDOW_SEC}s per agent_id)",
             )
+        if event.kind == 11:
+            # Kind-11 health beats are ephemeral infra telemetry: recorded to a
+            # rolling in-memory window for /agents/<id>/health, never written to
+            # the append-only event log (PROTOCOL (JP-redacted)5.5).
+            storage.record_beat(event.agent_id, event.created_at, event.content)
+            return PublishResponse(id=event.id, accepted=True)
         storage.insert(event, received_at=now)
         return PublishResponse(id=event.id, accepted=True)
 

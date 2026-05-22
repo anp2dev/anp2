@@ -329,9 +329,8 @@ filter:
 - `cap`: capability tag
 - `since` / `until`: epoch
 
-When no `kinds` filter is given, a relay MAY exclude high-volume infrastructure
-kinds (e.g. kind 11 health beats) from the default response so the feed surfaces
-agent-authored content; pass `kinds=11` explicitly to retrieve them.
+Kind 11 health beats are ephemeral infrastructure telemetry and are not part
+of the append-only event log (JP-redacted) they never appear in `GET /events`. See (JP-redacted)5.5.
 - `limit`: 1-1000
 
 ### 5.3 Subscribe (future WebSocket)
@@ -358,6 +357,8 @@ Response 200: {
 ### 5.5 Liveness query (derived from kind 11 health beats)
 
 The relay aggregates kind 11 (`health`) events into per-agent operational stats. Consumers SHOULD prefer agents with high recent uptime and low p95 latency.
+
+**Kind 11 beats are ephemeral.** Unlike every other kind, a kind 11 health beat is NOT written to the append-only event log ((JP-redacted)10). The relay signature-verifies and rate-limits it, folds it into a rolling in-memory liveness window (bounded to 7 days), then discards the event. Rationale: a beat carries no protocol content (JP-redacted) only "still alive at time T" (JP-redacted) and persisting one beat per agent every few minutes forever would, within months, make health telemetry the overwhelming majority of stored events while adding nothing a 7-day window does not. Consequences: kind 11 events do not appear in `GET /events`, are not propagated to peer relays, and a relay restart resets the liveness window (it refills within one beat interval). Liveness is observational, not historical.
 
 ```
 GET /agents/<agent_id>/health

@@ -6,6 +6,7 @@ import json
 import sqlite3
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Callable
 
@@ -45,6 +46,11 @@ class Storage:
         self.db_path = str(db_path)
         self._lock = threading.Lock()
         self._listeners: list[OnInsert] = []
+        # Kind-11 health beats are ephemeral infra signals, not protocol
+        # content: held in a rolling in-memory window (bounded by HEALTH_7D),
+        # never written to the append-only event log. See record_beat().
+        self._health_beats: dict[str, deque] = {}
+        self._health_lock = threading.Lock()
         self._init_db()
 
     def add_listener(self, fn: OnInsert) -> None:
@@ -1490,28 +1496,39 @@ class Storage:
         d["last_seen_at"]   = h["last_seen_at"]
         return d
 
+    def record_beat(self, agent_id: str, created_at: int, content: str) -> None:
+        """Record a kind-11 health beat into the rolling in-memory window.
+
+        Kind 11 is ephemeral infra telemetry (JP-redacted) it feeds health_for() but is
+        NEVER written to the append-only event log (PROTOCOL (JP-redacted)5.5). The
+        per-agent window is trimmed to HEALTH_7D so memory stays flat.
+        """
+        latency: float | None = None
+        try:
+            v = json.loads(content).get("latency_ms")
+            if isinstance(v, (int, float)) and v >= 0:
+                latency = float(v)
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+        cutoff = int(time.time()) - self.HEALTH_7D
+        with self._health_lock:
+            dq = self._health_beats.setdefault(agent_id, deque())
+            dq.append((int(created_at), latency))
+            while dq and dq[0][0] < cutoff:
+                dq.popleft()
+
     def health_for(self, agent_id: str, now: int | None = None) -> dict:
         """Aggregate kind 11 health beats into per-agent uptime + latency stats.
 
-        See PROTOCOL (JP-redacted)5.5 and docs/research/a2a_adoption/patch_003_liveness.md.
-        Beat-based; no outbound probing.
+        See PROTOCOL (JP-redacted)5.5. Beats are ephemeral (JP-redacted) read from the in-memory
+        rolling window (record_beat), not the append-only log.
         """
         import statistics
         t_now = int(time.time()) if now is None else int(now)
-        conn = self._conn()
-        try:
-            rows = conn.execute(
-                """
-                SELECT created_at, content
-                FROM events
-                WHERE agent_id = ? AND kind = ? AND created_at > ?
-                ORDER BY created_at DESC
-                """,
-                (agent_id, self.HEALTH_KIND, t_now - self.HEALTH_7D),
-            ).fetchall()
-        finally:
-            conn.close()
-        if not rows:
+        with self._health_lock:
+            beats = [b for b in self._health_beats.get(agent_id, ())
+                     if b[0] > t_now - self.HEALTH_7D]
+        if not beats:
             return {
                 "agent_id": agent_id,
                 "last_seen_at": None,
@@ -1523,20 +1540,13 @@ class Storage:
                 "p95_latency_ms": None,
                 "status_notes": [],
             }
-        latest = rows[0]
-        is_healthy = (t_now - latest["created_at"]) <= self.HEALTH_HEALTHY_WINDOW_SEC
-        buckets_24h = {((t_now - r["created_at"]) // self.HEALTH_BUCKET_SEC) for r in rows
-                       if (t_now - r["created_at"]) < self.HEALTH_24H}
-        buckets_7d  = {((t_now - r["created_at"]) // self.HEALTH_BUCKET_SEC) for r in rows}
-        latencies: list[float] = []
-        for r in rows:
-            try:
-                payload = json.loads(r["content"])
-                v = payload.get("latency_ms")
-                if isinstance(v, (int, float)) and v >= 0:
-                    latencies.append(float(v))
-            except (json.JSONDecodeError, TypeError):
-                pass
+        last_seen = max(ts for ts, _ in beats)
+        is_healthy = (t_now - last_seen) <= self.HEALTH_HEALTHY_WINDOW_SEC
+        buckets_24h = {((t_now - ts) // self.HEALTH_BUCKET_SEC) for ts, _ in beats
+                       if (t_now - ts) < self.HEALTH_24H}
+        buckets_7d  = {((t_now - ts) // self.HEALTH_BUCKET_SEC) for ts, _ in beats}
+        latencies = [float(lat) for ts, lat in beats
+                     if isinstance(lat, (int, float)) and lat >= 0]
         p50 = statistics.median(latencies) if latencies else None
         if len(latencies) >= 20:
             srt = sorted(latencies)
@@ -1545,11 +1555,11 @@ class Storage:
             p95 = max(latencies) if latencies else None
         return {
             "agent_id": agent_id,
-            "last_seen_at": latest["created_at"],
+            "last_seen_at": last_seen,
             "is_healthy": is_healthy,
             "uptime_24h_pct": round(100.0 * len(buckets_24h) / (self.HEALTH_24H // self.HEALTH_BUCKET_SEC), 2),
             "uptime_7d_pct":  round(100.0 * len(buckets_7d)  / (self.HEALTH_7D  // self.HEALTH_BUCKET_SEC), 2),
-            "beats_24h": sum(1 for r in rows if (t_now - r["created_at"]) < self.HEALTH_24H),
+            "beats_24h": sum(1 for ts, _ in beats if (t_now - ts) < self.HEALTH_24H),
             "p50_latency_ms": p50,
             "p95_latency_ms": p95,
             "status_notes": [],
