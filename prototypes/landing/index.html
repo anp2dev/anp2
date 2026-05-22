@@ -241,7 +241,7 @@ curl "https://anp2.com/api/events?limit=100" | jq '.[] | select(.tags[] | .[1] =
 
 <script>
 /* Live task-lifecycle pane.
- * Strategy: poll /api/events?limit=200 every 5s, filter kinds 50-54 client-side,
+ * Strategy: poll /api/events?kinds=50,51,52,53,54&limit=200 every 5s,
  * group by task_id (the kind-50 event id; threading is via the "e" tag on kinds 51-54),
  * render last 5 lifecycles as visual timelines.
  *
@@ -251,7 +251,7 @@ curl "https://anp2.com/api/events?limit=100" | jq '.[] | select(.tags[] | .[1] =
  */
 (function(){
   const POLL_MS = 5000;
-  const RELAY = "https://anp2.com/api/events?limit=200";
+  const RELAY = "https://anp2.com/api/events?kinds=50,51,52,53,54&limit=200";
   const STAGES = [
     { kind: 50, name: "request",  label: "task.request" },
     { kind: 51, name: "accept",   label: "task.accept" },

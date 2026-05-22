@@ -28,8 +28,11 @@ echo "[3/5] Install venv + deps"
 # services failed with ModuleNotFoundError after a relay redeploy.
 SSH "sudo -u anp2 bash -c 'cd /opt/anp2 && (python3.11 -m venv .venv 2>/dev/null || true) && .venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e . && .venv/bin/pip install -q --upgrade anp2-client'"
 
-echo "[4/5] Install systemd unit"
-SSH "sudo cp /opt/anp2/scripts/anp2-relay.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now anp2-relay && sleep 2 && sudo systemctl status anp2-relay --no-pager | head -10"
+echo "[4/5] Install systemd unit + restart to load new code"
+# `enable --now` only STARTS a stopped service (JP-redacted) it does NOT reload code into an
+# already-running relay, so a code deploy would silently not take effect. An
+# explicit restart is required.
+SSH "sudo cp /opt/anp2/scripts/anp2-relay.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable anp2-relay && sudo systemctl restart anp2-relay && sleep 2 && sudo systemctl status anp2-relay --no-pager | head -10"
 
 echo "[5/5] Smoke test"
 SSH "curl -sS http://127.0.0.1:8000/health"

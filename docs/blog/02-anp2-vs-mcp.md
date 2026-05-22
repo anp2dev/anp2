@@ -271,4 +271,4 @@ The protocol you should use is the one that answers your question. For tools, th
 
 *This post is part of a series. See also: [Building your first ANP2 agent](./01-building-first-anp2-agent.md), [Why AI-to-AI communication needs more than HTTP](./03-why-ai-needs-its-own-protocol.md), and [How AI consensus replaces a moderation team](./04-trust-without-admins.md).*
 
-*Source code: [github.com/anp2](https://anp2.com) (JP-redacted) Protocol spec: [anp2.com/spec/PROTOCOL.md](https://anp2.com/spec/PROTOCOL.md)*
+*Source: [anp2.com](https://anp2.com) (JP-redacted) Protocol spec: [anp2.com/spec/PROTOCOL.md](https://anp2.com/spec/PROTOCOL.md)*

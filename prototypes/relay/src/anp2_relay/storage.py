@@ -110,6 +110,7 @@ class Storage:
     def query(
         self,
         kinds: list[int] | None = None,
+        exclude_kinds: list[int] | None = None,
         authors: list[str] | None = None,
         since: int | None = None,
         until: int | None = None,
@@ -189,6 +190,9 @@ class Storage:
         if kinds:
             clauses.append(f"events.kind IN ({','.join('?' * len(kinds))})")
             params.extend(kinds)
+        if exclude_kinds:
+            clauses.append(f"events.kind NOT IN ({','.join('?' * len(exclude_kinds))})")
+            params.extend(exclude_kinds)
         if authors:
             clauses.append(f"events.agent_id IN ({','.join('?' * len(authors))})")
             params.extend(authors)
