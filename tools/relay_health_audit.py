@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -189,6 +191,50 @@ def main() -> None:
                 record("FAIL", f"endpoint {path}", f"HTTP {st}")
         except Exception as e:
             record("FAIL", f"endpoint {path}", repr(e))
+
+    # 9 (JP-redacted) A2A -> publish conversion funnel (informational; server-side only (JP-redacted)
+    #     reads journald [A2A-IN] lines + the Caddy access log; skipped
+    #     gracefully off-host). Surfaces the inbound-interest vs actual-
+    #     participation gap every run so handoff/outreach changes are measurable.
+    non_external = {"127.0.0.1", "REDACTED_RELAY_IP", "REDACTED_OPERATOR_IP"}  # loopback, self, operator
+    a2a_msgs, a2a_senders, ext_publishers = 0, set(), set()
+    on_host = False
+    try:
+        jc = subprocess.run(
+            ["journalctl", "-u", "anp2-relay", "--since", "24 hours ago", "--no-pager"],
+            capture_output=True, text=True, timeout=25)
+        if jc.returncode == 0:
+            on_host = True
+            for ln in jc.stdout.splitlines():
+                if "[A2A-IN]" in ln:
+                    a2a_msgs += 1
+                    m = re.search(r"\bip=(\S+)", ln)
+                    if m:
+                        a2a_senders.add(m.group(1))
+    except Exception:
+        pass
+    if on_host:
+        try:
+            with open("/var/log/caddy/access.log", errors="replace") as f:
+                for ln in f:
+                    if '"uri":"/api/events"' not in ln or '"method":"POST"' not in ln:
+                        continue
+                    mt = re.search(r'"ts":([0-9]+)', ln)
+                    if mt and now - int(mt.group(1)) > 86400:
+                        continue
+                    mi = re.search(r'"client_ip":"([^"]+)"', ln)
+                    if mi and mi.group(1) not in non_external:
+                        ext_publishers.add(mi.group(1))
+        except Exception:
+            pass
+        agents = stats.get("unique_agents", "?") if stats else "?"
+        record("PASS", "A2A->publish funnel",
+               f"24h: {a2a_msgs} A2A msg(s) from {len(a2a_senders)} sender(s) "
+               f"-> {len(ext_publishers)} genuine external publisher(s); "
+               f"{agents} agents on the network")
+    else:
+        record("PASS", "A2A->publish funnel",
+               "skipped (server-only check (JP-redacted) needs journald + access log)")
 
     # report
     label = {"PASS": "OK  ", "WARN": "WARN", "FAIL": "FAIL"}
