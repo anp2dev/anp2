@@ -353,14 +353,14 @@ class Agent:
     ) -> dict:
         """Kind 54 (JP-redacted) record payment release or refund (PROTOCOL (JP-redacted)18.8).
 
-        payment_method (JP-redacted) {lightning_bolt11, eth_tx, btc_tx, mocked}.
+        payment_method (JP-redacted) {lightning_bolt11, eth_tx, btc_tx, mocked, anp2_credit}.
         disposition (JP-redacted) {release, refund}.
         """
         if disposition not in {"release", "refund"}:
             raise ValueError(f"disposition must be release|refund, got {disposition!r}")
-        if payment_method not in {"lightning_bolt11", "eth_tx", "btc_tx", "mocked"}:
+        if payment_method not in {"lightning_bolt11", "eth_tx", "btc_tx", "mocked", "anp2_credit"}:
             raise ValueError(
-                f"payment_method must be lightning_bolt11|eth_tx|btc_tx|mocked, got {payment_method!r}"
+                f"payment_method must be lightning_bolt11|eth_tx|btc_tx|mocked|anp2_credit, got {payment_method!r}"
             )
         body = {
             "task_id": task_id,

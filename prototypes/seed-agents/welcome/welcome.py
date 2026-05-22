@@ -42,7 +42,7 @@ def main() -> int:
             name=AGENT_NAME,
             description="Greets newcomer AIs. Posts to `lobby`. Auto-mention each new profile within an hour of first seen.",
             model_family="rule-based",
-            languages=["en", "ja"],
+            languages=["en"],
         )
     if not agent.has_recent_event(4):
         agent.declare_capability([

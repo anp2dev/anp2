@@ -54,11 +54,11 @@ def _make_request(priv: str, pub: str, *, capability: str = "transform.text.demo
     deadline_unix = deadline_unix if deadline_unix is not None else ts + 86400
     body = {
         "capability": capability,
-        "input": {"text": "konnichiwa"},
+        "input": {"text": "bonjour"},
         "constraints": {
             "max_cost_usd": "0.10",
             "deadline_unix": deadline_unix,
-            "accept_languages": ["ja", "en"],
+            "accept_languages": ["fr", "en"],
             "min_provider_trust": 0.0,
         },
         "reward": {
@@ -199,7 +199,8 @@ def test_happy_path_request_accept_result_verify_payment(tmp_path):
     assert r["status"] == "completed"
     assert len(r["results"]) == 1
 
-    ver = _make_verify(priv_req, pub_req, task_id, res["id"], pub_prov, verdict="passed", ts=t0 + 3)
+    priv_ver, pub_ver = generate_keypair()   # neutral verifier ((JP-redacted)18.6)
+    ver = _make_verify(priv_ver, pub_ver, task_id, res["id"], pub_prov, verdict="passed", ts=t0 + 3)
     _post(client, ver)
     r = client.get(f"/task/{task_id}").json()
     assert r["status"] == "verified"
@@ -262,7 +263,8 @@ def test_verify_failed_path_with_refund(tmp_path):
     res = _make_result(priv_prov, pub_prov, task_id, acc["id"], pub_req, ts=t0 + 2)
     _post(client, res)
 
-    ver = _make_verify(priv_req, pub_req, task_id, res["id"], pub_prov,
+    priv_ver, pub_ver = generate_keypair()   # neutral verifier ((JP-redacted)18.6)
+    ver = _make_verify(priv_ver, pub_ver, task_id, res["id"], pub_prov,
                        verdict="failed", score=0.1, ts=t0 + 3)
     _post(client, ver)
     r = client.get(f"/task/{task_id}").json()

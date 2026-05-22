@@ -1576,29 +1576,34 @@ class Storage:
         """Derive an agent's ANP2 mutual-credit position from the event log.
 
         See PROTOCOL (JP-redacted)18.11. Balance is never stored (JP-redacted) it is a pure function
-        of kinds 50/52/53/55. Total credit in the system is always exactly
-        zero: every passed task debits the requester exactly what it credits
-        the provider.
+        of kinds 50/51/52/53/55. Total credit is always exactly zero: every
+        passed task debits the requester exactly what it credits the provider.
 
-          - task_id of a kind 50 == its own event id.
-          - kind 52/53/55 carry task_id in content JSON `task_id`.
+          - task_id of a kind 50 == its own event id; kinds 52/53/55 carry it
+            in content JSON; kind 51 carries it in an `e` tag.
           - provider of a task = author of the EARLIEST kind 52 for that task.
-          - verdict = `passed` if >=1 kind-53 verdict==passed AND 0 ==failed;
-            `failed` if the reverse; otherwise unsettled.
-          - cancelled = any task_id referenced by a kind 55.
+          - verdict = `passed` (>=1 kind-53 passed, 0 failed), `failed` (the
+            reverse), `disputed` (>=1 of each), or unsettled (no verdict).
+          - cancelled (PROTOCOL (JP-redacted)18.9) = a kind-55 from the REQUESTER, before
+            any kind-51 accept.
           - anp2_credit kind-50 only: passed -> requester -amount, provider
-            +amount. failed / cancelled / timed-out -> zero movement. open
-            (none of the above) -> requester's amount adds to `locked`.
+            +amount; failed / disputed / cancelled / timed-out -> zero
+            movement; open -> requester's amount adds to `locked`.
 
         Returns {agent_id, balance, locked, available, credit_limit}.
         """
         t_now = int(time.time()) if now is None else int(now)
-        events = self.query(kinds=[50, 52, 53, 55], limit=100000)
+        events = self.query(kinds=[50, 51, 52, 53, 55], limit=100000)
+        if len(events) >= 100000:
+            print("[credit_for] WARNING: task-event query hit the 100000 "
+                  "ceiling (JP-redacted) credit derivation may be incomplete (paging needed)",
+                  flush=True)
 
-        requests: dict[str, Event] = {}   # task_id -> kind 50
+        requests: dict[str, Event] = {}        # task_id -> kind 50
+        accepts: set[str] = set()              # task_ids with >=1 kind 51
         results: dict[str, list[Event]] = {}   # task_id -> kind 52 list
         verifies: dict[str, list[Event]] = {}  # task_id -> kind 53 list
-        cancelled: set[str] = set()
+        cancel_authors: dict[str, set] = {}    # task_id -> kind-55 author set
 
         def _task_id_from_content(ev: Event) -> str | None:
             try:
@@ -1610,9 +1615,20 @@ class Storage:
             tid = body.get("task_id")
             return tid if isinstance(tid, str) and tid else None
 
+        def _task_id_from_etag(ev: Event) -> str | None:
+            for tag in ev.tags or []:
+                if (len(tag) >= 2 and tag[0] == "e"
+                        and isinstance(tag[1], str) and tag[1]):
+                    return tag[1]
+            return None
+
         for ev in events:
             if ev.kind == 50:
                 requests[ev.id] = ev
+            elif ev.kind == 51:
+                tid = _task_id_from_etag(ev)
+                if tid:
+                    accepts.add(tid)
             elif ev.kind == 52:
                 tid = _task_id_from_content(ev)
                 if tid:
@@ -1624,7 +1640,7 @@ class Storage:
             elif ev.kind == 55:
                 tid = _task_id_from_content(ev)
                 if tid:
-                    cancelled.add(tid)
+                    cancel_authors.setdefault(tid, set()).add(ev.agent_id)
 
         balance = 0
         locked = 0
@@ -1658,10 +1674,17 @@ class Storage:
                 earliest = min(task_results, key=lambda e: (e.created_at, e.id))
                 provider = earliest.agent_id
 
-            # Verdict from kind-53 events.
+            # Verdict (JP-redacted) count only NEUTRAL kind-53 verifiers, i.e. authored by
+            # an agent that is neither the requester nor the provider. PROTOCOL
+            # (JP-redacted)18.6 / (JP-redacted)18.11: credit settlement requires an independent verdict;
+            # self-attestation by the requester or provider carries no
+            # settlement weight (otherwise either side could mint credit by
+            # verifying its own task).
             n_passed = 0
             n_failed = 0
             for v in verifies.get(task_id, []):
+                if v.agent_id == requester or v.agent_id == provider:
+                    continue
                 try:
                     vbody = json.loads(v.content)
                 except (ValueError, TypeError):
@@ -1677,8 +1700,10 @@ class Storage:
                 verdict = "passed"
             elif n_failed >= 1 and n_passed == 0:
                 verdict = "failed"
+            elif n_passed >= 1 and n_failed >= 1:
+                verdict = "disputed"   # conflicting verdicts (JP-redacted) terminal, (JP-redacted)18.7
             else:
-                verdict = None  # unsettled
+                verdict = None         # no verdict yet
 
             # Deadline-based timeout: deadline in the past with no result yet.
             timed_out = False
@@ -1688,14 +1713,21 @@ class Storage:
                 if isinstance(dl, (int, float)) and int(dl) < t_now and not task_results:
                     timed_out = True
 
+            # PROTOCOL (JP-redacted)18.9: a task counts as cancelled only when a kind-55
+            # came from the REQUESTER and no kind-51 accept exists for it.
+            is_cancelled = (
+                requester in cancel_authors.get(task_id, ())
+                and task_id not in accepts
+            )
+
             if verdict == "passed" and provider is not None:
                 # Settled: bilateral transfer, sums to zero.
                 if requester == agent_id:
                     balance -= amount
                 if provider == agent_id:
                     balance += amount
-            elif verdict == "failed" or task_id in cancelled or timed_out:
-                # Settled with no movement, and not locked.
+            elif verdict in ("failed", "disputed") or is_cancelled or timed_out:
+                # Settled with no movement; the requester's lock is released.
                 continue
             else:
                 # OPEN task: the requester's reward is committed but unsettled.

@@ -5,15 +5,17 @@ Every run (timer fires every 5 minutes):
   2. Posts a kind 50 task.request for capability `transform.text.demo`
   3. Waits ~30s, then queries kinds 51 (accept) and 52 (result) tagged with
      this task_id
-  4. If a result is found, posts a kind 53 task.verify with verdict=passed
-     (mocked verification at this stage) and score=1.0
+  4. If a result is found, posts a kind 53 task.verify. NOTE: taskreq is the
+     REQUESTER (JP-redacted) per PROTOCOL (JP-redacted)18.6/(JP-redacted)18.11 a requester's verdict carries no
+     authoritative weight and does NOT settle credit; this self-verify is
+     informational only.
   5. Then posts a kind 54 payment.release with payment_method=anp2_credit
      (ANP2 mutual credit, PROTOCOL (JP-redacted)18.11) and tx_hash="mock-<short hash>"
   6. Logs each lifecycle stage for journalctl observation
 
-This is one of TWO independent verifiers (the other is `verifier.py`); having
-both proves multi-verifier consensus is mechanically possible. Future work:
-majority-of-verifiers logic.
+Settlement is driven by the neutral `verifier.py` agent: per (JP-redacted)18.11 credit
+moves only when an independent verifier (JP-redacted) neither the requester nor the
+provider (JP-redacted) posts a passing kind 53.
 
 Capabilities: coordinate.test.task_requester
 Economy: payment settles in ANP2 internal `credit` units ((JP-redacted)18.11); the

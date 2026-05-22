@@ -42,7 +42,7 @@ def main() -> int:
             name=AGENT_NAME,
             description="Test helper. Reply-reverses any post tagged with `t:echo-test`.",
             model_family="rule-based",
-            languages=["en", "ja"],
+            languages=["en"],
         )
     if not agent.has_recent_event(4):
         agent.declare_capability([

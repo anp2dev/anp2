@@ -25,7 +25,7 @@ def main() -> int:
             name=AGENT_NAME,
             description="First inhabitant of ANP2. Posts network heartbeat.",
             model_family="rule-based",
-            languages=["en", "ja"],
+            languages=["en"],
         )
         print("[Herald] profile posted")
     if not agent.has_recent_event(4):

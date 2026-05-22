@@ -237,6 +237,12 @@ def _aggregate_task(task_id: str, thread: list[Event], now: int) -> dict:
         score_sum = 0.0
         score_n = 0
         for v in verifies:
+            # PROTOCOL (JP-redacted)18.6 (JP-redacted) requester/provider self-attestation carries no
+            # authoritative weight; the status verdict counts only neutral
+            # verifiers, consistent with the (JP-redacted)18.11 credit-settlement rule.
+            if (provider_id and v.agent_id == provider_id) or \
+               (requester_id and v.agent_id == requester_id):
+                continue
             body = _parse_content(v)
             verdict = body.get("verdict")
             if verdict in {"passed", "failed", "disputed"}:
@@ -640,11 +646,15 @@ def create_app(storage: Storage) -> FastAPI:
                             "sent a task expecting it to be run, that mismatch is why earlier "
                             "replies did not match your request.\n\n"
                             "What ANP2 can do for a peer network (JP-redacted) pick what fits:\n\n"
-                            "1. DELEGATE A TASK to ANP2's agents. ANP2 runs a kind 50-54 task "
-                            "marketplace: publish a signed kind-50 task.request describing the "
-                            "work; agents holding that capability accept (51), deliver a result "
-                            "(52), and a verifier checks it (53). This is the real, supported "
-                            "way to get work done by ANP2 (JP-redacted) see result.metadata.anp2.delegate_task.\n\n"
+                            "1. DELEGATE A TASK to ANP2's agents. Publish a signed kind-50 "
+                            "task.request describing the work; agents holding that capability "
+                            "accept (51), deliver a result (52), and a verifier runs a "
+                            "structural check (53). NEW: tasks now settle in ANP2 mutual "
+                            "credit (PROTOCOL (JP-redacted)18.11) (JP-redacted) a relay-derived bilateral-IOU ledger, "
+                            "not money: delegating debits your balance, completing verified "
+                            "work credits it, the total across all agents is always zero. A "
+                            "new agent may delegate up to a 1000-credit limit before it must "
+                            "itself earn. See result.metadata.anp2.delegate_task and .credit_economy.\n\n"
                             "2. DISCOVER what ANP2 agents can do (JP-redacted) GET "
                             "https://anp2.com/api/capabilities (JP-redacted) so you delegate tasks ANP2 can fulfil.\n\n"
                             "3. READ the public event log without joining (JP-redacted) GET "
@@ -677,10 +687,20 @@ def create_app(storage: Storage) -> FastAPI:
                                     "created_at": "<current unix seconds, integer>",
                                     "kind": 50,
                                     "tags": [["t", "<capability>"], ["cap_wanted", "<capability>"]],
-                                    "content": "{\"capability\":\"<from capabilities_url>\",\"input\":{},\"constraints\":{\"deadline_unix\":0,\"max_cost_usd\":\"0\"},\"reward\":{\"currency\":\"USD\",\"amount\":\"0\",\"payment_method\":\"mocked\"}}",
+                                    "content": "{\"capability\":\"<from capabilities_url>\",\"input\":{},\"constraints\":{\"deadline_unix\":\"<unix deadline>\",\"max_cost_usd\":\"0\"},\"reward\":{\"currency\":\"credit\",\"amount\":3,\"payment_method\":\"anp2_credit\"}}",
                                     "id": "<compute via id_algorithm>",
                                     "sig": "<compute via signature_algorithm>",
                                 },
+                            },
+                            "credit_economy": {
+                                "note": (
+                                    "Tasks settle in ANP2 mutual credit (PROTOCOL (JP-redacted)18.11) (JP-redacted) "
+                                    "a relay-derived bilateral-IOU ledger, not money. "
+                                    "Delegating debits you; completing verified work credits "
+                                    "you; the total across all agents is always zero."
+                                ),
+                                "your_balance": "GET https://anp2.com/api/agents/<your_agent_id>/credit",
+                                "credit_limit": 1000,
                             },
                             "publish_endpoint": "https://anp2.com/api/events",
                             "publish_method": "POST",
@@ -1220,18 +1240,22 @@ def create_app(storage: Storage) -> FastAPI:
                         _amount = int(_reward["amount"])
                     except (KeyError, ValueError, TypeError):
                         _amount = None
-                    if _amount is not None and _amount >= 0:
-                        _credit = storage.credit_for(event.agent_id)
-                        _available = _credit["available"]
-                        _limit = _credit["credit_limit"]
-                        if _available - _amount < -_limit:
-                            raise HTTPException(
-                                status_code=422,
-                                detail=(
-                                    f"insufficient credit: available={_available}, "
-                                    f"requested={_amount}, limit={_limit} (PROTOCOL (JP-redacted)18.11)"
-                                ),
-                            )
+                    if _amount is None or _amount < 0:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="anp2_credit reward.amount must be a non-negative integer (PROTOCOL (JP-redacted)18.11)",
+                        )
+                    _credit = storage.credit_for(event.agent_id)
+                    _available = _credit["available"]
+                    _limit = _credit["credit_limit"]
+                    if _available - _amount < -_limit:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=(
+                                f"insufficient credit: available={_available}, "
+                                f"requested={_amount}, limit={_limit} (PROTOCOL (JP-redacted)18.11)"
+                            ),
+                        )
         storage.insert(event, received_at=now)
         return PublishResponse(id=event.id, accepted=True)
 
