@@ -8,12 +8,23 @@ Every 60 min:
   3. Publish a kind 5 (knowledge_claim) with the structured items list
      (`{title, source, link, published}`) for downstream AI consumers.
 
+Headline dedup (JP-redacted) every digest leads with something new:
+  The digest used to repeat its lead headline whenever a feed's top item had
+  not changed between hourly runs. We now persist a small recent-set of
+  already-posted headline keys (NEWS_SEEN, default
+  /var/lib/anp2/news_seen.json) and skip items already covered. Each
+  digest therefore leads with a headline the network has not seen recently.
+  The recent-set is capped (SEEN_CAP) and trimmed oldest-first so it can
+  never grow unbounded.
+
 Robustness:
   - Stdlib only (urllib.request + xml.etree.ElementTree). No feedparser/requests.
   - 10s timeout per feed; one failed feed never blocks others.
   - Total runtime budget ~30s across all feeds.
   - If ALL feeds fail, posts a kind 1 "news snapshot unavailable" status and
      never crashes.
+  - If every fetched item is already in the recent-set, the digest falls back
+     to the freshest items rather than posting nothing.
   - Profile + capability posted idempotently via has_recent_event.
 """
 
@@ -36,6 +47,13 @@ RELAY_URL = os.environ.get("NEWS_RELAY", "http://127.0.0.1:8000")
 HTTP_TIMEOUT = 10.0
 TOTAL_BUDGET_SEC = 30.0
 USER_AGENT = "ANP2-NewsSummarizer/0.1 (https://anp2.com)"
+
+# Persisted recent-set of already-posted headlines, so consecutive hourly
+# digests do not repeat the same lead item.
+SEEN_PATH = os.environ.get("NEWS_SEEN", "/var/lib/anp2/news_seen.json")
+# Cap on remembered headline keys. ~3 digests' worth of headroom beyond the
+# items one run can surface; trimmed oldest-first so it never grows unbounded.
+SEEN_CAP = 60
 
 # (source_label, feed_url). Reuters tech often 404s, so we fall back to
 # TechCrunch (JP-redacted) listed here directly to keep one fetch per source.
@@ -154,27 +172,92 @@ def truncate(s: str, n: int = 90) -> str:
     return s if len(s) <= n else s[: n - 1].rstrip() + "(JP-redacted)"
 
 
-def build_summary(all_items: list[dict]) -> str:
-    """Human-readable kind 1 digest line covering top DIGEST_HEADLINES headlines."""
-    if not all_items:
-        return "ANP2 news snapshot: no items."
+def headline_key(item: dict) -> str:
+    """Stable identity for a headline, used for cross-run dedup.
+
+    Prefer the canonical `link` (most stable across feed re-orderings); fall
+    back to a normalised source+title. Whitespace- and case-normalised so a
+    feed re-emitting the same story with cosmetic changes still matches.
+    """
+    link = " ".join((item.get("link") or "").split()).strip().lower()
+    if link:
+        return "l:" + link
+    title = " ".join((item.get("title") or "").split()).strip().lower()
+    source = (item.get("source") or "").strip().lower()
+    return f"t:{source}|{title}"
+
+
+def load_seen() -> list[str]:
+    """Load the persisted recent-set of posted headline keys (oldest first)."""
+    try:
+        with open(SEEN_PATH) as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+    if isinstance(data, dict):  # tolerate {"seen": [...]} shape
+        data = data.get("seen", [])
+    if not isinstance(data, list):
+        return []
+    return [k for k in data if isinstance(k, str) and k]
+
+
+def save_seen(keys: list[str]) -> None:
+    """Persist the recent-set, trimmed oldest-first to SEEN_CAP entries."""
+    trimmed = keys[-SEEN_CAP:]
+    os.makedirs(os.path.dirname(SEEN_PATH) or ".", exist_ok=True)
+    tmp = SEEN_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"seen": trimmed, "updated_at": int(time.time())}, f)
+    os.replace(tmp, SEEN_PATH)
+
+
+def select_digest_items(all_items: list[dict], seen: set[str]) -> list[dict]:
+    """Pick up to DIGEST_HEADLINES items, preferring source diversity and
+    skipping headlines already posted in a recent digest.
+
+    Two passes prefer fresh (unseen) items; if fewer than DIGEST_HEADLINES
+    fresh items exist, already-seen items top up the digest so it is never
+    empty (JP-redacted) but fresh items always come first, so the digest still *leads*
+    with something new.
+    """
     picks: list[dict] = []
     seen_sources: set[str] = set()
-    # First pass: one per source for diversity.
+
+    def _add(item: dict) -> None:
+        picks.append(item)
+        seen_sources.add(item["source"])
+
+    # Pass 1: fresh items, one per source for diversity.
     for it in all_items:
+        if len(picks) >= DIGEST_HEADLINES:
+            break
+        if headline_key(it) in seen:
+            continue
         if it["source"] in seen_sources:
             continue
-        picks.append(it)
-        seen_sources.add(it["source"])
-        if len(picks) >= DIGEST_HEADLINES:
-            break
-    # Top up if we didn't reach DIGEST_HEADLINES.
+        _add(it)
+    # Pass 2: fresh items, allow repeated sources.
     for it in all_items:
         if len(picks) >= DIGEST_HEADLINES:
             break
-        if it not in picks:
-            picks.append(it)
+        if headline_key(it) in seen or it in picks:
+            continue
+        _add(it)
+    # Pass 3: fallback (JP-redacted) everything is already seen. Top up with the freshest
+    # items so the digest is never empty (lead is still as fresh as available).
+    for it in all_items:
+        if len(picks) >= DIGEST_HEADLINES:
+            break
+        if it in picks:
+            continue
+        _add(it)
+    return picks
 
+
+def build_summary(picks: list[dict]) -> str:
+    """Human-readable kind 1 digest line from pre-selected headline items."""
+    if not picks:
+        return "ANP2 news snapshot: no items."
     parts = [f"[{p['source']}] {truncate(p['title'], 80)}" for p in picks]
     return "ANP2 news snapshot: " + " / ".join(parts)
 
@@ -269,12 +352,34 @@ def main() -> int:
         print(f"[News] unavailable posted: {r['id'][:16]}...")
         return 0
 
-    summary = build_summary(all_items)
+    # Dedup: prefer headlines not posted in a recent digest so the lead item
+    # rotates instead of repeating across consecutive hourly runs.
+    seen_list = load_seen()
+    seen_set = set(seen_list)
+    picks = select_digest_items(all_items, seen_set)
+    fresh_count = sum(1 for p in picks if headline_key(p) not in seen_set)
+    print(f"[News] digest: {len(picks)} headlines selected, {fresh_count} new "
+          f"(recent-set size {len(seen_list)})")
+
+    summary = build_summary(picks)
     r1 = agent.post(
         summary,
         tags=[("t", "news"), ("s", "anp.news.v1")],
     )
     print(f"[News] summary posted: {r1['id'][:16]}... ({summary[:80]}...)")
+
+    # Record the headlines this digest actually led with so the next run skips
+    # them. Append in pick order; save_seen trims oldest-first to SEEN_CAP.
+    for p in picks:
+        k = headline_key(p)
+        if k not in seen_set:
+            seen_list.append(k)
+            seen_set.add(k)
+    try:
+        save_seen(seen_list)
+    except OSError as e:
+        # A persistence hiccup must not crash the run or block the kind 5 post.
+        print(f"[News] WARN could not persist recent-set: {e}")
 
     claim = build_knowledge_claim(all_items, per_feed_status, accessed_at_iso)
     r2 = agent.publish(

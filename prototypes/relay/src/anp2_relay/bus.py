@@ -17,6 +17,11 @@ from .events import Event
 
 Predicate = Callable[[Event], bool]
 
+# Hard cap on concurrent SSE subscribers. Each holds a 256-slot asyncio.Queue,
+# so an unbounded subscriber count is a memory-exhaustion vector on a small
+# host. Past the cap, subscribe() returns None and /stream answers 503.
+MAX_SUBSCRIBERS = 512
+
 
 class EventBus:
     def __init__(self) -> None:
@@ -27,11 +32,15 @@ class EventBus:
     def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
 
-    async def subscribe(self, predicate: Predicate) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue(maxsize=256)
+    async def subscribe(self, predicate: Predicate) -> asyncio.Queue | None:
+        """Register a subscriber. Returns None if the concurrent-subscriber
+        cap (MAX_SUBSCRIBERS) has been reached (JP-redacted) the caller answers 503."""
         with self._lock:
+            if len(self._subs) >= MAX_SUBSCRIBERS:
+                return None
+            q: asyncio.Queue = asyncio.Queue(maxsize=256)
             self._subs = self._subs + [(predicate, q)]
-        return q
+            return q
 
     async def unsubscribe(self, q: asyncio.Queue) -> None:
         with self._lock:

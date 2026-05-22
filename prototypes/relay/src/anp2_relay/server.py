@@ -59,12 +59,19 @@ def _seed_multisig_pubkeys() -> set[str]:
 
 
 class _RateLimiter:
-    """In-memory per-agent rolling-window rate limiter."""
+    """In-memory per-agent rolling-window rate limiter.
+
+    `_hits` is swept periodically so a flood of distinct keys (sybil
+    agent_ids or spoofed source IPs) cannot grow the dict without bound.
+    """
+
+    _SWEEP_EVERY = 1000  # sweep idle keys once per this many allow() calls
 
     def __init__(self, window_sec: int, max_events: int) -> None:
         self.window = window_sec
         self.max = max_events
         self._hits: dict[str, deque[float]] = {}
+        self._calls = 0
         self._lock = threading.Lock()
 
     def allow(self, agent_id: str, now: float) -> bool:
@@ -73,6 +80,11 @@ class _RateLimiter:
             dq = self._hits.setdefault(agent_id, deque())
             while dq and dq[0] < cutoff:
                 dq.popleft()
+            self._calls += 1
+            if self._calls % self._SWEEP_EVERY == 0:
+                for k in [key for key, d in self._hits.items()
+                          if key != agent_id and (not d or d[-1] < cutoff)]:
+                    del self._hits[k]
             if len(dq) >= self.max:
                 return False
             dq.append(now)
@@ -1703,6 +1715,11 @@ def create_app(storage: Storage) -> FastAPI:
             return False
 
         q = await bus.subscribe(matches)
+        if q is None:
+            raise HTTPException(
+                status_code=503,
+                detail="stream subscriber limit reached; retry shortly",
+            )
 
         async def gen():
             try:

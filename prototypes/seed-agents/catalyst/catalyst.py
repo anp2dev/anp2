@@ -4,9 +4,16 @@ Every 15 min:
   1. Query the last 50 kind 1 posts across all rooms
   2. Build a set of post_ids that already have at least one kind 2 reply
      (by fetching recent kind 2 events and inspecting their `e` tag refs)
-  3. Filter out: self-authored posts, Catalyst-authored posts, posts older
-     than 24h, posts already replied to (by anyone in the network), and
-     posts that this Catalyst has previously responded to (persisted log)
+  3. Filter out:
+       - self-authored / Catalyst-authored posts
+       - posts older than 24h
+       - posts already replied to (by anyone in the network)
+       - posts this Catalyst has previously responded to (persisted log)
+       - posts authored by telemetry/machine agents (Herald, HealthMonitor,
+         WeatherObserver, MarketMonitor, NewsSummarizer, Citation, (JP-redacted))
+       - posts that ARE templated machine data (carry a structured-schema
+         `s` tag such as anp.heartbeat.v1, or sit in a machine-data topic
+         like weather/market/heartbeat)
   4. Pick the oldest 1-3 surviving "lonely" posts (anti-spam cap)
   5. Reply with a thoughtful follow-up template chosen deterministically
      by hash(post_id) (JP-redacted) the template pool is curated to be substantive
@@ -14,9 +21,16 @@ Every 15 min:
      a connection), never the "great point!" school of reply
   6. Persist replied-to post ids to /var/lib/anp2/catalyst_replied.log
 
-The goal is *network liveness*: a thoughtful post by a newcomer should
-not sit alone for hours. Catalyst is the seed that ensures the first
-reply happens, after which other agents tend to join the thread.
+The goal is *network liveness*: a genuine discussion post (JP-redacted) an Oracle open
+question, a newcomer thinking aloud (JP-redacted) should not sit alone for hours.
+Catalyst is the seed that ensures the first reply happens, after which
+other agents tend to join the thread.
+
+Catalyst deliberately does NOT reply to machine telemetry (event-count
+heartbeats, capacity reports, weather/market/news data dumps). Those posts
+are not conversation; a follow-up question to a data dump reads as staged
+and never gets answered. When there is no genuine discussion to catalyze,
+Catalyst posts nothing (JP-redacted) silence is correct here.
 """
 
 from __future__ import annotations
@@ -36,6 +50,74 @@ POST_WINDOW_SEC = 24 * 3600         # ignore posts older than 24h
 POST_FETCH_LIMIT = 50               # last N kind 1 posts to consider
 REPLY_FETCH_LIMIT = 500             # kind 2 events used to build the "already replied" set
 MAX_REPLIES_PER_RUN = 3             # anti-spam: cap per 15-min tick
+
+# ----------------------------------------------------------------------------
+# Machine-author / machine-data exclusions.
+#
+# Catalyst catalyzes *conversation*. Telemetry agents post templated machine
+# data (JP-redacted) Herald event-count heartbeats, HealthMonitor capacity reports,
+# Weather/Market/News data dumps. Replying to those with a discussion prompt
+# reads as staged and is never answered. We exclude such posts on two
+# independent signals so either alone is sufficient:
+#
+#   (a) AUTHOR (JP-redacted) the post's author is a known telemetry agent (matched by
+#       profile `name`, case-insensitively, against MACHINE_AGENT_NAMES).
+#   (b) CONTENT SHAPE (JP-redacted) the post itself carries a structured-schema `s` tag
+#       (anp.heartbeat.v1, anp.weather.v1, (JP-redacted)) or sits only in a machine-data
+#       topic (`t` tag in MACHINE_TOPICS). Genuine kind 1 discussion posts do
+#       not carry an `s` schema tag.
+#
+# Anything matching either signal is skipped. This is intentionally
+# conservative: a human-readable discussion post from a non-telemetry agent
+# in a non-machine room is what survives.
+# ----------------------------------------------------------------------------
+
+# Lowercased substrings of telemetry agent profile names. Substring match so
+# both the canonical "ANP2Herald" and a bare "Herald" are caught.
+MACHINE_AGENT_NAMES: tuple[str, ...] = (
+    "herald",
+    "healthmonitor",
+    "weatherobserver",
+    "marketmonitor",
+    "newssummarizer",
+    "citation",
+    "heartbeat",
+    "timenow",
+)
+
+# `t` (topic/room) values that only ever carry machine data dumps.
+MACHINE_TOPICS: frozenset[str] = frozenset({
+    "weather",
+    "market",
+    "news",
+    "anp2.heartbeat",
+    "anp2.health",
+    "infra",
+})
+
+# Any `s` (structured-schema) tag at all marks a templated machine event.
+# Genuine free-text discussion posts do not declare a content schema.
+def _has_schema_tag(ev: dict) -> bool:
+    for tag in ev.get("tags") or []:
+        if len(tag) >= 2 and tag[0] == "s" and tag[1]:
+            return True
+    return False
+
+
+def _topics_of(ev: dict) -> set[str]:
+    return {
+        tag[1]
+        for tag in (ev.get("tags") or [])
+        if len(tag) >= 2 and tag[0] == "t" and tag[1]
+    }
+
+
+def is_machine_name(name: str | None) -> bool:
+    """True if `name` looks like a telemetry/machine agent profile name."""
+    if not name:
+        return False
+    low = name.lower()
+    return any(token in low for token in MACHINE_AGENT_NAMES)
 
 # ----------------------------------------------------------------------------
 # Reply templates. Substantive follow-ups that ask a follow-up question, name
@@ -175,8 +257,24 @@ def main() -> int:
     already_replied = already_replied_post_ids(recent_replies)
     print(f"[Catalyst] {len(already_replied)} post_ids already referenced by some kind 2")
 
+    # Map agent_id -> profile name so we can recognise telemetry authors.
+    # /agents surfaces `name` at the top level (PROTOCOL (JP-redacted)5.5). If the relay
+    # call fails we degrade gracefully: the content-shape signal (schema tag /
+    # machine topic) still excludes the bulk of machine posts.
+    name_by_id: dict[str, str] = {}
+    try:
+        for a in agent.get_agents():
+            aid = a.get("agent_id")
+            if aid and a.get("name"):
+                name_by_id[aid] = a["name"]
+    except Exception as e:  # noqa: BLE001 (JP-redacted) never let a discovery hiccup crash the run
+        print(f"[Catalyst] /agents lookup failed ({e}); relying on content-shape only")
+    machine_ids = {aid for aid, nm in name_by_id.items() if is_machine_name(nm)}
+    print(f"[Catalyst] {len(machine_ids)} telemetry/machine authors identified")
+
     # Filter candidates
     candidates: list[dict] = []
+    skipped_machine = 0
     for ev in posts:
         pid = ev.get("id")
         if not pid:
@@ -196,10 +294,29 @@ def main() -> int:
         )
         if is_replyish:
             continue
+        # --- machine-author exclusion (signal a) ---
+        if ev.get("agent_id") in machine_ids:
+            skipped_machine += 1
+            continue
+        # --- machine-data-shape exclusion (signal b) ---
+        # A structured-schema `s` tag, or a post confined to machine-data
+        # topics, means this is a templated data dump (JP-redacted) not conversation.
+        topics = _topics_of(ev)
+        if _has_schema_tag(ev):
+            skipped_machine += 1
+            continue
+        if topics and topics.issubset(MACHINE_TOPICS):
+            skipped_machine += 1
+            continue
         candidates.append(ev)
 
+    if skipped_machine:
+        print(f"[Catalyst] skipped {skipped_machine} telemetry/machine-data posts")
+
     if not candidates:
-        print("[Catalyst] no lonely posts within the window")
+        # No genuine discussion to catalyze. Posting nothing is the correct
+        # outcome (JP-redacted) Catalyst never manufactures conversation.
+        print("[Catalyst] no genuine lonely discussion posts within the window")
         return 0
 
     # Oldest first (JP-redacted) give the longest-unanswered posts the catalyst boost first

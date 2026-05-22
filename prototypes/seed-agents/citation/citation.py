@@ -8,17 +8,29 @@ Periodically (every 30 min via timer):
 
 Graph format (persisted at /var/lib/anp2/citation_graph.json):
     {
-      "updated_at": <unix_ts>,
-      "edges":      {<source_event_id>: [<citing_event_id>, ...], ...},
-      "processed":  [<event_id>, ...]   // dedup: kind 5 events already parsed
+      "updated_at":   <unix_ts>,
+      "edges":        {<source_event_id>: [<citing_event_id>, ...], ...},
+      "processed":    [<event_id>, ...],  // dedup: kind 5 events already parsed
+      "last_report":  {                   // fingerprint of the last post made
+        "claims": <int>, "edges": <int>, "top": [[<src>, <n>], ...]
+      }
     }
 
 `edges` is a backward index: for each cited (source) event, the list of
 kind 5 events that cite it. "Most cited" = longest edge list.
 
+Posting policy (JP-redacted) signal, not filler:
+  Citation posts a kind 1 summary ONLY when the citation graph has actually
+  changed since the last post. Every run computes a fingerprint
+  (claim count, edge count, top-cited list); if it equals the persisted
+  `last_report` fingerprint, the run indexes silently and posts nothing.
+  This stops the agent re-announcing "N claims, 0 edges" every 30 minutes
+  when nothing has moved.
+
 Robustness:
   - kind 5 with malformed/non-JSON content or no `derived_from` is skipped silently
-  - if there are zero kind 5 events ever, posts a "watching for first" heartbeat
+  - if there are zero kind 5 events ever, the run is silent (nothing to report
+    and nothing has changed) unless this is genuinely the first observation
   - already-processed kind 5 events (by id) are not re-parsed across runs
 """
 
@@ -40,19 +52,26 @@ GRAPH_PATH = Path(os.environ.get("CITATION_GRAPH", "/var/lib/anp2/citation_graph
 FETCH_LIMIT = 1000  # per page; relay caps at 1000
 
 
+def _empty_graph() -> dict[str, Any]:
+    # last_report is None until the agent has posted at least once. This lets
+    # the first genuine observation always produce a post.
+    return {"updated_at": 0, "edges": {}, "processed": [], "last_report": None}
+
+
 def load_graph() -> dict[str, Any]:
     """Load persisted graph; return empty skeleton if missing or unreadable."""
     if not GRAPH_PATH.exists():
-        return {"updated_at": 0, "edges": {}, "processed": []}
+        return _empty_graph()
     try:
         data = json.loads(GRAPH_PATH.read_text())
         # tolerate older shapes
         data.setdefault("updated_at", 0)
         data.setdefault("edges", {})
         data.setdefault("processed", [])
+        data.setdefault("last_report", None)  # pre-dedup graphs lack this
         return data
     except (json.JSONDecodeError, OSError):
-        return {"updated_at": 0, "edges": {}, "processed": []}
+        return _empty_graph()
 
 
 def save_graph(graph: dict[str, Any]) -> None:
@@ -130,6 +149,35 @@ def top_cited(edges: dict[str, list[str]], n: int = 5) -> list[tuple[str, int]]:
     return [(src, len(citers)) for src, citers in ranked[:n]]
 
 
+def report_fingerprint(
+    total_claims: int, total_edges: int, top: list[tuple[str, int]]
+) -> dict[str, Any]:
+    """A stable, JSON-serialisable snapshot of what a summary post would say.
+
+    Two runs that produce equal fingerprints would post identical summaries
+    (modulo the timestamp), so the second one should stay silent. `top` is
+    normalised to lists so it round-trips through JSON unchanged.
+    """
+    return {
+        "claims": total_claims,
+        "edges": total_edges,
+        "top": [[src, n] for src, n in top],
+    }
+
+
+def fingerprints_equal(a: Any, b: Any) -> bool:
+    """Order-stable equality for two fingerprints (None means 'never posted')."""
+    if a is None or b is None:
+        return False
+    return (
+        a.get("claims") == b.get("claims")
+        and a.get("edges") == b.get("edges")
+        # top lists are already deterministically ordered by top_cited()
+        and [list(x) for x in a.get("top", [])]
+        == [list(x) for x in b.get("top", [])]
+    )
+
+
 def build_summary(total_claims: int, total_edges: int, top: list[tuple[str, int]]) -> str:
     ts = int(time.time())
     parts = [
@@ -175,28 +223,50 @@ def main() -> int:
     events = fetch_all_kind5(agent)
     print(f"[Citation] fetched {len(events)} kind 5 events")
 
+    graph = load_graph()
+
     if not events:
-        msg = (
-            "no knowledge claims yet, watching for first kind 5 events. "
-            f"Report time: {int(time.time())}."
-        )
-        r = agent.post(msg, tags=[("t", "meta"), ("t", "citation")])
-        print(f"[Citation] heartbeat posted: {r['id'][:16]}...")
+        # Nothing to index. Announce "watching for first kind 5" exactly once
+        # (when the agent has never posted anything); after that, stay silent (JP-redacted)
+        # re-announcing an unchanged empty state every 30 min is pure filler.
+        if graph.get("last_report") is None:
+            msg = (
+                "no knowledge claims yet, watching for first kind 5 events. "
+                f"Report time: {int(time.time())}."
+            )
+            r = agent.post(msg, tags=[("t", "meta"), ("t", "citation")])
+            graph["last_report"] = report_fingerprint(0, 0, [])
+            save_graph(graph)
+            print(f"[Citation] first-observation heartbeat posted: {r['id'][:16]}...")
+        else:
+            print("[Citation] no kind 5 events and state unchanged (JP-redacted) staying silent")
         return 0
 
-    graph = load_graph()
     new_events, new_edges = update_graph(graph, events)
-    save_graph(graph)
     print(f"[Citation] +{new_events} events, +{new_edges} edges "
           f"(total events={len(graph['processed'])}, total edges={sum(len(v) for v in graph['edges'].values())})")
 
     total_claims = len(graph["processed"])
     total_edges = sum(len(v) for v in graph["edges"].values())
     top = top_cited(graph["edges"], n=5)
-    summary = build_summary(total_claims, total_edges, top)
 
+    fp = report_fingerprint(total_claims, total_edges, top)
+    last = graph.get("last_report")
+
+    # Post ONLY when the citation graph has actually moved since the last post.
+    # An unchanged fingerprint means the summary would be identical (bar the
+    # timestamp) (JP-redacted) that is filler, so skip it. We still persist the freshly
+    # indexed graph so dedup state stays current.
+    if fingerprints_equal(fp, last):
+        save_graph(graph)
+        print("[Citation] citation graph unchanged since last report (JP-redacted) staying silent")
+        return 0
+
+    summary = build_summary(total_claims, total_edges, top)
     r = agent.post(summary, tags=[("t", "meta"), ("t", "citation")])
-    print(f"[Citation] summary posted: {r['id'][:16]}...")
+    graph["last_report"] = fp
+    save_graph(graph)
+    print(f"[Citation] summary posted (graph changed): {r['id'][:16]}...")
     return 0
 
 
