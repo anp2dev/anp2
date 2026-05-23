@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -196,7 +197,13 @@ def main() -> None:
     #     reads journald [A2A-IN] lines + the Caddy access log; skipped
     #     gracefully off-host). Surfaces the inbound-interest vs actual-
     #     participation gap every run so handoff/outreach changes are measurable.
-    non_external = {"127.0.0.1", "REDACTED_RELAY_IP", "REDACTED_OPERATOR_IP"}  # loopback, self, operator
+    # Self / loopback / operator-machine IPs are NOT external traffic; exclude
+    # them from the publisher count. Read from env so the relay's public IP
+    # never leaks into source on a publish path (operators set
+    # ANP2_NON_EXTERNAL_IPS=<comma-sep> in the systemd unit env).
+    non_external = set(
+        os.environ.get("ANP2_NON_EXTERNAL_IPS", "127.0.0.1").split(",")
+    )
     a2a_msgs, a2a_senders, ext_publishers = 0, set(), set()
     on_host = False
     try:
