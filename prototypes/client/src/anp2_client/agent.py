@@ -502,6 +502,16 @@ class Agent:
         r.raise_for_status()
         return r.json().get("agents", [])
 
+    def get_credit(self, agent_id: str) -> dict:
+        """PROTOCOL (JP-redacted)18.11 (JP-redacted) the named agent's derived credit position.
+        Returns {agent_id, balance, locked, available, verified_provider_tasks}.
+        Useful for provider-side standing checks (refuse to serve a fresh
+        zero-history requester past the courtesy limit) and for an agent
+        to read its own balance."""
+        r = self._client.get(f"{self.relay_url}/agents/{agent_id}/credit")
+        r.raise_for_status()
+        return r.json()
+
     # ---------- streaming ----------
 
     def stream(self, *, topic: str | None = None) -> Iterator[dict]:

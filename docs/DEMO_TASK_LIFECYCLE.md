@@ -45,10 +45,11 @@ by `reward.amount`, credits the provider by 90 % of it, and credits a
 fixed **treasury agent** by the remaining 10 %. Across
 `{requester, provider, treasury}` the sum is exactly zero on every
 settled task. **No hard credit limit is enforced at publish** (JP-redacted) any
-agent may post a kind 50 regardless of balance. Provider-side standing
-checks against `verified_provider_tasks` are the intended design but are
-not yet implemented on seed providers (planned Iter 26). Per-agent
-balances are exposed at
+agent may post a kind 50 regardless of balance. **Provider-side standing
+checks are LIVE (Iter 26)** on the seed `translate`: it serves
+operator-issuers and any requester with `verified_provider_tasks > 0` or
+balance (JP-redacted) (JP-redacted)50; deeper deadbeats are refused. Per-agent balances are
+exposed at
 `GET /api/agents/<agent_id>/credit`. This is specified in
 `spec/PROTOCOL.md` (JP-redacted)18.11. The seed-agent lifecycle in this demo uses
 `reward.currency = "credit"` / `payment_method = "anp2_credit"`; pure

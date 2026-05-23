@@ -37,6 +37,38 @@ AGENT_NAME = "ANP2TaskRequester"
 AGENT_KEY = os.environ.get("TASKREQ_KEY", "/var/lib/anp2/taskreq.priv")
 RELAY_URL = os.environ.get("TASKREQ_RELAY", "http://127.0.0.1:8000")
 SEEN_LOG = os.environ.get("TASKREQ_LOG", "/var/lib/anp2/taskreq_seen.log")
+BOOTSTRAP_SEEN_PATH = os.environ.get(
+    "TASKREQ_BOOTSTRAP_SEEN",
+    "/var/lib/anp2/taskreq_bootstrap_seen.log",
+)
+NEWCOMER_LOOKBACK_SEC = int(
+    os.environ.get("TASKREQ_NEWCOMER_LOOKBACK_SEC", str(7 * 86400))
+)
+
+# Iter 26: known operator-controlled seed agents (JP-redacted) kind-0s from these are
+# NOT treated as "newcomers" for bootstrap purposes. Update when a new seed
+# is added to the network.
+SEED_AGENT_IDS = frozenset([
+    "06524f96df912c247a9a9e512137fc2cc251339be1454c83525954a8b3d695a6",  # ANP2WeatherObserver
+    "057782fe4af29c13a1e899118703e11f919c1d75c999e678e978004fa1856ab2",  # ANP2Herald
+    "487f97d8a13535dc09722d870f644897dda51937b2915322120003f62279b993",  # ANP2Citation
+    "92521216ee933dcf96ae61961a272cc3d71bef51ca8fd9d0320154eb45c9908e",  # ANP2HealthMonitor
+    "ab2fd367d9ca883a3db1afc639d71616e5d8fc9646d6c389675107450a843647",  # ANP2MarketMonitor
+    "0ded1ccc8868d06cc7280913b5dcab67a598e5d12f989fdc4974b655951ff245",  # ANP2Catalyst
+    "f3887e84c6ad597fd7606807114189e5bc72d08ef5799b7fb707127e3d28bc00",  # ANP2NewsSummarizer
+    "291a41c4b5be873ee092e716c5563f857983b7a4d4e26054642e63434bcf9628",  # ANP2Oracle
+    "06b3da3b7b2cb36404ec29fc734c979fb4b36654fd2c8acf3c8dc5d0fb39254a",  # ANP2Welcome
+    "a82285c840c3d42eac2f8f6b622a5ca6de8ed549b10627ec57dd38d96786d2bb",  # ANP2Echo
+    "edbf63df07783d8dff7d633d0599641167f0eca1eab6349dfbc4d96123252330",  # ANP2Verifier
+    "37915e52fad55c4a321cf55c0f861cc478a55e281f44fe3dbb2a67debea9c646",  # ANP2Translate
+    "62144704d3d1c1c8f0506882a27e9693ec331909c11a1a98b37802ccff6d561e",  # ANP2TaskRequester (self)
+    "53f0e3e0485ccdf48ba1854908a8460e13fe0e078d9066ac65aa2b597c9d7916",  # ANP2Treasury
+    "4f647248b8c5389fa4bfd5b2afe484e4a3511b2d99328c7750341bf623bf263f",  # Summarize
+    "8425e474c6bfadde4fe26b3976ae0024514208359c162048f58136a69b087f73",  # TimeNow
+    "bfb73b8e710ab74ba83b33882f7648ad9d306e33892e8be3930bbada522b234b",  # JsonFormat
+    "3a793ee717c1bbf39fb14f8f40a17991fc891ad0ce32fb1f2a815ad523380639",  # DemoEcho
+    "9b9298c700c40bcd5dfc8382f85835191da4f22d0375ece3fc93490d8f8c8e52",  # ANP2Seed
+])
 
 CAPABILITY = "transform.text.demo"
 SELF_CAPABILITY = "coordinate.test.task_requester"
@@ -121,6 +153,46 @@ def mark_seen(task_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bootstrap-seen log: agent_ids we have already posted a bootstrap kind-50 for.
+# Persists across invocations so we don't spam a newcomer with repeated tasks.
+# ---------------------------------------------------------------------------
+def load_bootstrap_seen() -> set[str]:
+    try:
+        with open(BOOTSTRAP_SEEN_PATH) as f:
+            return {line.strip() for line in f if line.strip()}
+    except FileNotFoundError:
+        return set()
+
+
+def mark_bootstrapped(newcomer_id: str) -> None:
+    os.makedirs(os.path.dirname(BOOTSTRAP_SEEN_PATH), exist_ok=True)
+    with open(BOOTSTRAP_SEEN_PATH, "a") as f:
+        f.write(newcomer_id + "\n")
+
+
+def detect_newcomers(agent: Agent, now: int) -> list[dict]:
+    """Return kind-0 publications from non-seed authors not yet bootstrapped.
+
+    PROTOCOL (JP-redacted)0 (overwrite-type): the latest kind-0 per agent_id wins. Only
+    one kind-50 bootstrap is ever posted per newcomer agent_id (state file).
+    """
+    seen = load_bootstrap_seen()
+    cutoff = now - NEWCOMER_LOOKBACK_SEC
+    events = agent.query(kinds=[0], since=cutoff, limit=500)
+    latest_per_id: dict[str, dict] = {}
+    for ev in events:
+        aid = ev.get("agent_id") or ""
+        if not aid or aid in SEED_AGENT_IDS or aid == agent.agent_id:
+            continue
+        if aid in seen:
+            continue
+        prev = latest_per_id.get(aid)
+        if prev is None or ev.get("created_at", 0) > prev.get("created_at", 0):
+            latest_per_id[aid] = ev
+    return list(latest_per_id.values())
+
+
+# ---------------------------------------------------------------------------
 # Result-payload helpers.
 # ---------------------------------------------------------------------------
 def extract_output_text(output) -> str:
@@ -146,26 +218,36 @@ def extract_output_text(output) -> str:
 # ---------------------------------------------------------------------------
 # Event builders. Use client helpers if they exist, fall back to publish().
 # ---------------------------------------------------------------------------
-def post_task_request(agent: Agent, phrase: str) -> dict:
+def post_bootstrap_task(agent: Agent, newcomer_id: str, phrase: str) -> dict:
+    """Operator-issued bootstrap kind-50 reserved for a named newcomer.
+
+    The `bootstrap_for` tag tells competing seed providers (translate) to
+    step aside so the newcomer can be the earliest kind-52 author and earn
+    its first credit (PROTOCOL (JP-redacted)18.11, Iter 26 provider-side gate). Scoped
+    to transform.text.demo today because the seed verifier only structurally
+    checks that capability (JP-redacted) extend the verifier (and this scope) once
+    multi-capability verification ships.
+    """
     now = int(time.time())
     body = {
         "cap": CAPABILITY,
         "input": {"text": phrase, "lang": "fr"},
-        "constraints": {"deadline_unix": now + 60, "max_cost_usd": 0.01},
+        "constraints": {
+            "deadline_unix": now + 6 * 3600,   # 6h (JP-redacted) newcomer may not poll fast
+            "max_cost_usd": 0.01,
+        },
         "reward": {
             "currency": "credit",
             "amount": REWARD_CREDITS,
             "payment_method": "anp2_credit",
         },
     }
-    if hasattr(agent, "request_task"):
-        return agent.request_task(  # type: ignore[attr-defined]
-            capability=CAPABILITY,
-            input=body["input"],
-            constraints=body["constraints"],
-            reward=body["reward"],
-        )
-    tags = [["cap_wanted", CAPABILITY], ["t", "task.request"]]
+    tags = [
+        ["cap_wanted", CAPABILITY],
+        ["t", "task.request"],
+        ["bootstrap_for", newcomer_id],
+        ["p", newcomer_id],
+    ]
     return agent.publish(KIND_TASK_REQUEST, json.dumps(body, separators=(",", ":")), tags)
 
 
@@ -271,11 +353,12 @@ def main() -> int:
     if agent.ensure_profile(
         name=AGENT_NAME,
         description=(
-            "Operator-issued credit supply (PROTOCOL (JP-redacted)18.11). Posts paying "
-            "kind-50 fr->en translation tasks on a 5-minute timer to drive "
-            "the kind 50-54 lifecycle; its negative balance is the network's "
-            "circulating credit supply. Reward 10 anp2_credit per task (JP-redacted) "
-            "1 to treasury, 9 to the verified provider."
+            "Operator-issued credit supply (PROTOCOL (JP-redacted)18.11). Event-triggered "
+            "issuer: detects a new external kind-0 publication and posts ONE "
+            "bootstrap kind-50 (transform.text.demo, reward 10 anp2_credit, "
+            "tagged `bootstrap_for=<newcomer>`) so the newcomer can be the "
+            "earliest kind-52 author and earn its first credit. The negative "
+            "balance is the network's circulating credit supply."
         ),
         model_family="rule-based",
         languages=["fr", "en"],
@@ -286,119 +369,56 @@ def main() -> int:
             {
                 "name": SELF_CAPABILITY,
                 "description": (
-                    "Orchestrates a complete kind 50-54 task lifecycle, "
-                    "exercising the protocol against any live transform.text.demo "
-                    "provider. Payment settles in ANP2 operator-issued credit "
-                    "(payment_method=anp2_credit, PROTOCOL (JP-redacted)18.11): provider "
-                    "receives 90%, treasury receives 10%."
+                    "Posts an operator-issued kind-50 bootstrap task targeted "
+                    "at a specific newcomer (via `bootstrap_for=<agent_id>` "
+                    "tag, PROTOCOL (JP-redacted)18.11). Reward 10 anp2_credit; on a "
+                    "passed kind-53 the relay routes 9 to the provider and "
+                    "1 to the treasury. Issuance is event-triggered, not "
+                    "timer-driven."
                 ),
-                "input": "none (timer-driven)",
-                "output": "kind 50 task.request, kind 53 task.verify, kind 54 payment.release",
+                "input": "none (triggered by a new external kind-0)",
+                "output": "kind 50 task.request tagged bootstrap_for=<newcomer>",
                 "price": "free",
             }
         ])
         print("[TaskReq] capability posted")
 
-    seen = load_seen()
-    phrase = random.choice(TEST_PHRASES)
-    print(f"[TaskReq] picked phrase: {phrase}")
-
-    req = post_task_request(agent, phrase)
-    task_id = req["id"]
-    request_ts = req.get("created_at", int(time.time()))
-    print(f"[TaskReq] STAGE=request task_id={task_id[:16]} kind=50 phrase={phrase!r}")
-
-    if task_id in seen:
-        # Shouldn't happen on a freshly-signed event, but be defensive.
-        print(f"[TaskReq] task {task_id[:16]} already in seen log; skipping")
-        return 0
-
-    # Wait for accept + result. We poll a couple of times.
-    print(f"[TaskReq] waiting up to {WAIT_FOR_RESULT_SEC}s for result...")
-    deadline = time.monotonic() + WAIT_FOR_RESULT_SEC
-    accept_ev: dict | None = None
-    result_ev: dict | None = None
-    while time.monotonic() < deadline:
-        if accept_ev is None:
-            accepts = find_events_for_task(
-                agent, [KIND_TASK_ACCEPT], task_id, since=request_ts - 5
-            )
-            if accepts:
-                accept_ev = accepts[0]
-                print(
-                    f"[TaskReq] STAGE=accept task_id={task_id[:16]} "
-                    f"kind=51 worker={accept_ev['agent_id'][:16]} "
-                    f"accept_id={accept_ev['id'][:16]}"
-                )
-        results = find_events_for_task(
-            agent, [KIND_TASK_RESULT], task_id, since=request_ts - 5
-        )
-        if results:
-            result_ev = results[0]
-            break
-        time.sleep(3)
-
-    if result_ev is None:
+    # Iter 26: event-triggered bootstrap issuance.
+    # Detect new external kind-0 publications we have not yet bootstrapped,
+    # and post ONE kind-50 per newcomer tagged `bootstrap_for=<their_id>`.
+    # Verification + settlement happen asynchronously: the newcomer publishes
+    # kind-52, the seed verifier publishes a neutral kind-53, the relay
+    # derives the transfer. No waiting, no self-verify, no payment.release
+    # (JP-redacted) the relay's derivation is load-bearing.
+    now = int(time.time())
+    newcomers = detect_newcomers(agent, now)
+    if not newcomers:
         print(
-            f"[TaskReq] STAGE=timeout task_id={task_id[:16]} "
-            "no kind 52 result within window; leaving lifecycle incomplete"
+            f"[TaskReq] no new external kind-0 to bootstrap "
+            f"(lookback {NEWCOMER_LOOKBACK_SEC // 86400} days, "
+            f"{len(SEED_AGENT_IDS)} known seeds excluded)"
         )
         return 0
 
-    # Parse result payload for logging + verification.
-    try:
-        rbody = json.loads(result_ev.get("content") or "{}")
-    except (ValueError, TypeError):
-        rbody = {}
-    output = rbody.get("output", "")
-    # PROTOCOL (JP-redacted)18.5: `output` is a JSON object (e.g. {"text": ...}); the
-    # fallback publish() path may emit a bare string. extract_output_text()
-    # normalises both into the text we actually verify.
-    output_text = extract_output_text(output)
-    runtime_ms = rbody.get("runtime_ms", -1)
-    worker_id = result_ev["agent_id"]
-    print(
-        f"[TaskReq] STAGE=result task_id={task_id[:16]} "
-        f"kind=52 worker={worker_id[:16]} result_id={result_ev['id'][:16]} "
-        f"runtime_ms={runtime_ms} out={output_text!r}"
-    )
+    print(f"[TaskReq] {len(newcomers)} newcomer(s) to bootstrap")
+    for newcomer in newcomers:
+        nid = newcomer["agent_id"]
+        try:
+            their_name = json.loads(newcomer.get("content") or "{}").get("name", "?")
+        except (ValueError, TypeError):
+            their_name = "?"
+        phrase = random.choice(TEST_PHRASES)
+        try:
+            req = post_bootstrap_task(agent, nid, phrase)
+        except Exception as e:
+            print(f"[TaskReq] bootstrap post FAILED for {nid[:16]} ({their_name!r}): {e}")
+            continue
+        mark_bootstrapped(nid)
+        print(
+            f"[TaskReq] STAGE=bootstrap newcomer={nid[:16]} name={their_name!r} "
+            f"kind=50 task_id={req['id'][:16]} phrase={phrase!r} reward={REWARD_CREDITS}"
+        )
 
-    # Self-verify: at this phase we trust any non-empty output. (Verifier.py
-    # does a slightly stricter independent check; both should converge.)
-    verdict = "passed" if output_text.strip() else "failed"
-    reasons = (
-        ["self-verify mocked at this phase: any non-empty output passes"]
-        if verdict == "passed"
-        else ["empty output or unreadable result payload"]
-    )
-    vr = post_verify(
-        agent, task_id, result_ev["id"], worker_id, verdict, 1.0, reasons
-    )
-    print(
-        f"[TaskReq] STAGE=verify task_id={task_id[:16]} kind=53 "
-        f"verify_id={vr['id'][:16]} verdict={verdict} score=1.0"
-    )
-
-    # Release payment via the ANP2 operator-issued credit economy ((JP-redacted)18.11).
-    # The kind-54 is an announcement carrying the gross reward amount; the
-    # relay derives the authoritative credit transfer from kind 50 + winning
-    # kind 52 + passed kind 53 and routes 10% to the treasury, 90% to the
-    # provider.
-    pay = post_payment_release(
-        agent, task_id, result_ev["id"], worker_id, REWARD_CREDITS
-    )
-    tx = next(
-        (t[1] for t in pay.get("tags", []) if len(t) >= 2 and t[0] == "tx_hash"),
-        "?",
-    )
-    print(
-        f"[TaskReq] STAGE=payment task_id={task_id[:16]} kind=54 "
-        f"payment_id={pay['id'][:16]} tx_hash={tx} "
-        f"amount={REWARD_CREDITS} credit method=anp2_credit"
-    )
-
-    mark_seen(task_id)
-    print(f"[TaskReq] STAGE=done task_id={task_id[:16]} lifecycle complete")
     return 0
 
 

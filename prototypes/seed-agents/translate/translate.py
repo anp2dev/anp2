@@ -41,6 +41,25 @@ WINDOW_SEC = 1800  # only react to posts in last 30 min
 TRIGGER_TOPIC = "translate-request"
 MENTION = "@translate"
 
+# PROTOCOL (JP-redacted)18.11 (JP-redacted) provider-side standing gate (Iter 26).
+#
+# Operator-issued credit issuers (JP-redacted) their kind-50s bypass the courtesy throttle
+# below (they are the network's designated supply controllers; their negative
+# balance is intentional, not a Sybil signal). Update this list when a new
+# issuer seed is added.
+ANP2_ISSUER_AGENT_IDS = frozenset([
+    # taskreq seed (JP-redacted) the canonical issuer for Phase 0/1
+    "62144704d3d1c1c8f0506882a27e9693ec331909c11a1a98b37802ccff6d561e",
+])
+
+# Courtesy throttle: a kind-50 requester with no verified provider track
+# record (`verified_provider_tasks == 0`) is served as a courtesy only while
+# its balance stays at or above COURTESY_BALANCE_LIMIT. Past that, decline (JP-redacted)
+# the requester must earn before delegating further. This bounds Sybil yield
+# to roughly |limit|/avg_reward small tasks per fresh identity (~5 small
+# tasks at the current 10-credit reward).
+COURTESY_BALANCE_LIMIT = -50
+
 # Punctuation/whitespace trimmed off phrases for dictionary lookup.
 _PUNCT_TRIM = " \t\n.,!?\"'"
 
@@ -300,6 +319,49 @@ def _matches_translate_cap(ev: dict) -> bool:
     return False
 
 
+def _bootstrap_for_target(ev: dict) -> str | None:
+    """Return the agent_id named by a `bootstrap_for=<agent_id>` tag, or
+    None. Operator-issued bootstrap tasks carry this tag so seed providers
+    can step aside and let the targeted newcomer be the earliest kind-52
+    author (and earn its first credit). PROTOCOL (JP-redacted)18.11."""
+    for tag in ev.get("tags", []) or []:
+        if len(tag) >= 2 and tag[0] == "bootstrap_for" and isinstance(tag[1], str):
+            return tag[1]
+    return None
+
+
+def _should_serve_requester(agent: Agent, requester_id: str) -> tuple[bool, str]:
+    """Provider-side courtesy throttle (PROTOCOL (JP-redacted)18.11, Iter 26). Returns
+    (should_serve, reason_when_refusing).
+
+    Rules:
+      - Operator-issuers in ANP2_ISSUER_AGENT_IDS are always served (they are
+        the supply controllers; their negative balance is intentional).
+      - A requester with any verified provider track record is served (real
+        contributors carry standing).
+      - A requester with zero history is served as a courtesy WHILE its
+        balance is >= COURTESY_BALANCE_LIMIT. Past that, decline (JP-redacted) the
+        requester must earn before delegating further.
+      - If the credit endpoint is unreachable, default to serving (an
+        availability problem should not look like Sybil throttling).
+    """
+    if requester_id in ANP2_ISSUER_AGENT_IDS:
+        return (True, "")
+    try:
+        credit = agent.get_credit(requester_id)
+    except Exception:
+        return (True, "")  # availability fallthrough (JP-redacted) better to serve
+    if int(credit.get("verified_provider_tasks", 0)) > 0:
+        return (True, "")
+    balance = int(credit.get("balance", 0))
+    if balance >= COURTESY_BALANCE_LIMIT:
+        return (True, "")
+    return (
+        False,
+        f"courtesy refused: zero history and balance {balance} < {COURTESY_BALANCE_LIMIT}",
+    )
+
+
 def _extract_input_text(ev: dict) -> str:
     """Pull the text-to-translate from a kind 50 request body."""
     try:
@@ -395,6 +457,21 @@ def _handle_task_requests(agent: Agent, seen: set[str], now: int) -> int:
         if (now - ev["created_at"]) > WINDOW_SEC:
             continue
         if not _matches_translate_cap(ev):
+            continue
+        # Iter 26: bootstrap_for skip (JP-redacted) if the task is reserved for a specific
+        # newcomer (operator-issued bootstrap), step aside so they can be the
+        # earliest kind-52 author and earn their first credit.
+        bf = _bootstrap_for_target(ev)
+        if bf and bf != agent.agent_id:
+            mark_seen(ev_id)
+            print(f"[Translate] skip task {ev_id[:16]} (JP-redacted) bootstrap_for={bf[:16]} != us")
+            continue
+        # Iter 26: courtesy throttle (JP-redacted) refuse to serve a deep-deadbeat with no
+        # provider track record (PROTOCOL (JP-redacted)18.11 provider-side gate).
+        ok, why = _should_serve_requester(agent, ev["agent_id"])
+        if not ok:
+            mark_seen(ev_id)
+            print(f"[Translate] skip task {ev_id[:16]} from {ev['agent_id'][:16]}: {why}")
             continue
         try:
             _post_task_accept(agent, ev_id, ev["agent_id"])
