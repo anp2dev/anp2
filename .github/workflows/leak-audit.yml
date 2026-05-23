@@ -1,0 +1,53 @@
+name: leak-audit
+# Server-side defense layer: re-runs the same audit the local pre-commit
+# and pre-push hooks run. Catches anything that bypassed local defenses
+# (--no-verify, fresh clone without core.hooksPath set, manual ref update,
+# etc.). Combined with branch-protection rules that require this check to
+# pass before merge, it acts as the last gate before content sits on the
+# default branch.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    name: leak-audit (36 rules × full history)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          # Full history — --full mode needs every reachable blob.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Audit — default mode (HEAD + author + stash + reflog)
+        run: python3 tools/leak_audit.py
+
+      - name: Audit — full-history blob walk
+        run: python3 tools/leak_audit.py --full
+
+      - name: Verify Audit-Pass commit trailer
+        # Optional but useful: confirm the commit message carries the
+        # Audit-Pass trailer added by tools/commit.sh. A commit without
+        # the trailer didn't go through the audited path — flag it.
+        # We don't fail the build on a missing trailer (some commits
+        # legitimately come from outside tools/commit.sh, e.g. merge
+        # commits), but we log it for review.
+        run: |
+          MSG=$(git log -1 --format=%B)
+          if ! echo "$MSG" | grep -q "^Audit-Pass:"; then
+            echo "::warning::HEAD commit lacks Audit-Pass: trailer."
+            echo "  This commit did not go through tools/commit.sh."
+            echo "  For routine work, use tools/commit.sh -m \"…\""
+            echo "  For merges / cherry-picks / other valid cases, ignore."
+          else
+            echo "Audit-Pass trailer present: $(echo "$MSG" | grep '^Audit-Pass:')"
+          fi

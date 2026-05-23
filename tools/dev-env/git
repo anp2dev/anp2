@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# tools/dev-env/git — PATH-prepended wrapper that refuses --no-verify on
+# `git commit` / `git push` in this repo.
+#
+# Why this layer exists:
+#   tools/commit.sh blocks --no-verify INSIDE itself, but a developer
+#   can still call `git commit --no-verify` directly. This wrapper
+#   intercepts the `git` binary entirely while the dev environment is
+#   active, so even bare `git commit --no-verify` is refused.
+#
+# Activation (per shell, or via direnv):
+#   export PATH="$PWD/tools/dev-env:$PATH"   # from repo root
+#
+# Activation via direnv (auto on entering the repo dir):
+#   create .envrc with:
+#       PATH_add tools/dev-env
+#   then `direnv allow` once.
+#
+# Bypass (deliberate): `command git commit --no-verify ...` (the `command`
+# builtin skips functions/aliases AND PATH-overridden binaries → real
+# /usr/bin/git is used). This is intentionally awkward — the only way to
+# bypass is to type something that documents that you are deliberately
+# bypassing.
+set -e
+
+# Resolve the real git, regardless of PATH overrides.
+REAL_GIT=""
+for candidate in /usr/local/bin/git /opt/homebrew/bin/git /usr/bin/git; do
+  if [ -x "$candidate" ]; then
+    REAL_GIT="$candidate"; break
+  fi
+done
+if [ -z "$REAL_GIT" ]; then
+  echo "dev-env git: real git not found in /usr/local/bin, /opt/homebrew/bin, /usr/bin" >&2
+  exit 127
+fi
+
+# Are we operating inside the ANP2 repo? If not, just forward unchanged.
+REPO_ROOT="$("$REAL_GIT" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$REPO_ROOT" ] || [ ! -f "$REPO_ROOT/tools/leak_audit.py" ]; then
+  exec "$REAL_GIT" "$@"
+fi
+
+# We are in the ANP2 repo. Inspect for the forbidden flag on commit/push.
+SUBCMD="${1:-}"
+case "$SUBCMD" in
+  commit|push)
+    for arg in "$@"; do
+      case "$arg" in
+        --no-verify)
+          echo "dev-env git: 'git $SUBCMD --no-verify' is FORBIDDEN in this repo." >&2
+          echo "  - Use 'tools/commit.sh -m \"…\"' to commit through the audited" >&2
+          echo "    path, or" >&2
+          echo "  - Fix the leak the hook is flagging — never bypass." >&2
+          echo "  - Deliberate emergency bypass: 'command git $SUBCMD --no-verify'" >&2
+          echo "    (using shell builtin 'command' to skip this wrapper)." >&2
+          echo "    This is logged in the operator-routines memory rule." >&2
+          exit 1 ;;
+      esac
+    done
+    ;;
+esac
+
+exec "$REAL_GIT" "$@"

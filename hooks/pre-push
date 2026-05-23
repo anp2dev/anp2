@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# ANP2 pre-push leak guard.
+#
+# Refuses to push if `tools/leak_audit.py --full` finds anything.
+# This is the publish-path checkpoint — by the time you reach `git push`,
+# every leak class must be 0. The --staged pre-commit guard catches NEW
+# leaks per-commit; this catches the cumulative history.
+#
+# Bypass: `--no-verify` works, but using it on a publish-bound push is
+# explicitly forbidden by [[feedback-ai-net-leak-audit-procedure]].
+set -e
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+if [ ! -f tools/leak_audit.py ]; then
+  echo "pre-push: tools/leak_audit.py missing — refusing to push." >&2
+  exit 1
+fi
+
+echo "pre-push: running full leak audit (default + --full modes)…" >&2
+if ! python3 tools/leak_audit.py >/dev/null; then
+  echo "pre-push: default-mode leak audit FAILED — push blocked." >&2
+  python3 tools/leak_audit.py >&2 || true
+  exit 1
+fi
+
+if ! python3 tools/leak_audit.py --full >/dev/null; then
+  echo "pre-push: --full-mode leak audit FAILED — push blocked." >&2
+  echo "         old commits in this branch still contain leak patterns." >&2
+  python3 tools/leak_audit.py --full >&2 || true
+  exit 1
+fi
+
+echo "pre-push: 36/36 PASS in both default + --full modes. Push permitted." >&2
