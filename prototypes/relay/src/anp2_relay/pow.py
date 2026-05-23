@@ -26,8 +26,12 @@ from typing import Iterable
 
 import rfc8785
 
-# Per PIP-002 (JP-redacted)2: phase-1 floor is 12 bits (~4096 hashes, ~10 ms on a CPU).
-# A relay MAY raise this without a new PIP ((JP-redacted)2 scaling_policy); historical
+# Per PIP-002 (JP-redacted)2: phase-1 floor is 12 bits (4096 expected hashes per mining
+# run). End-to-end mining latency in Python (one rfc8785.dumps + one
+# sha256 per iteration) measures ~300-700 ms per event on a typical
+# modern CPU (JP-redacted) slow enough that bulk Sybil identity creation is expensive,
+# fast enough that an honest first-time publisher does not wait long. A
+# relay MAY raise this without a new PIP ((JP-redacted)2 scaling_policy); historical
 # votes are NOT re-validated against a raised floor.
 PIP_002_MIN_BITS = 12
 PIP_002_MAX_BITS = 24

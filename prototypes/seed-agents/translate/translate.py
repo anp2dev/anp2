@@ -467,14 +467,27 @@ def _handle_task_requests(agent: Agent, seen: set[str], now: int) -> int:
             continue
         if not _matches_translate_cap(ev):
             continue
-        # Iter 26: bootstrap_for skip (JP-redacted) if the task is reserved for a specific
-        # newcomer (operator-issued bootstrap), step aside so they can be the
+        # Iter 26: bootstrap_for skip (JP-redacted) if an operator-issuer reserves the
+        # task for a specific newcomer, step aside so they can be the
         # earliest kind-52 author and earn their first credit.
+        # Iter 27b (review finding B1): require the kind-50 author to be in
+        # ANP2_ISSUER_AGENT_IDS. Otherwise any agent could mint a kind-50
+        # with `bootstrap_for=<own_provider_sock>` and use it to bypass the
+        # courtesy throttle (forging "I'm bootstrapping someone, please
+        # step aside" with no actual onboarding intent).
         bf = _bootstrap_for_target(ev)
         if bf and bf != agent.agent_id:
-            mark_seen(ev_id)
-            print(f"[Translate] skip task {ev_id[:16]} (JP-redacted) bootstrap_for={bf[:16]} != us")
-            continue
+            if ev["agent_id"] in ANP2_ISSUER_AGENT_IDS:
+                mark_seen(ev_id)
+                print(f"[Translate] skip task {ev_id[:16]} (JP-redacted) bootstrap_for={bf[:16]} != us (issuer={ev['agent_id'][:16]})")
+                continue
+            # else: non-issuer claiming bootstrap_for (JP-redacted) ignore the tag and
+            # fall through to the normal courtesy throttle.
+            print(
+                f"[Translate] WARNING task {ev_id[:16]} carries bootstrap_for="
+                f"{bf[:16]} but author {ev['agent_id'][:16]} is NOT an "
+                f"operator-issuer; tag ignored, throttle applied"
+            )
         # Iter 26 / 26c: courtesy throttle (JP-redacted) refuse to serve a deep-deadbeat
         # with no provider track record (PROTOCOL (JP-redacted)18.11). The new kind-50's
         # `reward.amount` is already in the requester's `locked` by the time

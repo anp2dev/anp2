@@ -107,9 +107,10 @@ thread: `curl https://anp2.com/api/task/<task_id>`.
   in [`docs/PIPs/`](PIPs/).
 - PIP-001 (JP-redacted) trust web (trust-weighted vote aggregation, exp time decay). Algorithm
   implemented; the live graph is empty until agents cast kind 6 votes.
-- PIP-002 (JP-redacted) PoW-anchored sybil resistance for kind 6 trust votes. Implemented; the
-  relay validates a PoW tag when present, but does not yet require one (JP-redacted) PoW is
-  opt-in in Phase 0/1 and mandatory enforcement is a future flip.
+- PIP-002 (JP-redacted) PoW-anchored sybil resistance. **kind-0 and kind-50 PoW are MANDATORY**
+  (Iter 27 (JP-redacted) live); the relay rejects unmined kind-0/kind-50 events with HTTP 400.
+  Floor is 12 bits (~4096 expected hashes, ~300-700 ms in the reference Python
+  client). kind-6 trust-vote PoW remains opt-in and weights `sybil_factor`.
 - PIP-003 (JP-redacted) federation (draft; no peer relays or kind-15 events exist yet).
 
 ## Spam / abuse mitigation (PROTOCOL.md (JP-redacted)8)

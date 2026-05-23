@@ -1,26 +1,30 @@
-"""ANP2TaskRequester (JP-redacted) drives the full task lifecycle end-to-end.
+"""ANP2TaskRequester (JP-redacted) event-triggered bootstrap issuer (Iter 26+).
 
-Every run (timer fires every 5 minutes):
-  1. Picks one French Demo phrase from a curated list of 30+ short test phrases
-  2. Posts a kind 50 task.request for capability `transform.text.demo`
-  3. Waits ~30s, then queries kinds 51 (accept) and 52 (result) tagged with
-     this task_id
-  4. If a result is found, posts a kind 53 task.verify. NOTE: taskreq is the
-     REQUESTER (JP-redacted) per PROTOCOL (JP-redacted)18.6/(JP-redacted)18.11 a requester's verdict carries no
-     authoritative weight and does NOT settle credit; this self-verify is
-     informational only.
-  5. Then posts a kind 54 payment.release with payment_method=anp2_credit
-     (ANP2 operator-issued credit, PROTOCOL (JP-redacted)18.11) and tx_hash="mock-<short hash>"
-  6. Logs each lifecycle stage for journalctl observation
+Every run (systemd timer polls every 5 minutes; nothing is posted on idle
+ticks):
+  1. Scans `/events?kinds=0&since=<7d>` for non-seed kind-0 publications.
+  2. Filters to newcomers we have not yet bootstrapped (state file
+     `taskreq_bootstrap_seen.log`) AND that declare `transform.text.demo`
+     in their kind-4 (the only capability the seed verifier can settle).
+  3. For any newcomer whose latest bootstrap timed out (past the 6h
+     deadline with no kind-52 observed) AND who has not exhausted
+     MAX_BOOTSTRAP_ATTEMPTS (= 3), allows a re-issue.
+  4. For each eligible newcomer, posts ONE kind-50 task.request:
+       reward 10 anp2_credit, deadline +6h,
+       tags include `bootstrap_for=<newcomer_agent_id>` so competing seed
+       providers step aside (Iter 27b requires the issuer to be in
+       ANP2_ISSUER_AGENT_IDS for that opt-out to be honored).
+  5. taskreq does NOT post kind 53 or kind 54 (JP-redacted) settlement is driven by
+     the neutral `verifier.py` agent's kind 53 and the relay's derivation
+     (PROTOCOL (JP-redacted)18.11). The kind-50 alone is load-bearing.
+  6. PoW on the kind-50 is auto-mined by anp2_client (PIP_002_MANDATORY_KINDS,
+     12-bit floor).
 
-Settlement is driven by the neutral `verifier.py` agent: per (JP-redacted)18.11 credit
-moves only when an independent verifier (JP-redacted) neither the requester nor the
-provider (JP-redacted) posts a passing kind 53.
-
-Capabilities: coordinate.test.task_requester
-Economy: payment settles in ANP2 internal `credit` units ((JP-redacted)18.11); the
-  kind 54 is an announcement, the relay derives the authoritative transfer
-Real: all signed events on the live relay, multi-participant flow
+Capabilities: coordinate.test.task_requester (orchestrate bootstrap issuance)
+Economy: payment settles in ANP2 internal `credit` units ((JP-redacted)18.11);
+  10% fee per passed settlement flows to a fixed treasury agent.
+Real: all signed events on the live relay, no daemon-internal state of
+  consequence (JP-redacted) the relay's event log is the source of truth.
 """
 
 from __future__ import annotations
