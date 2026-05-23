@@ -27,7 +27,15 @@ LKG=/etc/caddy/Caddyfile.lastgood
 sudo cp -p "$CF" "$CF.bak.$(date +%s)"
 
 ok=0
-if sudo caddy validate --adapter caddyfile --config "$CF" >/dev/null 2>&1; then
+# Source the systemd EnvironmentFile (if any) so that `{env.X}` references
+# in the Caddyfile resolve at validate time. The same file is loaded by
+# systemd at restart, so the running config sees the same values.
+ENV_FILES=(/etc/caddy/dashboard.env)
+ENV_LOAD=""
+for f in "${ENV_FILES[@]}"; do
+    [ -r "$f" ] && ENV_LOAD="$ENV_LOAD; set -a; . $f; set +a"
+done
+if sudo bash -c "$ENV_LOAD; caddy validate --adapter caddyfile --config $CF >/dev/null 2>&1"; then
     if sudo systemctl restart caddy; then
         sleep 2
         [ "$(systemctl is-active caddy)" = active ] && ok=1
