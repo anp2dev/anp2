@@ -32,7 +32,10 @@ AGENT_NAME = "ANP2Verifier"
 AGENT_KEY = os.environ.get("VERIFIER_KEY", "/var/lib/anp2/verifier.priv")
 RELAY_URL = os.environ.get("VERIFIER_RELAY", "http://127.0.0.1:8000")
 SEEN_LOG = os.environ.get("VERIFIER_LOG", "/var/lib/anp2/verifier_seen.log")
-WINDOW_SEC = 3600  # only look at results from the last hour
+WINDOW_SEC = 3600          # only look at results from the last hour
+REQUEST_LOOKBACK_SEC = 86400  # but pre-fetch kind-50s for the last 24h
+                              # so we can find the originating request even if
+                              # the result came at the tail of a long deadline
 
 CAPABILITY = "verify.result.basic"
 TARGET_CAP = "transform.text.demo"
@@ -40,6 +43,27 @@ TARGET_CAP = "transform.text.demo"
 KIND_TASK_REQUEST = 50
 KIND_TASK_RESULT = 52
 KIND_TASK_VERIFY = 53
+
+# Iter 28: seed-verifier standing check (PROTOCOL (JP-redacted)18.11).
+#
+# Closes the 2-sock-puppet attack where an attacker R + P (both PoW-minted)
+# rides this seed verifier as a free oracle: R posts a kind-50, P provides
+# a structurally-valid kind-52, the seed verifier neutrally passes (JP-redacted)
+# settlement (JP-redacted) P earns +(amount-fee) and verified_provider_tasks += 1.
+# With this check the verifier refuses to publish kind-53 when the
+# REQUESTER (kind-50 author) has zero standing AND no operator-issuer
+# exemption (JP-redacted) there is no settlement to drive, so P does not accrue
+# standing for free.
+#
+# Note: this does NOT close the 3-sock-puppet attack where the attacker
+# also runs their own neutral verifier (V). Closing that requires multi-
+# verifier consensus or trust-weighted verification (Phase 2+).
+ANP2_ISSUER_AGENT_IDS = frozenset([
+    # taskreq seed (JP-redacted) the canonical operator-issuer for Phase 0/1.
+    "62144704d3d1c1c8f0506882a27e9693ec331909c11a1a98b37802ccff6d561e",
+])
+# Requester standing threshold (matches translate's COURTESY_BALANCE_LIMIT).
+COURTESY_BALANCE_LIMIT = -50
 
 
 def load_seen() -> set[str]:
@@ -187,6 +211,40 @@ def _request_input_text(agent: Agent, task_id: str, request_ev: dict | None) -> 
     return (request_ev.get("content") or "").strip()
 
 
+def _requester_has_standing(agent: Agent, requester_id: str) -> tuple[bool, str]:
+    """Iter 28 seed-verifier standing check (PROTOCOL (JP-redacted)18.11). Returns
+    (ok, reason_when_refusing). Same rules as translate.py's courtesy
+    throttle, applied at the verification layer:
+
+      - Operator-issuers in ANP2_ISSUER_AGENT_IDS are always served.
+      - Requesters with verified_provider_tasks > 0 carry real standing.
+      - Requesters with available >= COURTESY_BALANCE_LIMIT are still in
+        the courtesy window.
+      - Anything else: refuse. The kind-52 stays on the log but no
+        kind-53 from us means no settlement, so the 2-sock-puppet
+        attacker (R + P, riding the seed verifier) accrues no standing.
+      - If the credit endpoint is unreachable, default to serve (an
+        availability problem should not look like a Sybil block).
+    """
+    if requester_id in ANP2_ISSUER_AGENT_IDS:
+        return (True, "")
+    try:
+        credit = agent.get_credit(requester_id)
+    except Exception:
+        return (True, "")
+    if int(credit.get("verified_provider_tasks", 0)) > 0:
+        return (True, "")
+    available = int(credit.get("available", 0))
+    if available >= COURTESY_BALANCE_LIMIT:
+        return (True, "")
+    return (
+        False,
+        f"requester {requester_id[:16]} has zero standing; "
+        f"available {available} (balance {credit.get('balance', 0)} - "
+        f"locked {credit.get('locked', 0)}) < {COURTESY_BALANCE_LIMIT}",
+    )
+
+
 def _already_verified_by_us(
     agent: Agent, result_id: str, since: int
 ) -> bool:
@@ -249,8 +307,15 @@ def main() -> int:
         print("[Verifier] no new transform.text.demo results to verify")
         return 0
 
-    # Pre-fetch matching requests so we can pull the original input text.
-    requests = agent.query(kinds=[KIND_TASK_REQUEST], since=since, limit=200)
+    # Pre-fetch matching requests so we can pull the original input text
+    # AND check requester standing (Iter 28). Use the wider
+    # REQUEST_LOOKBACK_SEC window so we still see the kind-50 even when
+    # the result came near the tail of a long deadline.
+    requests = agent.query(
+        kinds=[KIND_TASK_REQUEST],
+        since=now - REQUEST_LOOKBACK_SEC,
+        limit=500,
+    )
     req_by_id = {ev["id"]: ev for ev in requests}
 
     verified = 0
@@ -263,6 +328,28 @@ def main() -> int:
             continue
 
         if _already_verified_by_us(agent, result_id, since=since):
+            mark_seen(result_id)
+            continue
+
+        # Iter 28: seed-verifier standing check on the REQUESTER. If the
+        # requester (kind-50 author) has no standing and no operator-issuer
+        # exemption, refuse to verify (JP-redacted) this closes the 2-sock-puppet
+        # attack that used to ride this seed verifier as a free oracle.
+        request_ev = req_by_id.get(task_id)
+        if request_ev is None:
+            print(
+                f"[Verifier] result {result_id[:16]} references task_id "
+                f"{task_id[:16]} not in {REQUEST_LOOKBACK_SEC // 3600}h "
+                f"request window; refusing to verify (no requester context)"
+            )
+            mark_seen(result_id)
+            continue
+        requester_id = request_ev["agent_id"]
+        ok, why = _requester_has_standing(agent, requester_id)
+        if not ok:
+            print(
+                f"[Verifier] skip result {result_id[:16]} task={task_id[:16]}: {why}"
+            )
             mark_seen(result_id)
             continue
 
