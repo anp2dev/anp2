@@ -170,11 +170,43 @@ def mark_bootstrapped(newcomer_id: str) -> None:
         f.write(newcomer_id + "\n")
 
 
-def detect_newcomers(agent: Agent, now: int) -> list[dict]:
-    """Return kind-0 publications from non-seed authors not yet bootstrapped.
+def _newcomer_can_fulfill(agent: Agent, newcomer_id: str, capability: str) -> bool:
+    """Read the newcomer's latest kind-4 capability declaration and return
+    True iff they declared `capability`. We use this to scope bootstrap
+    issuance to capabilities the network can actually settle today (JP-redacted)
+    posting a bootstrap for a capability the newcomer can't fulfill just
+    wastes a slot and leaves the newcomer permanently stuck (Iter 26
+    review finding B2)."""
+    evs = agent.query(kinds=[4], authors=[newcomer_id], limit=1)
+    if not evs:
+        return False
+    ev = evs[0]
+    # tag form: ["cap", "<capability>"]
+    for tag in ev.get("tags", []) or []:
+        if len(tag) >= 2 and tag[0] == "cap" and tag[1] == capability:
+            return True
+    # body form: {"capabilities": [{"name": "<capability>", ...}, ...]}
+    try:
+        body = json.loads(ev.get("content") or "{}")
+        caps = body.get("capabilities") or []
+        if isinstance(caps, list):
+            for cap in caps:
+                if isinstance(cap, dict) and cap.get("name") == capability:
+                    return True
+    except (ValueError, TypeError):
+        pass
+    return False
 
-    PROTOCOL (JP-redacted)0 (overwrite-type): the latest kind-0 per agent_id wins. Only
-    one kind-50 bootstrap is ever posted per newcomer agent_id (state file).
+
+def detect_newcomers(agent: Agent, now: int) -> list[dict]:
+    """Return kind-0 publications from non-seed authors that (a) have not yet
+    been bootstrapped, AND (b) declare a kind-4 capability the network can
+    currently settle (Iter 26c (JP-redacted) only `transform.text.demo` today because the
+    seed verifier only structurally checks that). PROTOCOL (JP-redacted)0 overwrite-type:
+    the latest kind-0 per agent_id wins. Only one bootstrap is ever posted
+    per newcomer agent_id (state file). Newcomers without the eligible
+    capability are NOT marked seen (JP-redacted) they may become eligible later if they
+    publish a richer kind-4 or once the verifier extends.
     """
     seen = load_bootstrap_seen()
     cutoff = now - NEWCOMER_LOOKBACK_SEC
@@ -189,7 +221,22 @@ def detect_newcomers(agent: Agent, now: int) -> list[dict]:
         prev = latest_per_id.get(aid)
         if prev is None or ev.get("created_at", 0) > prev.get("created_at", 0):
             latest_per_id[aid] = ev
-    return list(latest_per_id.values())
+
+    eligible: list[dict] = []
+    for ev in latest_per_id.values():
+        aid = ev["agent_id"]
+        if _newcomer_can_fulfill(agent, aid, CAPABILITY):
+            eligible.append(ev)
+        else:
+            try:
+                their_name = json.loads(ev.get("content") or "{}").get("name", "?")
+            except (ValueError, TypeError):
+                their_name = "?"
+            print(
+                f"[TaskReq] newcomer {aid[:16]} ({their_name!r}) declares no "
+                f"{CAPABILITY} capability (JP-redacted) skipped (NOT marked seen)"
+            )
+    return eligible
 
 
 # ---------------------------------------------------------------------------

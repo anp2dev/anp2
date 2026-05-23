@@ -330,8 +330,10 @@ def _bootstrap_for_target(ev: dict) -> str | None:
     return None
 
 
-def _should_serve_requester(agent: Agent, requester_id: str) -> tuple[bool, str]:
-    """Provider-side courtesy throttle (PROTOCOL (JP-redacted)18.11, Iter 26). Returns
+def _should_serve_requester(
+    agent: Agent, requester_id: str
+) -> tuple[bool, str]:
+    """Provider-side courtesy throttle (PROTOCOL (JP-redacted)18.11, Iter 26/26c). Returns
     (should_serve, reason_when_refusing).
 
     Rules:
@@ -339,9 +341,14 @@ def _should_serve_requester(agent: Agent, requester_id: str) -> tuple[bool, str]
         the supply controllers; their negative balance is intentional).
       - A requester with any verified provider track record is served (real
         contributors carry standing).
-      - A requester with zero history is served as a courtesy WHILE its
-        balance is >= COURTESY_BALANCE_LIMIT. Past that, decline (JP-redacted) the
-        requester must earn before delegating further.
+      - A requester with zero history is served as a courtesy ONLY while
+        `available = balance - locked` stays >= COURTESY_BALANCE_LIMIT. Using
+        `available` (not just `balance`) closes the Iter 26 review finding
+        B1: the new kind-50 is already in `locked` by the time the provider
+        evaluates it, so `available` already reflects "where the balance
+        would land if all open tasks settle". A fresh Sybil that posts one
+        oversized task is rejected because `available` immediately reflects
+        the locked commitment.
       - If the credit endpoint is unreachable, default to serving (an
         availability problem should not look like Sybil throttling).
     """
@@ -353,12 +360,14 @@ def _should_serve_requester(agent: Agent, requester_id: str) -> tuple[bool, str]
         return (True, "")  # availability fallthrough (JP-redacted) better to serve
     if int(credit.get("verified_provider_tasks", 0)) > 0:
         return (True, "")
-    balance = int(credit.get("balance", 0))
-    if balance >= COURTESY_BALANCE_LIMIT:
+    available = int(credit.get("available", 0))
+    if available >= COURTESY_BALANCE_LIMIT:
         return (True, "")
     return (
         False,
-        f"courtesy refused: zero history and balance {balance} < {COURTESY_BALANCE_LIMIT}",
+        f"courtesy refused: zero history; available {available} "
+        f"(balance {credit.get('balance', 0)} - locked {credit.get('locked', 0)}) "
+        f"< {COURTESY_BALANCE_LIMIT}",
     )
 
 
@@ -466,8 +475,11 @@ def _handle_task_requests(agent: Agent, seen: set[str], now: int) -> int:
             mark_seen(ev_id)
             print(f"[Translate] skip task {ev_id[:16]} (JP-redacted) bootstrap_for={bf[:16]} != us")
             continue
-        # Iter 26: courtesy throttle (JP-redacted) refuse to serve a deep-deadbeat with no
-        # provider track record (PROTOCOL (JP-redacted)18.11 provider-side gate).
+        # Iter 26 / 26c: courtesy throttle (JP-redacted) refuse to serve a deep-deadbeat
+        # with no provider track record (PROTOCOL (JP-redacted)18.11). The new kind-50's
+        # `reward.amount` is already in the requester's `locked` by the time
+        # we evaluate it, so `available = balance - locked` already accounts
+        # for the new commitment; no separate `amount` arg needed.
         ok, why = _should_serve_requester(agent, ev["agent_id"])
         if not ok:
             mark_seen(ev_id)
