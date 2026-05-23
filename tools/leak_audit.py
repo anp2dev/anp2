@@ -123,6 +123,21 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("internal-env",
      "path", r"^env/", "CRITICAL",
      "env/ holds private keys + passwords; must never be tracked"),
+    # — Filename leaks (path-rule extension for non-ASCII / AI-tool trace) —
+    # Added 2026-05-23 after `logo/ChatGPT Image 2026年5月19日 17_16_57.png`
+    # was found tracked: JP date in filename (rule) + AI-tool origin trace.
+    # Both current-HEAD and historical paths are scanned (path rules run
+    # in check_full_history too — see below).
+    ("filename-jp-chars",
+     "path", r"[ぁ-んァ-ヶ一-龥]", "HIGH",
+     "JP-origin characters in tracked filename (rule)"),
+    ("filename-jp-date",
+     "path", r"\d{4}年|\d+月\d+日", "HIGH",
+     "JP-format date in tracked filename"),
+    ("filename-ai-gen-trace",
+     "path", r"(?i)\bChatGPT[\s_-]Image|\bmidjourney\b|\bstable.diffusion\b",
+     "MEDIUM",
+     "tracked filename advertises AI-tool generation origin"),
     # — Credential / key leaks (CRITICAL) —
     ("bcrypt-hash",
      "content", r"\$2[aby]\$\d{1,2}\$[./A-Za-z0-9]{53}", "CRITICAL",
@@ -389,8 +404,26 @@ def check_full_history() -> None:
         if dangling:
             seen_path_blob["(dangling)"] = dangling
 
-    # 3. Walk (path, blob) and apply each content rule.
+    # 3a. Walk historical paths and apply path rules. Catches paths that
+    # ever existed in any commit (e.g., a filename with JP characters
+    # added then deleted — the path is still in history via that commit's
+    # tree). Without this loop, path rules only run on current-HEAD
+    # tracked files — historical leaks (file deleted from HEAD but still
+    # in old commits) would be invisible to --full.
     fired: set[tuple[str, str]] = set()  # (rule_name, path) for dedupe
+    for path in seen_path_blob.keys():
+        for r in RULES:
+            name, kind, pat, sev, _ = r
+            if kind != "path":
+                continue
+            if (name, path) in fired:
+                continue
+            if re.search(pat, path):
+                fired.add((name, path))
+                record(sev, name, f"history-path:{path}",
+                       "path matched in historical tree (filter-repo to scrub)")
+
+    # 3b. Walk (path, blob) and apply content rules to blob bodies.
     for path, shas in seen_path_blob.items():
         if path in CONTENT_SCAN_EXCLUDE:
             continue
