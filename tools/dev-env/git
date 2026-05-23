@@ -49,8 +49,8 @@ case "$SUBCMD" in
       case "$arg" in
         --no-verify)
           echo "dev-env git: 'git $SUBCMD --no-verify' is FORBIDDEN in this repo." >&2
-          echo "  - Use 'tools/commit.sh -m \"…\"' to commit through the audited" >&2
-          echo "    path, or" >&2
+          echo "  - Use 'tools/commit.sh -m \"…\"' (commit) / 'tools/push.sh'" >&2
+          echo "    (push) — the sanctioned audited paths." >&2
           echo "  - Fix the leak the hook is flagging — never bypass." >&2
           echo "  - Deliberate emergency bypass: 'command git $SUBCMD --no-verify'" >&2
           echo "    (using shell builtin 'command' to skip this wrapper)." >&2
@@ -60,5 +60,19 @@ case "$SUBCMD" in
     done
     ;;
 esac
+
+# Extra push-specific guards: refuse --force / --force-with-lease / --mirror
+# on this repo even via direct `git push` (matching tools/push.sh).
+if [ "$SUBCMD" = "push" ]; then
+  for arg in "$@"; do
+    case "$arg" in
+      --force|--force-with-lease|--mirror|--delete)
+        echo "dev-env git: 'git push $arg' is FORBIDDEN in this repo." >&2
+        echo "  Use 'tools/push.sh' for sanctioned pushes." >&2
+        echo "  Bypass: 'command git push $arg ...' (intentional, awkward)." >&2
+        exit 1 ;;
+    esac
+  done
+fi
 
 exec "$REAL_GIT" "$@"

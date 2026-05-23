@@ -32,12 +32,50 @@ if ! python3 tools/leak_audit.py --full >/dev/null; then
   exit 1
 fi
 
+# Count the commits this push is about to add (so account_health can
+# include them in the pacing check). git passes ref info on stdin as:
+#   <local-ref> <local-sha> <remote-ref> <remote-sha>
+PUSH_COMMITS=0
+PUSH_BURST_1H=0
+while read local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    continue   # deletion
+  fi
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    n=$(git rev-list --count "$local_sha")
+  else
+    n=$(git rev-list --count "$remote_sha..$local_sha")
+  fi
+  PUSH_COMMITS=$((PUSH_COMMITS + n))
+  # commits authored in the last 1 hour (burst detector)
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    b=$(git rev-list --since="1 hour ago" --count "$local_sha")
+  else
+    b=$(git rev-list --since="1 hour ago" --count "$remote_sha..$local_sha")
+  fi
+  PUSH_BURST_1H=$((PUSH_BURST_1H + b))
+done
+
+echo "pre-push: this push adds $PUSH_COMMITS commit(s) (last-1h burst: $PUSH_BURST_1H)" >&2
+
+# Burst window: hard cap of 8 commits authored in the last 1h being pushed
+# in one go (regardless of how many were already on the server). Catches
+# "I just made 20 quick commits" patterns that look bot-like.
+if [ "$PUSH_BURST_1H" -gt 8 ]; then
+  echo "pre-push: BURST detected — $PUSH_BURST_1H commits authored in last 1h, > 8 cap." >&2
+  echo "  Slow down: wait ≥ 1h, OR squash these into fewer commits before pushing." >&2
+  echo "  Behavioral discipline rule: [[feedback-ai-net-anp2dev-account-discipline]]" >&2
+  exit 1
+fi
+
 echo "pre-push: leak-audit 36/36 PASS. Running account-health audit…" >&2
-# account_health は anonymous モード (PAT 不要、外部から見えるか + ペース)
-if ! python3 tools/account_health.py >/dev/null; then
+# account_health は anonymous モード (PAT 不要、外部から見えるか + ペース)。
+# 現 push 分の commit を ANP2_INCOMING_COMMITS で伝えるので R7/R8 が
+# combined count で評価できる。
+if ! ANP2_INCOMING_COMMITS=$PUSH_COMMITS python3 tools/account_health.py >/dev/null; then
   echo "pre-push: account-health audit FAILED — push blocked." >&2
   echo "         anp2dev が flag-risk な状態。 詳細:" >&2
-  python3 tools/account_health.py >&2 || true
+  ANP2_INCOMING_COMMITS=$PUSH_COMMITS python3 tools/account_health.py >&2 || true
   echo "" >&2
   echo "  ▶ 解消方法: [[feedback-ai-net-anp2dev-account-discipline]]" >&2
   echo "  ▶ bypass 禁止 (publish-bound branch では --no-verify 不可)" >&2

@@ -1,0 +1,89 @@
+name: visibility-watch
+# Hourly check that this repo + the anp2dev account remain externally
+# visible (i.e., not shadow-suppressed like the prior anp2dev account
+# was). If 404/301 detected, opens an issue on this repo — which sends a
+# notification email to the account owner and surfaces the problem fast.
+#
+# Why this exists: anp2dev was 404 within a few hours of creation.
+# Without active monitoring it's possible to miss the same outcome here
+# for days. This catches it within the hour.
+
+on:
+  schedule:
+    - cron: "5 * * * *"   # every hour at :05
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    name: external-visibility check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run account_health (anonymous mode)
+        id: check
+        run: |
+          set +e
+          python3 tools/account_health.py 2>&1 | tee /tmp/account_health.out
+          rc=$?
+          {
+            echo "rc=$rc"
+            echo "output<<EOF"
+            cat /tmp/account_health.out
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          exit 0   # never fail the job — we want to open an issue, not error out
+
+      - name: Open issue on FAIL
+        if: steps.check.outputs.rc != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const out = `${{ steps.check.outputs.output }}`;
+            const title = `[visibility-watch] account_health FAILED`;
+            // de-dupe: only open if not already an open issue with this title
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'visibility-watch',
+            });
+            if (existing.data.some(i => i.title === title)) {
+              core.info("Issue already open, skipping create.");
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              labels: ['visibility-watch'],
+              body: [
+                'Hourly visibility check detected a failure.',
+                '',
+                'Possible causes:',
+                '- Account was shadow-suppressed (404 externally).',
+                '- Profile fields drifted.',
+                '- Commit pacing exceeded (R7/R8).',
+                '- Other audit rule violated.',
+                '',
+                'Action:',
+                '1. Check `tools/account_health.py --full` locally.',
+                '2. If R1/R2 are 404: contact GitHub support immediately',
+                '   (same Reinstatement-form path used for anp2dev).',
+                '3. Read [[feedback-ai-net-anp2dev-account-discipline]].',
+                '',
+                '```',
+                out.substring(0, 8000),
+                '```',
+              ].join('\n'),
+            });

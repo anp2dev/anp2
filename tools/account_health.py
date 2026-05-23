@@ -169,14 +169,22 @@ def check_pacing_from_api() -> None:
         commits = ev.get("payload", {}).get("size", 0)
         if t > cutoff_24h: count_24h += commits
         if t > cutoff_7d: count_7d += commits
-    if count_24h > LIMIT_DAY:
-        record("FAIL", "R7 pacing-24h-commits", USER, f"{count_24h} > {LIMIT_DAY} (bot-burst risk)")
+    # Add the current push's commits when called from pre-push (so the
+    # check is "what will be visible AFTER this push", not "before").
+    incoming = int(os.environ.get("ANP2_INCOMING_COMMITS", "0") or 0)
+    proj_24h = count_24h + incoming
+    proj_7d = count_7d + incoming
+    inc_note = f" +{incoming} incoming" if incoming else ""
+    if proj_24h > LIMIT_DAY:
+        record("FAIL", "R7 pacing-24h-commits", USER,
+               f"{count_24h}{inc_note} → {proj_24h} > {LIMIT_DAY} (bot-burst risk)")
     else:
-        record("PASS", "R7 pacing-24h-commits", USER, f"{count_24h}/{LIMIT_DAY}")
-    if count_7d > LIMIT_WEEK:
-        record("FAIL", "R8 pacing-7d-commits", USER, f"{count_7d} > {LIMIT_WEEK}")
+        record("PASS", "R7 pacing-24h-commits", USER, f"{count_24h}{inc_note} / {LIMIT_DAY}")
+    if proj_7d > LIMIT_WEEK:
+        record("FAIL", "R8 pacing-7d-commits", USER,
+               f"{count_7d}{inc_note} → {proj_7d} > {LIMIT_WEEK}")
     else:
-        record("PASS", "R8 pacing-7d-commits", USER, f"{count_7d}/{LIMIT_WEEK}")
+        record("PASS", "R8 pacing-7d-commits", USER, f"{count_7d}{inc_note} / {LIMIT_WEEK}")
 
 
 def check_committer_clean() -> None:
