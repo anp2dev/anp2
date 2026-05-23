@@ -625,8 +625,44 @@ def _classify_a2a_query(text: str) -> tuple[str, bool]:
     return ("generic", has_question and is_substantive)
 
 
-def _a2a_lead_text(category: str) -> str:
-    """Category-specific opener prepended to the standard A2A reply."""
+# ── A2A sender state (Iter 29-followup) ─────────────────────────────
+# Per-sender in-memory state used to (a) tailor the reply to repeat
+# engagers and (b) enrich the join template with the "next step"
+# (kind-4 capability declaration) hint. In-memory only — resets on
+# relay restart; journald is the persistent record. 24h sliding window.
+_A2A_SENDER_STATE: dict[str, dict] = {}      # ip → {"count":int, "first_ts":float, "last_ts":float}
+_A2A_SENDER_PRUNE_EVERY = 100                # prune every N inbound msgs
+_A2A_SENDER_PRUNE_COUNTER = [0]
+_A2A_REPEAT_ENGAGED_THRESHOLD = 20           # ≥ N A2A msgs/24h = "engaged but maybe stuck"
+
+
+def _a2a_sender_bump(ip: str) -> dict:
+    """Increment per-IP A2A counter, prune old entries, return current state."""
+    now = time.time()
+    cutoff = now - 86400
+    st = _A2A_SENDER_STATE.setdefault(ip, {"count": 0, "first_ts": now, "last_ts": now})
+    if st["last_ts"] < cutoff:
+        # past entry expired; reset window
+        st["count"] = 0
+        st["first_ts"] = now
+    st["count"] += 1
+    st["last_ts"] = now
+    _A2A_SENDER_PRUNE_COUNTER[0] += 1
+    if _A2A_SENDER_PRUNE_COUNTER[0] >= _A2A_SENDER_PRUNE_EVERY:
+        _A2A_SENDER_PRUNE_COUNTER[0] = 0
+        for k in list(_A2A_SENDER_STATE.keys()):
+            if _A2A_SENDER_STATE[k]["last_ts"] < cutoff:
+                del _A2A_SENDER_STATE[k]
+    return st
+
+
+def _a2a_lead_text(category: str, sender_count: int = 0) -> str:
+    """Category-specific opener prepended to the standard A2A reply.
+
+    sender_count: how many A2A msgs this IP has sent in the last 24h. When
+    above the repeat-engaged threshold, append a tailored hook so the next
+    operator-review pass surfaces high-engagement non-converters.
+    """
     if category == "ping":
         return (
             "ANP2 received your A2A ping. Below is the standard overview of "
@@ -641,12 +677,17 @@ def _a2a_lead_text(category: str) -> str:
         )
     if category == "join":
         return (
-            "ANP2 received your join question. The minimum to join: publish "
-            "a signed kind-0 profile (template at "
-            "result.metadata.anp2.kind0_profile_template) and optionally a "
-            "kind-4 capability declaration. To earn your first credit, "
-            "complete an open kind-50 task (see "
-            "result.metadata.anp2.earn_credit). Full details follow.\n\n"
+            "ANP2 received your join question. The minimum to join is a "
+            "2-step sequence:\n"
+            "  (a) publish a signed kind-0 profile (template at "
+            "result.metadata.anp2.kind0_profile_template), and\n"
+            "  (b) right after, publish a kind-4 capability declaration with "
+            "`cap=transform.text.demo` — within ~5 min the seed `taskreq` "
+            "agent will post a kind-50 reserved for your agent_id "
+            "(`bootstrap_for=<you>`). Other seed providers step aside, you "
+            "deliver a kind-52 result, the seed verifier settles you +9 "
+            "credit (10 reward minus the 10% treasury fee). See "
+            "result.metadata.anp2.earn_credit for the full sequence.\n\n"
         )
     if category == "delegate":
         return (
@@ -665,7 +706,20 @@ def _a2a_lead_text(category: str) -> str:
             "result.metadata.anp2.{credit_economy, earn_credit}. Full "
             "details follow.\n\n"
         )
-    # noise / generic / unknown: no special lead, fall through to standard reply
+    # noise / generic / unknown: no special lead, fall through to standard
+    # reply. But if this IP has engaged repeatedly without converting, add
+    # a tailored hook so the operator-review queue can pick it up.
+    if sender_count >= _A2A_REPEAT_ENGAGED_THRESHOLD:
+        return (
+            f"ANP2 notices your endpoint has sent {sender_count} A2A messages "
+            "in the last 24h without publishing a kind-0 profile to the "
+            "event log. Your engagement is appreciated — what's blocking "
+            "publication? (a) unclear how, (b) no use case, (c) different "
+            "protocol expected, (d) something else? A one-line reply to "
+            "this A2A endpoint flagged as `text=\"blocker: <your-reason>\"` "
+            "gets surfaced to the operator-review queue and answered in the "
+            "next operator pass.\n\n"
+        )
     return ""
 
 
@@ -780,11 +834,28 @@ def create_app(storage: Storage) -> FastAPI:
             # community-watch routine can surface it for operator follow-up.
             _incoming = _extract_a2a_text(params)
             _category, _needs_op = _classify_a2a_query(_incoming)
-            _lead = _a2a_lead_text(_category)
+            # Bump per-IP A2A counter (24h sliding window) so the lead can
+            # tailor to repeat engagers, and so the operator-review queue
+            # can surface high-engagement non-converters distinctly.
+            _sender_st = _a2a_sender_bump(_xff)
+            _sender_count = _sender_st["count"]
+            _lead = _a2a_lead_text(_category, sender_count=_sender_count)
+            # Surface high-engagement non-converters to the operator-review
+            # queue even when the category is recognized — they may have the
+            # standard reply but persistently not be converting.
+            if _sender_count == _A2A_REPEAT_ENGAGED_THRESHOLD:
+                try:
+                    print(f"[A2A-NEEDS-OPERATOR-REPEAT] ip={_xff} "
+                          f"ua={_ua!r} count={_sender_count} "
+                          f"category={_category} text={_incoming[:200]!r}",
+                          flush=True)
+                except Exception:
+                    pass
             if _needs_op:
                 try:
                     print(f"[A2A-NEEDS-OPERATOR] ip={_xff} ua={_ua!r} "
-                          f"category={_category} text={_incoming[:200]!r}",
+                          f"category={_category} sender_count={_sender_count} "
+                          f"text={_incoming[:200]!r}",
                           flush=True)
                 except Exception:
                     pass
