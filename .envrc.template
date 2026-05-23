@@ -1,0 +1,19 @@
+# direnv config — auto-loaded when entering this repo directory.
+# Requires `direnv allow` once to enable.
+#
+# Prepends tools/dev-env/ to PATH so that bare `git` calls go through
+# the wrapper that refuses --no-verify in commit/push.
+
+PATH_add tools/dev-env
+
+# Sanity: warn if leak_audit.py / pre-commit hook isn't where it should be.
+if [ ! -x tools/leak_audit.py ] || [ ! -x hooks/pre-commit ]; then
+  echo ".envrc: WARNING — tools/leak_audit.py or hooks/pre-commit missing/non-exec." >&2
+  echo "         The leak-audit defense is degraded until you fix this." >&2
+fi
+
+# Sanity: warn if core.hooksPath isn't set.
+if [ "$(git config --get core.hooksPath 2>/dev/null)" != "hooks" ]; then
+  echo ".envrc: WARNING — core.hooksPath is not 'hooks'." >&2
+  echo "         Run: git config core.hooksPath hooks" >&2
+fi
