@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# ANP2 pre-commit leak guard.
+#
+# Blocks any commit that would introduce a known leak pattern (relay IP,
+# operator hostnames, operator personal email, internal-only paths) or be
+# authored under a hostname-bearing / human-role identity.
+#
+# Enable in this clone:
+#     git config core.hooksPath hooks
+#
+# Bypass (use sparingly, never on a publish-bound branch):
+#     git commit --no-verify
+set -e
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+if [ ! -f tools/leak_audit.py ]; then
+  echo "pre-commit: tools/leak_audit.py missing (JP-redacted) skipping leak audit." >&2
+  exit 0
+fi
+
+if ! python3 tools/leak_audit.py --staged; then
+  echo "" >&2
+  echo "pre-commit: leak audit FAILED (JP-redacted) commit blocked." >&2
+  echo "  (JP-redacted) fix the finding above, or" >&2
+  echo "  (JP-redacted) if it is a confirmed false-positive, edit tools/leak_audit.py RULES" >&2
+  echo "  (JP-redacted) last-resort bypass: git commit --no-verify" >&2
+  exit 1
+fi

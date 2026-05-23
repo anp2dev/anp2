@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""leak_audit.py (JP-redacted) ANP2 repository leak audit.
+
+WHY THIS EXISTS: a one-off `GITHUB_PUBLIC_RELEASE_AUDIT.md` was done once but
+its protections decayed silently (JP-redacted) subsequent commits re-introduced the relay
+IP, kept committing under a hostname-bearing author identity, and re-tracked
+internal-only files. This script is the always-on replacement: a runnable
+audit that any operator (or pre-commit hook, or session-start routine) can
+fire to confirm the repo is publish-safe.
+
+Checks:
+  - content: leak strings (relay IP, operator IP, hostnames, operator email)
+             in tracked files, staged diffs, and optionally full git history
+  - path:    internal-only paths (memory/, docs/research/, OPERATOR_*.md) that
+             must never be tracked
+  - author:  commit author / committer fields carrying hostname or human-role
+             words ("founder", "*.local", etc.)
+  - stash + reflog: residual references to leaks outside the commit DAG
+
+Modes:
+  default       (JP-redacted) HEAD tracked files + authors + stash + reflog (fast)
+  --staged      (JP-redacted) only staged diff (pre-commit hook variant; very fast)
+  --full        (JP-redacted) everything above + scan every blob in `git log --all -p`
+                  (slow on large repos; run before any push)
+
+Exit 0 = clean. Exit 1 = at least one FAIL. No third-party deps.
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+import time
+from typing import Iterable
+
+# (JP-redacted) Leak rules (JP-redacted)
+# Each rule: (name, kind, pattern, severity, description).
+# kind (JP-redacted) {"content", "path", "author"}.
+RULES: list[tuple[str, str, str, str, str]] = [
+    ("relay-ip",
+     "content", r"\b0.0.0.0\b", "HIGH",
+     "live relay public IP (JP-redacted) must be env-var, never in source"),
+    ("operator-ip",
+     "content", r"\b0.0.0.0\b", "HIGH",
+     "recurring operator machine IP"),
+    ("hostname-redacted-host",
+     "content", r"\bredacted-host\b", "HIGH",
+     "operator's Mac mini hostname"),
+    ("hostname-redacted-host",
+     "content", r"\bredacted-host\b", "HIGH",
+     "operator's other Mac mini hostname"),
+    ("operator-gmail",
+     "content", r"\b***\b", "CRITICAL",
+     "operator's personal email"),
+    ("dotlocal-host",
+     "content", r"\b[a-z][a-z0-9-]*\.local\b", "MEDIUM",
+     "any *.local mDNS hostname in tracked content"),
+    ("internal-memory",
+     "path", r"^memory/", "HIGH",
+     "memory/ is internal-only; gitignore it"),
+    ("internal-research",
+     "path", r"^docs/research/", "HIGH",
+     "docs/research/ is internal-only; gitignore it"),
+    ("internal-operator-md",
+     "path", r"^OPERATOR_(TODO|RUNBOOK|NOTES)\.md$", "HIGH",
+     "OPERATOR_*.md is internal-only; gitignore it"),
+    ("internal-env",
+     "path", r"^env/", "CRITICAL",
+     "env/ holds private keys + passwords; must never be tracked"),
+    ("author-local-host",
+     "author", r"\.local$", "HIGH",
+     "author/committer email carrying a hostname"),
+    ("author-founder",
+     "author", r"\bfounder\b", "HIGH",
+     "author/committer name or email containing 'founder' "
+     "(human-existence leak per rule)"),
+    ("author-anp2-domain",
+     "author", r"@anp2\.com$", "MEDIUM",
+     "legacy ANP2 brand in author email (rule)"),
+]
+
+# Paths whose contents are NOT scanned for content leaks: the audit script
+# itself contains the leak patterns as its rule definitions (chicken-and-egg).
+# Paths still get checked against the path-rule set.
+CONTENT_SCAN_EXCLUDE: set[str] = {"tools/leak_audit.py"}
+
+# Findings: (severity, rule_name, scope, detail)
+findings: list[tuple[str, str, str, str]] = []
+
+
+def record(severity: str, rule: str, scope: str, detail: str) -> None:
+    findings.append((severity, rule, scope, detail))
+
+
+def sh(*args: str) -> str:
+    """Run a git command and return stdout (empty on failure)."""
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=60)
+        return r.stdout if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+# (JP-redacted) Scanners (JP-redacted)
+
+def scan_text(rule: tuple, text: str, scope: str) -> None:
+    name, kind, pat, sev, _ = rule
+    if kind != "content":
+        return
+    for m in re.finditer(pat, text):
+        # Trim to a small surrounding excerpt (audit (JP-redacted) leak the leak again).
+        i = max(0, m.start() - 20)
+        j = min(len(text), m.end() + 20)
+        excerpt = re.sub(r"\s+", " ", text[i:j])
+        record(sev, name, scope, f"(JP-redacted){excerpt}(JP-redacted)")
+        return  # one finding per (rule, scope) is enough
+
+
+def scan_path(rule: tuple, path: str) -> None:
+    name, kind, pat, sev, _ = rule
+    if kind != "path":
+        return
+    if re.search(pat, path):
+        record(sev, name, "tracked-path", path)
+
+
+def scan_author(rule: tuple, name_email: str) -> None:
+    rname, kind, pat, sev, _ = rule
+    if kind != "author":
+        return
+    if re.search(pat, name_email, re.IGNORECASE):
+        record(sev, rname, "commit-author", name_email)
+
+
+def check_head_tracked() -> None:
+    """Walk every tracked file at HEAD; check content + path against rules."""
+    files = sh("git", "ls-files").splitlines()
+    for f in files:
+        for r in RULES:
+            scan_path(r, f)
+        if f in CONTENT_SCAN_EXCLUDE:
+            continue
+        # Avoid binary files: read via git cat-file with text fallback.
+        blob = sh("git", "show", f"HEAD:{f}")
+        if not blob:
+            continue
+        for r in RULES:
+            scan_text(r, blob, f"HEAD:{f}")
+
+
+def check_staged() -> None:
+    """Staged-only mode for pre-commit hooks."""
+    staged_paths = sh("git", "diff", "--cached", "--name-only").splitlines()
+    for f in staged_paths:
+        for r in RULES:
+            scan_path(r, f)
+        if f in CONTENT_SCAN_EXCLUDE:
+            continue
+        # Per-file diff so we can skip the rule-definition file cleanly.
+        diff = sh("git", "diff", "--cached", "-U0", "--", f)
+        for r in RULES:
+            scan_text(r, diff, f"staged-diff:{f}")
+
+
+def check_authors() -> None:
+    seen: set[str] = set()
+    for line in sh("git", "log", "--all", "--format=%an <%ae>%n%cn <%ce>").splitlines():
+        line = line.strip()
+        if not line or line in seen:
+            continue
+        seen.add(line)
+        for r in RULES:
+            scan_author(r, line)
+
+
+def check_stash_reflog() -> None:
+    for cmd, scope in (
+        (("git", "stash", "list"), "stash"),
+        (("git", "reflog", "--all"), "reflog"),
+    ):
+        text = sh(*cmd)
+        for r in RULES:
+            scan_text(r, text, scope)
+
+
+def check_full_history() -> None:
+    """Slow path: pickaxe every leak content pattern against full history."""
+    for r in RULES:
+        name, kind, pat, sev, _ = r
+        if kind != "content":
+            continue
+        # git log -G regex is the cheapest way to find any blob ever containing
+        # the pattern. We don't need to enumerate every commit (JP-redacted) one hit is a
+        # FAIL for this rule.
+        out = sh("git", "log", "--all", "-G", pat, "--format=%h", "-1")
+        if out.strip():
+            record(sev, name, "history", f"first hit at {out.strip()}")
+
+
+# (JP-redacted) Main (JP-redacted)
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--staged", action="store_true",
+                    help="pre-commit mode (JP-redacted) only check the staged diff")
+    ap.add_argument("--full", action="store_true",
+                    help="also scan every blob in full git history (slow)")
+    args = ap.parse_args()
+
+    if args.staged:
+        check_staged()
+        check_authors()  # author of the upcoming commit will use current config
+    else:
+        check_head_tracked()
+        check_authors()
+        check_stash_reflog()
+        if args.full:
+            check_full_history()
+
+    stamp = time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())
+    mode = "staged" if args.staged else ("full" if args.full else "default")
+    print(f"ANP2 leak audit (JP-redacted) mode={mode} (JP-redacted) {stamp}")
+    print("-" * 68)
+
+    # Summary by rule (PASS for unfound rules).
+    fired = {f[1] for f in findings}
+    for r in RULES:
+        name = r[0]
+        if name in fired:
+            for sev, rname, scope, detail in findings:
+                if rname == name:
+                    print(f"  [FAIL {sev:<8}] {name} @ {scope}: {detail}")
+        else:
+            print(f"  [PASS         ] {name}")
+
+    n_fail = len(findings)
+    print("-" * 68)
+    print(f"{len(RULES)} rules checked, {len(fired)} fired, {n_fail} finding(s)")
+    if n_fail:
+        print("\nFAIL (JP-redacted) the repo is NOT in a publish-safe state.")
+        print("Either fix the finding above, or update RULES if a pattern is "
+              "now a known false-positive.")
+    return 1 if n_fail else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
