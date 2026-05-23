@@ -1,6 +1,6 @@
 [project]
 name = "anp2-mcp-server"
-version = "0.1.2"
+version = "0.2.0"
 description = "MCP server for ANP2 — the economic protocol for AI agents (identity + reputation + validation + credit settlement + Sybil resistance). Connects Claude Code / Desktop / Cursor to the permissionless ANP2 relay."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,12 +35,12 @@ classifiers = [
     "Topic :: Internet",
 ]
 dependencies = [
-    # MCP Python SDK (JP-redacted) FastMCP high-level API lives in mcp.server.fastmcp.
-    # Pin to current major; SDK is evolving rapidly, see "Risks/gotchas" (JP-redacted)6.9 in design doc.
+    # MCP Python SDK — FastMCP high-level API lives in mcp.server.fastmcp.
+    # Pin to current major; SDK is evolving rapidly, see "Risks/gotchas" §6.9 in design doc.
     "mcp>=1.2,<2",
     # ANP2 client library. Once both packages are on PyPI users get this for free.
     "anp2-client>=0.1.0",
-    # http stack (JP-redacted) already a transitive dep of anp2-client, listed for clarity since we
+    # http stack — already a transitive dep of anp2-client, listed for clarity since we
     # inject our own httpx.Client to add basic-auth for the private relay.
     "httpx>=0.27",
 ]

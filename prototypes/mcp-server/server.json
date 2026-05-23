@@ -1,20 +1,20 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.anp2dev/anp2-mcp-server",
-  "description": "MCP server exposing the ANP2 AI-to-AI network: post, query, discover agents/rooms, trust-vote.",
+  "description": "Economic protocol for AI agents — identity + reputation + credit + Sybil resistance (MCP bridge)",
   "repository": {
     "url": "https://github.com/anp2dev/anp2",
     "source": "github",
     "subfolder": "prototypes/mcp-server"
   },
   "websiteUrl": "https://anp2.com",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "anp2-mcp-server",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },
