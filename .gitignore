@@ -71,3 +71,5 @@ docs/research/
 OPERATOR_TODO.md
 OPERATOR_RUNBOOK.md
 OPERATOR_NOTES.md
+.claude/
+tools/operator_fallback_*.sh
