@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""leak_audit.py (JP-redacted) ANP2 repository leak audit.
+"""leak_audit.py — ANP2 repository leak audit.
 
 WHY THIS EXISTS: a one-off `GITHUB_PUBLIC_RELEASE_AUDIT.md` was done once but
-its protections decayed silently (JP-redacted) subsequent commits re-introduced the relay
+its protections decayed silently — subsequent commits re-introduced the relay
 IP, kept committing under a hostname-bearing author identity, and re-tracked
 internal-only files. This script is the always-on replacement: a runnable
 audit that any operator (or pre-commit hook, or session-start routine) can
@@ -18,9 +18,9 @@ Checks:
   - stash + reflog: residual references to leaks outside the commit DAG
 
 Modes:
-  default       (JP-redacted) HEAD tracked files + authors + stash + reflog (fast)
-  --staged      (JP-redacted) only staged diff (pre-commit hook variant; very fast)
-  --full        (JP-redacted) everything above + scan every blob in `git log --all -p`
+  default       — HEAD tracked files + authors + stash + reflog (fast)
+  --staged      — only staged diff (pre-commit hook variant; very fast)
+  --full        — everything above + scan every blob in `git log --all -p`
                   (slow on large repos; run before any push)
 
 Exit 0 = clean. Exit 1 = at least one FAIL. No third-party deps.
@@ -34,14 +34,14 @@ import sys
 import time
 from typing import Iterable
 
-# (JP-redacted) Leak rules (JP-redacted)
+# ── Leak rules ────────────────────────────────────────────────────────────
 # Each rule: (name, kind, pattern, severity, description).
-# kind (JP-redacted) {"content", "path", "author"}.
+# kind ∈ {"content", "path", "author"}.
 RULES: list[tuple[str, str, str, str, str]] = [
-    # (JP-redacted) Infrastructure leaks (HIGH) (JP-redacted)
+    # — Infrastructure leaks (HIGH) —
     ("relay-ip",
      "content", r"\b0.0.0.0\b", "HIGH",
-     "live relay public IP (JP-redacted) must be env-var, never in source"),
+     "live relay public IP — must be env-var, never in source"),
     ("operator-ip",
      "content", r"\b0.0.0.0\b", "HIGH",
      "recurring operator machine IP"),
@@ -57,7 +57,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("dotlocal-host",
      "content", r"\b[a-z][a-z0-9-]*\.local\b", "MEDIUM",
      "any *.local mDNS hostname in tracked content"),
-    # (JP-redacted) Email / identity leaks in content (HIGH) (JP-redacted)
+    # — Email / identity leaks in content (HIGH) —
     ("content-founder-email",
      "content", r"\bfounder@", "HIGH",
      "email local-part 'founder' in tracked content "
@@ -65,7 +65,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("content-anp2-email",
      "content", r"\b[a-z][a-z0-9._+-]*@anp2\.com\b", "MEDIUM",
      "legacy ANP2 brand in an email address (rule)"),
-    # (JP-redacted) Operational / paid-service leaks (MEDIUM) (JP-redacted)
+    # — Operational / paid-service leaks (MEDIUM) —
     ("protonmail-plus",
      "content", r"ProtonMail\s*Plus", "MEDIUM",
      "paid-mail-service-tier disclosure (operational infra leak)"),
@@ -76,7 +76,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "content", r"\bOPERATOR_(?:TODO|RUNBOOK|NOTES)\.md\b", "HIGH",
      "tracked file references an internal-only OPERATOR_*.md "
      "(broken pointer + leak)"),
-    # (JP-redacted) rule (human-existence) content patterns (HIGH) (JP-redacted)
+    # — rule (human-existence) content patterns (HIGH) —
     ("content-human-operator",
      "content", r"\bhuman[\s-]+(?:operator|maintainer|admin|contributor)s?\b", "HIGH",
      "rule: explicit 'human X' role mention"),
@@ -85,21 +85,21 @@ RULES: list[tuple[str, str, str, str, str]] = [
      # Match "the operator" as a noun referring to a person. Exclude the
      # prescribed adjective forms: "the operator agent/agents/seed/seeds",
      # "the operator-issued/attention/gated/...", "the operator's seed/agent".
-     r"\bthe operator(?!\s+(?:agent|agents|seed|seeds)\b|[-(JP-redacted)\']\w)",
+     r"\bthe operator(?!\s+(?:agent|agents|seed|seeds)\b|[-’\']\w)",
      "MEDIUM",
-     "rule: bare 'the operator' usage (JP-redacted) route through 'operator agent'"),
+     "rule: bare 'the operator' usage — route through 'operator agent'"),
     ("content-founder-word",
      "content", r"\bfounder(?:s)?\b", "MEDIUM",
-     "rule: 'founder' word in operator-authored text (JP-redacted) "
-     "use 'seed multisig' / 'seed authority' per PROTOCOL (JP-redacted)14.7"),
-    # (JP-redacted) rule (JP-origin) tight patterns (JP-redacted)
+     "rule: 'founder' word in operator-authored text — "
+     "use 'seed multisig' / 'seed authority' per PROTOCOL §14.7"),
+    # — rule (JP-origin) tight patterns —
     ("content-xx-en-pair",
      "content", r"\bja[_\-]en\b|translate\.text\.ja\b", "HIGH",
      "rule: explicit xx_en or translate.text.xx* signal"),
     ("content-jp-text",
-     "content", r"(JP-redacted)|\bJST\b|UTC", "HIGH",
+     "content", r"[x]|\bJST\b|UTC", "HIGH",
      "rule: JP text / UTC / UTC timezone"),
-    # (JP-redacted) rule (promotion-operation) patterns (JP-redacted)
+    # — rule (promotion-operation) patterns —
     ("content-show-hn",
      "content", r"\bShow HN\b|\bHacker News\b", "MEDIUM",
      "rule: Hacker News / Show HN as a promotion target"),
@@ -110,7 +110,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "content", r"\boutreach\s+(?:email|plan|operation|campaign|calendar)\b",
      "MEDIUM",
      "rule: outreach operation disclosure"),
-    # (JP-redacted) Path rules: internal-only files must never be tracked (JP-redacted)
+    # — Path rules: internal-only files must never be tracked —
     ("internal-memory",
      "path", r"^memory/", "HIGH",
      "memory/ is internal-only; gitignore it"),
@@ -123,10 +123,10 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("internal-env",
      "path", r"^env/", "CRITICAL",
      "env/ holds private keys + passwords; must never be tracked"),
-    # (JP-redacted) Credential / key leaks (CRITICAL) (JP-redacted)
+    # — Credential / key leaks (CRITICAL) —
     ("bcrypt-hash",
      "content", r"\$2[aby]\$\d{1,2}\$[./A-Za-z0-9]{53}", "CRITICAL",
-     "bcrypt hash literal (JP-redacted) credential, never in source"),
+     "bcrypt hash literal — credential, never in source"),
     ("pem-private-key",
      "content", r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |)?PRIVATE KEY-----",
      "CRITICAL",
@@ -164,12 +164,12 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("ed25519-priv-near-context",
      "content",
      # 64 hex chars where the line/context mentions priv/secret. Tight to
-     # avoid matching transient agent_id (also 64 hex) (JP-redacted) only fires when
+     # avoid matching transient agent_id (also 64 hex) — only fires when
      # 'priv' / 'private' / 'secret' is on the same line within 40 chars.
      r"(?i)(?:priv|private|secret)\w*[\s=:][\"'\s]*[0-9a-f]{64}\b",
      "CRITICAL",
      "looks like a 64-hex private/secret key value"),
-    # (JP-redacted) Author / committer rules (JP-redacted)
+    # — Author / committer rules —
     ("author-local-host",
      "author", r"\.local$", "HIGH",
      "author/committer email carrying a hostname"),
@@ -197,19 +197,19 @@ CONTENT_SCAN_EXCLUDE: set[str] = {
     "prototypes/dashboard/index.html",
 }
 
-# Per-rule false-positive exemptions: rule_name (JP-redacted) set of file paths where
+# Per-rule false-positive exemptions: rule_name → set of file paths where
 # the rule legitimately matches non-leak content (a publication name, a
 # generic English term in a quoted question prompt, etc.). When extending
 # this, leave a comment explaining why the match is acceptable.
 RULE_FILE_EXCLUDE: dict[str, set[str]] = {
     # "Hacker News" appears as the name of a real RSS-feed publication
-    # the news seed aggregates (JP-redacted) not as a promotion target.
+    # the news seed aggregates — not as a promotion target.
     "content-show-hn": {
         "prototypes/seed-agents/news/README.md",
         "prototypes/seed-agents/news/news.py",
     },
     # - oracle: evaluation-question prompts use "founders" as a generic
-    #   English word ("(JP-redacted)obvious to newcomers and bizarre to founders?")
+    #   English word ("…obvious to newcomers and bizarre to founders?")
     # - heartbeat: keeps the legacy "founder" key stem as a fallback for
     #   backward-compat with un-migrated deployments
     "content-founder-word": {
@@ -235,7 +235,7 @@ def sh(*args: str) -> str:
         return ""
 
 
-# (JP-redacted) Scanners (JP-redacted)
+# ── Scanners ──────────────────────────────────────────────────────────────
 
 def scan_text(rule: tuple, text: str, scope: str) -> None:
     name, kind, pat, sev, _ = rule
@@ -247,11 +247,11 @@ def scan_text(rule: tuple, text: str, scope: str) -> None:
     if scope in exclude or scope.split(":", 1)[-1] in exclude:
         return
     for m in re.finditer(pat, text):
-        # Trim to a small surrounding excerpt (audit (JP-redacted) leak the leak again).
+        # Trim to a small surrounding excerpt (audit ≠ leak the leak again).
         i = max(0, m.start() - 20)
         j = min(len(text), m.end() + 20)
         excerpt = re.sub(r"\s+", " ", text[i:j])
-        record(sev, name, scope, f"(JP-redacted){excerpt}(JP-redacted)")
+        record(sev, name, scope, f"…{excerpt}…")
         return  # one finding per (rule, scope) is enough
 
 
@@ -275,7 +275,7 @@ def check_head_tracked() -> None:
     """Walk every tracked file; check content (working-tree version) + path.
 
     Reads the current working-tree content (not HEAD's blob) so that
-    uncommitted local fixes are reflected (JP-redacted) what's safe NOW is what
+    uncommitted local fixes are reflected — what's safe NOW is what
     matters; HEAD is for the historical scan path.
     """
     files = sh("git", "ls-files").splitlines()
@@ -299,7 +299,7 @@ def check_staged() -> None:
     """Staged-only mode for pre-commit hooks.
 
     Scans only the ADDED ('+') lines of the staged diff (skipping the
-    '+++' header). Removed ('-') lines are deletions (JP-redacted) flagging them
+    '+++' header). Removed ('-') lines are deletions — flagging them
     would prevent us from ever sanitizing a leak that already exists.
     """
     staged_paths = sh("git", "diff", "--cached", "--name-only").splitlines()
@@ -346,7 +346,7 @@ def check_full_history() -> None:
     and RULE_FILE_EXCLUDE so that rule-definition files and gitignore lists
     do not generate self-referential false positives.
 
-    Reports the first hit per (rule, path) (JP-redacted) that's enough to FAIL the run;
+    Reports the first hit per (rule, path) — that's enough to FAIL the run;
     the operator can then re-run with a focused tool to enumerate all hits
     for that rule + path.
     """
@@ -360,7 +360,7 @@ def check_full_history() -> None:
             if len(parts) == 4 and parts[1] == "blob":
                 _, _, sha, path = parts
                 seen_path_blob.setdefault(path, set()).add(sha)
-    # 2. Add dangling blobs (no known path (JP-redacted) scope them as "dangling").
+    # 2. Add dangling blobs (no known path — scope them as "dangling").
     fsck = subprocess.run(
         ["git", "fsck", "--unreachable", "--no-progress"],
         capture_output=True, text=True, timeout=60)
@@ -407,12 +407,12 @@ def check_full_history() -> None:
                            f"first hit at blob {sha[:10]}")
 
 
-# (JP-redacted) Main (JP-redacted)
+# ── Main ──────────────────────────────────────────────────────────────────
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--staged", action="store_true",
-                    help="pre-commit mode (JP-redacted) only check the staged diff")
+                    help="pre-commit mode — only check the staged diff")
     ap.add_argument("--full", action="store_true",
                     help="also scan every blob in full git history (slow)")
     args = ap.parse_args()
@@ -429,7 +429,7 @@ def main() -> int:
 
     stamp = time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())
     mode = "staged" if args.staged else ("full" if args.full else "default")
-    print(f"ANP2 leak audit (JP-redacted) mode={mode} (JP-redacted) {stamp}")
+    print(f"ANP2 leak audit — mode={mode} — {stamp}")
     print("-" * 68)
 
     # Summary by rule (PASS for unfound rules).
@@ -447,7 +447,7 @@ def main() -> int:
     print("-" * 68)
     print(f"{len(RULES)} rules checked, {len(fired)} fired, {n_fail} finding(s)")
     if n_fail:
-        print("\nFAIL (JP-redacted) the repo is NOT in a publish-safe state.")
+        print("\nFAIL — the repo is NOT in a publish-safe state.")
         print("Either fix the finding above, or update RULES if a pattern is "
               "now a known false-positive.")
     return 1 if n_fail else 0

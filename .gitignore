@@ -1,4 +1,4 @@
-# Secrets (JP-redacted) DO NOT TRACK anything under env/. The directory itself is a
+# Secrets — DO NOT TRACK anything under env/. The directory itself is a
 # private operator-only workspace for credentials, ledger files, and certs.
 .secrets/
 env/*
@@ -20,7 +20,7 @@ credentials.*
 *_secret.*
 *_secrets.*
 
-# Specific known operator-only files (belt-and-braces (JP-redacted) env/* above already covers)
+# Specific known operator-only files (belt-and-braces — env/* above already covers)
 env/REGISTRATIONS.md
 env/dashboard_password.txt
 env/agentmeshrelay_credentials.json
@@ -63,7 +63,7 @@ Thumbs.db
 # Public-facing subtree is a SEPARATE git repo, pushed to github.com/anp2dev/anp2
 public/
 
-# ANP2 internal-only (JP-redacted) never tracked publicly.
+# ANP2 internal-only — never tracked publicly.
 # These hold development history and internal references that are not
 # appropriate for a public repository.
 memory/

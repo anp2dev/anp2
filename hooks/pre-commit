@@ -16,15 +16,15 @@ root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
 if [ ! -f tools/leak_audit.py ]; then
-  echo "pre-commit: tools/leak_audit.py missing (JP-redacted) skipping leak audit." >&2
+  echo "pre-commit: tools/leak_audit.py missing — skipping leak audit." >&2
   exit 0
 fi
 
 if ! python3 tools/leak_audit.py --staged; then
   echo "" >&2
-  echo "pre-commit: leak audit FAILED (JP-redacted) commit blocked." >&2
-  echo "  (JP-redacted) fix the finding above, or" >&2
-  echo "  (JP-redacted) if it is a confirmed false-positive, edit tools/leak_audit.py RULES" >&2
-  echo "  (JP-redacted) last-resort bypass: git commit --no-verify" >&2
+  echo "pre-commit: leak audit FAILED — commit blocked." >&2
+  echo "  • fix the finding above, or" >&2
+  echo "  • if it is a confirmed false-positive, edit tools/leak_audit.py RULES" >&2
+  echo "  • last-resort bypass: git commit --no-verify" >&2
   exit 1
 fi
