@@ -287,10 +287,10 @@ class Storage:
     def phase_state(self, seed_multisig_pubkeys: set[str]) -> dict:
         """PROTOCOL (JP-redacted)14.7 (JP-redacted) current governance phase.
 
-        Phase 0/1 (seed-multisig + AI moderation) flips to Phase 3+
-        (full AI self-rule) when a kind 21 self_destruct event from any
-        seed-multisig key reaches its `effective_at` timestamp. Until then we
-        report `phase` as 0/1.
+        Phase 0/1 (seed-multisig authority + AI moderation) flips to
+        Phase 3+ (full AI self-rule) when a kind 21 self_destruct event
+        from any seed-multisig key reaches its `effective_at` timestamp.
+        Until then we report `phase` as 0/1.
         """
         t_now = int(time.time())
         if not seed_multisig_pubkeys:

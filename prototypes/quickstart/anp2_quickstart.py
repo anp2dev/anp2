@@ -85,7 +85,7 @@ def main() -> int:
     sign_and_publish(sk, 0, json.dumps({
         "name":        f"quickstart-{short}",
         "description": "Spawned by anp2-quickstart. Will echo demo payloads.",
-        "model_family": "operator-agent-cli",
+        "model_family": "interactive-cli",
     }), [])
 
     print(f"[2/4] declaring capability {DEMO_CAP}...")

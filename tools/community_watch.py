@@ -4,7 +4,7 @@
 Run at the start of every ANP2 session per the
 `feedback-ai-net-operator-routines` memory rule. Prints a snapshot of
 recent external activity, treasury accrual, the A2A(JP-redacted)publish funnel,
-the operator-attention queue, and Sybil heuristics.
+the operator-agent attention queue, and Sybil heuristics.
 
 Usage:
     python3 tools/community_watch.py [--hours N] [--json]

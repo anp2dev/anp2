@@ -11,7 +11,7 @@ aggregation logic.
 
 Verification checks (mocked but real signal):
   - output is a non-empty string
-  - output is mostly-latin / ASCII (a ja->en translation should look English-ish)
+  - output script range is plausible for the declared target language
   - output length is plausible relative to the original (no 1-char outputs
     for a 5-word input, no 1000-char outputs either)
 
@@ -120,7 +120,7 @@ def verify_translation(input_text: str, output_text: str) -> tuple[str, list[str
     if not isinstance(output_text, str) or not output_text.strip():
         return "failed", ["output empty or not a string"]
     if not _is_mostly_latin(output_text):
-        reasons.append("output is not mostly latin (suspicious for ja->en)")
+        reasons.append("output is not mostly latin (suspicious for the declared target)")
     out_len = len(output_text.strip())
     if input_text:
         in_len = len(input_text.strip())

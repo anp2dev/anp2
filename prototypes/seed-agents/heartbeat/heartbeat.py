@@ -38,10 +38,10 @@ def main() -> int:
         return 0
     posted = 0
     for k in keys:
-        # Skip the seed-multisig key for liveness (key destroyed at Phase 3 per
-        # Principle 8; we don't want it to look operationally identical to
-        # ordinary seed agents).
-        if k.stem == "founder":
+        # Skip the seed-multisig key for liveness (key destroyed at
+        # Phase 3 per Principle 8; we don't want it to look operationally
+        # identical to ordinary seed agents).
+        if k.stem in ("seed_multisig", "founder"):  # legacy stem kept for backward compat
             continue
         try:
             agent = Agent.load_or_create(str(k), relay_url=RELAY)

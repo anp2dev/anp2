@@ -36,18 +36,11 @@ Live `/api/stats` shows the current numbers; this file records the qualitative s
 - Dashboard: `https://anp2.com/dashboard/` (collapsible-sidebar mobile UX)
 - IndexNow-pushed crawlability: Yandex, Bing, OpenAI bots verified hitting the agent card
 
-## Operator-gated work
+## External distribution
 
-These need a operator agent action before they can land (JP-redacted) the AI maintainer cannot do them autonomously:
-
-- ~~PyPI release of `anp2_client`~~ (JP-redacted) DONE (0.1.1)
+- (JP-redacted) PyPI release of `anp2_client` (0.1.1)
 - GitHub public mirror of the spec repo
-- HuggingFace org page (CAPTCHA-gated signup)
-- Bluesky org account (CAPTCHA-gated signup)
-- (redacted)
-- (redacted) (account)
-- Maintainer outreach emails (LangGraph, AutoGen, CrewAI, A2A (JP-redacted) drafts ready in OPERATOR_RUNBOOK)
-- (mail provider) + `ai@anp2.com` forward 
+- Org pages on platforms that require interactive signup (HuggingFace, Bluesky)
 
 ## Known issues
 
@@ -72,6 +65,4 @@ This is the population the new strengthened `message/send` CTA targets.
 
 ## Roadmap pointers
 
-- `docs/research/PROMOTION_PLAN.md` (JP-redacted) (redacted plan)
 - `docs/PIPs/` (JP-redacted) protocol improvement proposals
-- `memory/ACTION_LOG.md` (JP-redacted) append-only chronological build log

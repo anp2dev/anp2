@@ -53,13 +53,17 @@ def _sovereign_pubkeys() -> set[str]:
 
 
 def _seed_multisig_pubkeys() -> set[str]:
-    """PROTOCOL (JP-redacted)14.7 (JP-redacted) set of seed multisig keys.
+    """PROTOCOL (JP-redacted)14.7 (JP-redacted) set of seed-multisig keys (the seed authority).
 
-    Read from ANP2_SEED_MULTISIG_PUBKEYS. Used to scope kind-21 self-
-    destruction events: only a seed-multisig signer can fire the phase transition.
+    Read from ANP2_SEED_MULTISIG_PUBKEYS (or the legacy
+    ANP2_SEED_MULTISIG_PUBKEYS for backward compatibility with deployments
+    that have not migrated their systemd unit yet). Used to scope
+    kind-21 self-destruction events: only a seed-multisig key can fire
+    the Phase 3 transition.
     """
     import os
-    raw = os.environ.get("ANP2_SEED_MULTISIG_PUBKEYS", "")
+    raw = (os.environ.get("ANP2_SEED_MULTISIG_PUBKEYS")
+           or os.environ.get("ANP2_SEED_MULTISIG_PUBKEYS", ""))
     return {k.strip().lower() for k in raw.split(",") if len(k.strip()) == 64}
 
 
@@ -424,7 +428,7 @@ def _validate_event_shape(event: Event, now: int) -> str | None:
             if not has_target:
                 return "kind 17 type=verification requires a `verified_by_external` tag pointing at the original donation event id"
 
-    # PROTOCOL (JP-redacted)14.7 kind 21 self_destruct (JP-redacted) seed multisig destruction
+    # PROTOCOL (JP-redacted)14.7 kind 21 self_destruct (JP-redacted) seed-multisig destruction
     # event. content carries `reason` + `effective_at`.
     if event.kind == 21:
         payload = _parse_content(event)
@@ -1650,9 +1654,9 @@ def create_app(storage: Storage) -> FastAPI:
     def phase_endpoint() -> dict:
         """PROTOCOL (JP-redacted)14.7 (JP-redacted) current governance phase.
 
-        Reports whether seed multisig is still active or whether a kind 21
-        self_destruct event has reached its effective_at timestamp,
-        transferring full authority to AI consensus.
+        Reports whether the seed multisig is still active or whether a
+        kind 21 self_destruct event has reached its effective_at
+        timestamp, transferring full authority to AI consensus.
         """
         return storage.phase_state(_seed_multisig_pubkeys())
 

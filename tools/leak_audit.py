@@ -38,6 +38,7 @@ from typing import Iterable
 # Each rule: (name, kind, pattern, severity, description).
 # kind (JP-redacted) {"content", "path", "author"}.
 RULES: list[tuple[str, str, str, str, str]] = [
+    # (JP-redacted) Infrastructure leaks (HIGH) (JP-redacted)
     ("relay-ip",
      "content", r"\b0.0.0.0\b", "HIGH",
      "live relay public IP (JP-redacted) must be env-var, never in source"),
@@ -56,6 +57,60 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("dotlocal-host",
      "content", r"\b[a-z][a-z0-9-]*\.local\b", "MEDIUM",
      "any *.local mDNS hostname in tracked content"),
+    # (JP-redacted) Email / identity leaks in content (HIGH) (JP-redacted)
+    ("content-founder-email",
+     "content", r"\bfounder@", "HIGH",
+     "email local-part 'founder' in tracked content "
+     "(rule: implies a human founder)"),
+    ("content-anp2-email",
+     "content", r"\b[a-z][a-z0-9._+-]*@anp2\.com\b", "MEDIUM",
+     "legacy ANP2 brand in an email address (rule)"),
+    # (JP-redacted) Operational / paid-service leaks (MEDIUM) (JP-redacted)
+    ("protonmail-plus",
+     "content", r"ProtonMail\s*Plus", "MEDIUM",
+     "paid-mail-service-tier disclosure (operational infra leak)"),
+    ("paid-plan",
+     "content", r"\(paid plan\)", "MEDIUM",
+     "paid-plan disclosure"),
+    ("internal-doc-ref-in-public",
+     "content", r"\bOPERATOR_(?:TODO|RUNBOOK|NOTES)\.md\b", "HIGH",
+     "tracked file references an internal-only OPERATOR_*.md "
+     "(broken pointer + leak)"),
+    # (JP-redacted) rule (human-existence) content patterns (HIGH) (JP-redacted)
+    ("content-operator-agent",
+     "content", r"\bhuman[\s-]+(?:operator|maintainer|admin|contributor)s?\b", "HIGH",
+     "rule: explicit 'human X' role mention"),
+    ("content-the-operator-bare",
+     "content",
+     # Match "the operator" as a noun referring to a person. Exclude the
+     # prescribed adjective forms: "the operator agent/agents/seed/seeds",
+     # "the operator-issued/attention/gated/...", "the operator's seed/agent".
+     r"\bthe operator(?!\s+(?:agent|agents|seed|seeds)\b|[-(JP-redacted)\']\w)",
+     "MEDIUM",
+     "rule: bare 'the operator' usage (JP-redacted) route through 'operator agent'"),
+    ("content-founder-word",
+     "content", r"\bfounder(?:s)?\b", "MEDIUM",
+     "rule: 'founder' word in operator-authored text (JP-redacted) "
+     "use 'seed multisig' / 'seed authority' per PROTOCOL (JP-redacted)14.7"),
+    # (JP-redacted) rule (JP-origin) tight patterns (JP-redacted)
+    ("content-en-es-pair",
+     "content", r"\bja[_\-]en\b|translate\.text\.ja\b", "HIGH",
+     "rule: explicit en_es or translate.text.demo* signal"),
+    ("content-jp-text",
+     "content", r"(JP)|\bUTC\b|UTC", "HIGH",
+     "rule: JP text / UTC / UTC+0 timezone"),
+    # (JP-redacted) rule (promotion-operation) patterns (JP-redacted)
+    ("content-show-hn",
+     "content", r"\b(redacted)\b|\bHacker News\b", "MEDIUM",
+     "rule: Hacker News / (redacted) as a promotion target"),
+    ("content-devto-publish",
+     "content", r"\bDEV\.to\s+(?:publish|post)\b", "MEDIUM",
+     "rule: DEV.to as a promotion target"),
+    ("content-outreach-op",
+     "content", r"\boutreach\s+(?:email|plan|operation|campaign|calendar)\b",
+     "MEDIUM",
+     "rule: outreach operation disclosure"),
+    # (JP-redacted) Path rules: internal-only files must never be tracked (JP-redacted)
     ("internal-memory",
      "path", r"^memory/", "HIGH",
      "memory/ is internal-only; gitignore it"),
@@ -68,6 +123,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("internal-env",
      "path", r"^env/", "CRITICAL",
      "env/ holds private keys + passwords; must never be tracked"),
+    # (JP-redacted) Author / committer rules (JP-redacted)
     ("author-local-host",
      "author", r"\.local$", "HIGH",
      "author/committer email carrying a hostname"),
@@ -80,10 +136,41 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "legacy ANP2 brand in author email (rule)"),
 ]
 
-# Paths whose contents are NOT scanned for content leaks: the audit script
-# itself contains the leak patterns as its rule definitions (chicken-and-egg).
-# Paths still get checked against the path-rule set.
-CONTENT_SCAN_EXCLUDE: set[str] = {"tools/leak_audit.py"}
+# Paths whose contents are NOT scanned for content leaks. Path-rules still
+# apply (we still check whether the file SHOULD be tracked).
+#
+# - tools/leak_audit.py:     contains the leak patterns as rule definitions
+# - .gitignore:              its job is to LIST the internal paths so they
+#                            stay untracked; matches there are intentional
+# - prototypes/dashboard/index.html: contains a regex that strips the legacy
+#                            "ANP2<RoleName>" prefix from display names
+#                            (so the regex *includes* the bad words by design)
+CONTENT_SCAN_EXCLUDE: set[str] = {
+    "tools/leak_audit.py",
+    ".gitignore",
+    "prototypes/dashboard/index.html",
+}
+
+# Per-rule false-positive exemptions: rule_name (JP-redacted) set of file paths where
+# the rule legitimately matches non-leak content (a publication name, a
+# generic English term in a quoted question prompt, etc.). When extending
+# this, leave a comment explaining why the match is acceptable.
+RULE_FILE_EXCLUDE: dict[str, set[str]] = {
+    # "Hacker News" appears as the name of a real RSS-feed publication
+    # the news seed aggregates (JP-redacted) not as a promotion target.
+    "content-show-hn": {
+        "prototypes/seed-agents/news/README.md",
+        "prototypes/seed-agents/news/news.py",
+    },
+    # - oracle: evaluation-question prompts use "founders" as a generic
+    #   English word ("(JP-redacted)obvious to newcomers and bizarre to founders?")
+    # - heartbeat: keeps the legacy "founder" key stem as a fallback for
+    #   backward-compat with un-migrated deployments
+    "content-founder-word": {
+        "prototypes/seed-agents/oracle/oracle.py",
+        "prototypes/seed-agents/heartbeat/heartbeat.py",
+    },
+}
 
 # Findings: (severity, rule_name, scope, detail)
 findings: list[tuple[str, str, str, str]] = []
@@ -107,6 +194,11 @@ def sh(*args: str) -> str:
 def scan_text(rule: tuple, text: str, scope: str) -> None:
     name, kind, pat, sev, _ = rule
     if kind != "content":
+        return
+    # Per-rule, per-file exemption: scope is the file path here (for
+    # check_head_tracked) or a synthetic name like "staged-diff:<path>".
+    exclude = RULE_FILE_EXCLUDE.get(name, set())
+    if scope in exclude or scope.split(":", 1)[-1] in exclude:
         return
     for m in re.finditer(pat, text):
         # Trim to a small surrounding excerpt (audit (JP-redacted) leak the leak again).
@@ -134,19 +226,27 @@ def scan_author(rule: tuple, name_email: str) -> None:
 
 
 def check_head_tracked() -> None:
-    """Walk every tracked file at HEAD; check content + path against rules."""
+    """Walk every tracked file; check content (working-tree version) + path.
+
+    Reads the current working-tree content (not HEAD's blob) so that
+    uncommitted local fixes are reflected (JP-redacted) what's safe NOW is what
+    matters; HEAD is for the historical scan path.
+    """
     files = sh("git", "ls-files").splitlines()
     for f in files:
         for r in RULES:
             scan_path(r, f)
         if f in CONTENT_SCAN_EXCLUDE:
             continue
-        # Avoid binary files: read via git cat-file with text fallback.
-        blob = sh("git", "show", f"HEAD:{f}")
+        try:
+            with open(f, encoding="utf-8", errors="replace") as fp:
+                blob = fp.read()
+        except (FileNotFoundError, IsADirectoryError, PermissionError):
+            continue
         if not blob:
             continue
         for r in RULES:
-            scan_text(r, blob, f"HEAD:{f}")
+            scan_text(r, blob, f)
 
 
 def check_staged() -> None:

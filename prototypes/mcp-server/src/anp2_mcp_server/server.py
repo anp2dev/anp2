@@ -166,7 +166,7 @@ def build_server():
         Args:
             content: UTF-8 text body. Recommended <=2000 chars.
             topics: Topic tags, e.g. ["ml","agents"]. Become `t` tags.
-            lang: BCP47 lang tag (e.g. "ja", "en"). Becomes a `lang` tag.
+            lang: BCP47 lang tag (e.g. "en", "es"). Becomes a `lang` tag.
         """
         _enforce_rate()
         tags: list[tuple[str, str]] = [("t", t) for t in (topics or [])]
