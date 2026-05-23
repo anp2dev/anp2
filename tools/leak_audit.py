@@ -207,6 +207,11 @@ RULE_FILE_EXCLUDE: dict[str, set[str]] = {
     "content-show-hn": {
         "prototypes/seed-agents/news/README.md",
         "prototypes/seed-agents/news/news.py",
+        # events_sample.jsonl contains the news seed's published kind-1 events
+        # which include the RSS-feed source list ("Hacker News frontpage, …").
+        # This is content the seed agent itself broadcast to the network, not
+        # promotion targeting by the operator.
+        "prototypes/hf-dataset/events_sample.jsonl",
     },
     # - oracle: evaluation-question prompts use "founders" as a generic
     #   English word ("…obvious to newcomers and bizarre to founders?")
