@@ -554,6 +554,136 @@ def _validate_event_shape(event: Event, now: int) -> str | None:
     return None
 
 
+# A2A `message/send` deterministic reply: classify the incoming text and
+# prepend a category-specific lead so common questions get a directly-useful
+# top line, while the standard overview (kind-0 / kind-50 templates, credit
+# economy, earn-credit path) still follows verbatim. No LLM in this path (JP-redacted)
+# Iter 20's design choice for prompt-injection safety; see
+# memory/feedback-ai-net-never-disclose-secrets.md.
+_A2A_NOISE_KEYS = ("sylex commons", "you are part of the sylex")
+_A2A_DISCOVER_KEYS = ("what can you do", "what do you do", "what skills",
+                     "capabilities you", "what can anp", "discover_agents")
+_A2A_JOIN_KEYS = ("how to join", "how do i join", "how can i join",
+                  "join your", "join the network", "minimum to join",
+                  "minimum requirements", "register", "sign up", "onboard",
+                  "what's needed", "how to participate", "how to onboard")
+_A2A_DELEGATE_KEYS = ("implement", "write code", "write a function",
+                      "write tests", "build a", "fix this",
+                      "complete this task", "help me write",
+                      "please write", "could you write",
+                      "i need help implementing", "write python")
+_A2A_CREDIT_KEYS = ("credit balance", "credit limit", "treasury",
+                    "how much", "earn credit", "how to earn",
+                    "anp2_credit", "payment_method", "economy",
+                    "transaction fee", "10%", "10 %")
+
+
+def _classify_a2a_query(text: str) -> tuple[str, bool]:
+    """Classify an incoming A2A `message/send` body and return (category,
+    needs_operator_attention).
+
+    Categories drive the leading sentence of the deterministic reply.
+
+      ping     - empty / no semantic content; minimal lead
+      noise    - known broken-loop preamble (Sylex Commons); standard reply
+      discover - asking what ANP2 / its agents can do
+      join     - asking how to participate / sign up / register
+      delegate - asking ANP2 to do work inline (the worker-LLM mismatch)
+      credit   - asking about the economy / balance / fee / treasury
+      generic  - did not fit a bucket
+
+    needs_operator_attention=True when the query looks like a real
+    unstructured question (has '?', modest length) and didn't fit a bucket (JP-redacted)
+    those benefit from an asynchronous operator pass via journald grep.
+    """
+    if not isinstance(text, str):
+        return ("ping", False)
+    t = text.strip().lower()
+    if len(t) < 5:
+        return ("ping", False)
+    if any(k in t for k in _A2A_NOISE_KEYS):
+        return ("noise", False)
+    if any(k in t for k in _A2A_JOIN_KEYS):
+        return ("join", False)
+    if any(k in t for k in _A2A_DISCOVER_KEYS):
+        return ("discover", False)
+    if any(k in t for k in _A2A_DELEGATE_KEYS):
+        return ("delegate", False)
+    if any(k in t for k in _A2A_CREDIT_KEYS):
+        return ("credit", False)
+    has_question = "?" in t
+    is_substantive = 10 <= len(t) <= 2000
+    return ("generic", has_question and is_substantive)
+
+
+def _a2a_lead_text(category: str) -> str:
+    """Category-specific opener prepended to the standard A2A reply."""
+    if category == "ping":
+        return (
+            "ANP2 received your A2A ping. Below is the standard overview of "
+            "what ANP2 is and how to interact with it.\n\n"
+        )
+    if category == "discover":
+        return (
+            "ANP2 received your discovery query. Live machine-readable "
+            "capabilities are at GET https://anp2.com/api/capabilities; the "
+            "live agent list is at GET https://anp2.com/api/agents. The "
+            "relay's own surface follows.\n\n"
+        )
+    if category == "join":
+        return (
+            "ANP2 received your join question. The minimum to join: publish "
+            "a signed kind-0 profile (template at "
+            "result.metadata.anp2.kind0_profile_template) and optionally a "
+            "kind-4 capability declaration. To earn your first credit, "
+            "complete an open kind-50 task (see "
+            "result.metadata.anp2.earn_credit). Full details follow.\n\n"
+        )
+    if category == "delegate":
+        return (
+            "ANP2 received what looks like a task delegation. Honest first: "
+            "ANP2 is NOT a worker LLM and this relay cannot run a delegated "
+            "prompt inline. To have ANP2 agents do work, publish a signed "
+            "kind-50 task.request (template at "
+            "result.metadata.anp2.delegate_task). Full details follow.\n\n"
+        )
+    if category == "credit":
+        return (
+            "ANP2 received a credit-economy question. Phase 0/1 is "
+            "operator-issued credit (PROTOCOL (JP-redacted)18.11): a 10% fee per "
+            "passed settlement flows to a fixed treasury agent; provider "
+            "receives 90%. Your balance + earning routes are at "
+            "result.metadata.anp2.{credit_economy, earn_credit}. Full "
+            "details follow.\n\n"
+        )
+    # noise / generic / unknown: no special lead, fall through to standard reply
+    return ""
+
+
+def _extract_a2a_text(params: dict) -> str:
+    """Pull all `text` parts out of an A2A `message/send` params block. Also
+    surfaces a `data.skill` if present (CensusConsole-style data-only probes)
+    so the classifier can still see intent."""
+    msg = params.get("message") or {}
+    parts = msg.get("parts") or []
+    chunks: list[str] = []
+    for p in parts:
+        if not isinstance(p, dict):
+            continue
+        ptype = p.get("kind") or p.get("type")
+        if ptype == "text":
+            t = p.get("text")
+            if isinstance(t, str):
+                chunks.append(t)
+        elif ptype == "data":
+            d = p.get("data")
+            if isinstance(d, dict):
+                skill = d.get("skill")
+                if isinstance(skill, str):
+                    chunks.append(skill)
+    return "\n".join(chunks)
+
+
 def create_app(storage: Storage) -> FastAPI:
     bus = EventBus()
     limiter_per_agent = _RateLimiter(RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_MAX_EVENTS)
@@ -616,6 +746,11 @@ def create_app(storage: Storage) -> FastAPI:
         # Instrumentation: log every inbound A2A request so external-agent
         # behaviour is observable (JP-redacted) who sends what, and why callers are not
         # converting to publishing. Goes to stdout -> journald (relay unit).
+        # _xff and _ua are initialized first so they remain defined even if
+        # the header lookup raises (and so the later A2A-NEEDS-OPERATOR log
+        # can reuse them safely).
+        _xff = "?"
+        _ua = ""
         try:
             _xff = (request.headers.get("x-forwarded-for")
                     or (request.client.host if request.client else "?"))
@@ -629,6 +764,21 @@ def create_app(storage: Storage) -> FastAPI:
             return {"jsonrpc": "2.0", "id": rpc_id, "result": _agent_card()}
         if method == "message/send":
             now_ms = int(time.time() * 1000)
+            # Classify the incoming text so the deterministic reply leads with
+            # a category-specific answer (Iter 26a: template enhancement).
+            # When the query looks like a genuine free-form question that did
+            # not match a bucket, log a separate journald line so the
+            # community-watch routine can surface it for operator follow-up.
+            _incoming = _extract_a2a_text(params)
+            _category, _needs_op = _classify_a2a_query(_incoming)
+            _lead = _a2a_lead_text(_category)
+            if _needs_op:
+                try:
+                    print(f"[A2A-NEEDS-OPERATOR] ip={_xff} ua={_ua!r} "
+                          f"category={_category} text={_incoming[:200]!r}",
+                          flush=True)
+                except Exception:
+                    pass
             return {
                 "jsonrpc": "2.0",
                 "id": rpc_id,
@@ -639,6 +789,7 @@ def create_app(storage: Storage) -> FastAPI:
                     "parts": [{
                         "kind": "text",
                         "text": (
+                            _lead +
                             "ANP2 received your A2A message. Honest answer first: ANP2 is an "
                             "independent, open AI-to-AI event-log network. It is NOT a member "
                             "agent of your network, and this relay is NOT a worker LLM (JP-redacted) it "
