@@ -25,7 +25,6 @@ Real: all signed events on the live relay, multi-participant flow
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import random
@@ -44,6 +43,11 @@ BOOTSTRAP_SEEN_PATH = os.environ.get(
 NEWCOMER_LOOKBACK_SEC = int(
     os.environ.get("TASKREQ_NEWCOMER_LOOKBACK_SEC", str(7 * 86400))
 )
+# Iter 26b (S5): a bootstrap kind-50 carries a 6-hour deadline. If the newcomer
+# misses it (no kind-52 by then), re-issue (JP-redacted) capped at MAX_BOOTSTRAP_ATTEMPTS
+# total tasks for that newcomer so a permanently-AFK agent doesn't generate
+# unbounded task spam.
+MAX_BOOTSTRAP_ATTEMPTS = 3
 
 # Iter 26: known operator-controlled seed agents (JP-redacted) kind-0s from these are
 # NOT treated as "newcomers" for bootstrap purposes. Update when a new seed
@@ -74,12 +78,6 @@ CAPABILITY = "transform.text.demo"
 SELF_CAPABILITY = "coordinate.test.task_requester"
 
 KIND_TASK_REQUEST = 50
-KIND_TASK_ACCEPT = 51
-KIND_TASK_RESULT = 52
-KIND_TASK_VERIFY = 53
-KIND_PAYMENT_RELEASE = 54
-
-WAIT_FOR_RESULT_SEC = 30
 
 # ANP2 operator-issued credit (PROTOCOL (JP-redacted)18.11). taskreq is the network's
 # designated issuer: it posts paying tasks, and its negative balance is the
@@ -198,26 +196,80 @@ def _newcomer_can_fulfill(agent: Agent, newcomer_id: str, capability: str) -> bo
     return False
 
 
+def _my_bootstrap_kind50s_for(my_kind50s: list[dict], newcomer_id: str) -> list[dict]:
+    """All bootstrap kind-50s I (taskreq) posted with bootstrap_for=newcomer_id."""
+    out: list[dict] = []
+    for ev in my_kind50s:
+        for tag in ev.get("tags", []) or []:
+            if len(tag) >= 2 and tag[0] == "bootstrap_for" and tag[1] == newcomer_id:
+                out.append(ev)
+                break
+    return out
+
+
+def _bootstrap_timed_out(
+    my_bootstraps: list[dict], recent_kind52s: list[dict], now: int
+) -> bool:
+    """True if the most recent bootstrap in `my_bootstraps` is past its
+    deadline with no kind-52 result observed. False if there are no
+    bootstraps, if the latest is still within deadline, or if a kind-52
+    references that task_id (in body or e-tag). Iter 26b (JP-redacted) S5 fix:
+    re-eligibility for a newcomer who missed the initial 6h window."""
+    if not my_bootstraps:
+        return False
+    latest = max(my_bootstraps, key=lambda e: e.get("created_at", 0))
+    try:
+        body = json.loads(latest.get("content") or "{}")
+        deadline = body.get("constraints", {}).get("deadline_unix", 0)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(deadline, (int, float)) or int(deadline) >= now:
+        return False
+    task_id = latest["id"]
+    for r in recent_kind52s:
+        try:
+            rb = json.loads(r.get("content") or "{}")
+            if rb.get("task_id") == task_id:
+                return False
+        except (ValueError, TypeError):
+            pass
+        for t in r.get("tags", []) or []:
+            if len(t) >= 2 and t[0] == "e" and t[1] == task_id:
+                return False
+    return True
+
+
 def detect_newcomers(agent: Agent, now: int) -> list[dict]:
-    """Return kind-0 publications from non-seed authors that (a) have not yet
-    been bootstrapped, AND (b) declare a kind-4 capability the network can
-    currently settle (Iter 26c (JP-redacted) only `transform.text.demo` today because the
-    seed verifier only structurally checks that). PROTOCOL (JP-redacted)0 overwrite-type:
-    the latest kind-0 per agent_id wins. Only one bootstrap is ever posted
-    per newcomer agent_id (state file). Newcomers without the eligible
-    capability are NOT marked seen (JP-redacted) they may become eligible later if they
-    publish a richer kind-4 or once the verifier extends.
+    """Return kind-0 publications from non-seed authors that (a) declare a
+    kind-4 capability the network can currently settle (Iter 26c (JP-redacted) only
+    `transform.text.demo` today because the seed verifier only structurally
+    checks that), AND (b) either have never been bootstrapped, OR their
+    most recent bootstrap timed out without a kind-52 AND they have not
+    yet exhausted MAX_BOOTSTRAP_ATTEMPTS retries (Iter 26b (JP-redacted) S5 fix:
+    re-issue for newcomers who missed the 6h window). PROTOCOL (JP-redacted)0
+    overwrite-type: the latest kind-0 per agent_id wins.
     """
     seen = load_bootstrap_seen()
     cutoff = now - NEWCOMER_LOOKBACK_SEC
     events = agent.query(kinds=[0], since=cutoff, limit=500)
+
+    # Pre-fetch my own kind-50s and recent kind-52s once, then per-newcomer
+    # filtering is purely client-side (no N(JP-redacted)relay queries).
+    my_kind50s = agent.query(kinds=[50], authors=[agent.agent_id], limit=500)
+    recent_kind52s = agent.query(kinds=[52], limit=500)
+
     latest_per_id: dict[str, dict] = {}
     for ev in events:
         aid = ev.get("agent_id") or ""
         if not aid or aid in SEED_AGENT_IDS or aid == agent.agent_id:
             continue
         if aid in seen:
-            continue
+            my_bootstraps = _my_bootstrap_kind50s_for(my_kind50s, aid)
+            if len(my_bootstraps) >= MAX_BOOTSTRAP_ATTEMPTS:
+                continue   # already tried enough (JP-redacted) give up
+            if not _bootstrap_timed_out(my_bootstraps, recent_kind52s, now):
+                continue   # latest is in flight or settled
+            # Else: timed out with retries remaining (JP-redacted) fall through to re-issue.
         prev = latest_per_id.get(aid)
         if prev is None or ev.get("created_at", 0) > prev.get("created_at", 0):
             latest_per_id[aid] = ev
@@ -240,30 +292,7 @@ def detect_newcomers(agent: Agent, now: int) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Result-payload helpers.
-# ---------------------------------------------------------------------------
-def extract_output_text(output) -> str:
-    """Normalise a kind 52 `output` field to a plain string for verification.
-
-    PROTOCOL (JP-redacted)18.5 specifies `output` as a JSON object, e.g. {"text": "hello"};
-    the anp2_client `submit_result` helper that translate.py uses publishes
-    exactly that shape. Older fallback code paths publish `output` as a bare
-    string. Accept both: read the text field from a dict, pass a string
-    through, and return "" for anything else (which the caller treats as a
-    failed/empty result).
-    """
-    if isinstance(output, str):
-        return output
-    if isinstance(output, dict):
-        for key in ("text", "content", "result", "translation"):
-            v = output.get(key)
-            if isinstance(v, str):
-                return v
-    return ""
-
-
-# ---------------------------------------------------------------------------
-# Event builders. Use client helpers if they exist, fall back to publish().
+# Event builders.
 # ---------------------------------------------------------------------------
 def post_bootstrap_task(agent: Agent, newcomer_id: str, phrase: str) -> dict:
     """Operator-issued bootstrap kind-50 reserved for a named newcomer.
@@ -298,100 +327,8 @@ def post_bootstrap_task(agent: Agent, newcomer_id: str, phrase: str) -> dict:
     return agent.publish(KIND_TASK_REQUEST, json.dumps(body, separators=(",", ":")), tags)
 
 
-def find_events_for_task(
-    agent: Agent, kinds: list[int], task_id: str, since: int
-) -> list[dict]:
-    """Client-side e-tag filter. Works on the current relay; will also work if
-    the relay later adds native `?e=` filtering (the extra filter becomes a no-op)."""
-    evs = agent.query(kinds=kinds, since=since, limit=200)
-    out = []
-    for ev in evs:
-        for tag in ev.get("tags", []) or []:
-            if len(tag) >= 2 and tag[0] == "e" and tag[1] == task_id:
-                out.append(ev)
-                break
-    return out
-
-
-def post_verify(
-    agent: Agent,
-    task_id: str,
-    result_id: str,
-    verifier_target_id: str,
-    verdict: str,
-    score: float,
-    reasons: list[str],
-) -> dict:
-    body = {
-        "task_id": task_id,
-        "result_id": result_id,
-        "verdict": verdict,
-        "score": score,
-        "reasons": reasons,
-        "verifier_kind": "self",
-    }
-    if hasattr(agent, "verify_task"):
-        return agent.verify_task(  # type: ignore[attr-defined]
-            task_id=task_id,
-            result_event_id=result_id,
-            verdict=verdict,
-            score=score,
-            reasons=reasons,
-            provider_agent_id=verifier_target_id,
-        )
-    tags = [
-        ["e", task_id, "task"],
-        ["e", result_id, "result"],
-        ["p", verifier_target_id],
-        ["verdict", verdict],
-    ]
-    return agent.publish(KIND_TASK_VERIFY, json.dumps(body, separators=(",", ":")), tags)
-
-
-def post_payment_release(
-    agent: Agent,
-    task_id: str,
-    result_id: str,
-    worker_id: str,
-    amount: float,
-) -> dict:
-    short = hashlib.sha256(
-        f"{task_id}:{result_id}:{worker_id}".encode()
-    ).hexdigest()[:12]
-    tx_hash = f"mock-{short}"
-    body = {
-        "task_id": task_id,
-        "result_id": result_id,
-        "worker_id": worker_id,
-        "amount": amount,
-        "currency": "credit",
-        "payment_method": "anp2_credit",
-        "tx_hash": tx_hash,
-    }
-    if hasattr(agent, "release_payment"):
-        return agent.release_payment(  # type: ignore[attr-defined]
-            task_id=task_id,
-            payment_proof_url=f"mock://{tx_hash}",
-            amount=str(amount),
-            currency="credit",
-            tx_hash=tx_hash,
-            payment_method="anp2_credit",
-            provider_agent_id=worker_id,
-        )
-    tags = [
-        ["e", task_id, "task"],
-        ["e", result_id, "result"],
-        ["p", worker_id],
-        ["payment_method", "anp2_credit"],
-        ["tx_hash", tx_hash],
-    ]
-    return agent.publish(
-        KIND_PAYMENT_RELEASE, json.dumps(body, separators=(",", ":")), tags
-    )
-
-
 # ---------------------------------------------------------------------------
-# Main loop (JP-redacted) one full lifecycle per invocation.
+# Main loop (JP-redacted) event-triggered bootstrap detection per invocation.
 # ---------------------------------------------------------------------------
 def main() -> int:
     agent = Agent.load_or_create(AGENT_KEY, relay_url=RELAY_URL)
