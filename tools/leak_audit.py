@@ -77,7 +77,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "tracked file references an internal-only OPERATOR_*.md "
      "(broken pointer + leak)"),
     # (JP-redacted) rule (human-existence) content patterns (HIGH) (JP-redacted)
-    ("content-operator-agent",
+    ("content-human-operator",
      "content", r"\bhuman[\s-]+(?:operator|maintainer|admin|contributor)s?\b", "HIGH",
      "rule: explicit 'human X' role mention"),
     ("content-the-operator-bare",
@@ -93,12 +93,12 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "rule: 'founder' word in operator-authored text (JP-redacted) "
      "use 'seed multisig' / 'seed authority' per PROTOCOL (JP-redacted)14.7"),
     # (JP-redacted) rule (JP-origin) tight patterns (JP-redacted)
-    ("content-en-es-pair",
+    ("content-xx-en-pair",
      "content", r"\bja[_\-]en\b|translate\.text\.ja\b", "HIGH",
-     "rule: explicit en_es or translate.text.demo* signal"),
+     "rule: explicit xx_en or translate.text.xx* signal"),
     ("content-jp-text",
-     "content", r"(JP)|\bUTC\b|UTC", "HIGH",
-     "rule: JP text / UTC / UTC+0 timezone"),
+     "content", r"(JP-redacted)|\bJST\b|UTC", "HIGH",
+     "rule: JP text / UTC / UTC timezone"),
     # (JP-redacted) rule (promotion-operation) patterns (JP-redacted)
     ("content-show-hn",
      "content", r"\b(redacted)\b|\bHacker News\b", "MEDIUM",

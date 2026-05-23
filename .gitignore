@@ -68,6 +68,6 @@ public/
 # appropriate for a public repository.
 memory/
 docs/research/
-(internal-doc)
-(internal-doc)
-(internal-doc)
+OPERATOR_TODO.md
+OPERATOR_RUNBOOK.md
+OPERATOR_NOTES.md
