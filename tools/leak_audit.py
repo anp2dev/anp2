@@ -123,6 +123,52 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("internal-env",
      "path", r"^env/", "CRITICAL",
      "env/ holds private keys + passwords; must never be tracked"),
+    # (JP-redacted) Credential / key leaks (CRITICAL) (JP-redacted)
+    ("bcrypt-hash",
+     "content", r"\$2[aby]\$\d{1,2}\$[./A-Za-z0-9]{53}", "CRITICAL",
+     "bcrypt hash literal (JP-redacted) credential, never in source"),
+    ("pem-private-key",
+     "content", r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |)?PRIVATE KEY-----",
+     "CRITICAL",
+     "PEM private-key block"),
+    ("aws-access-key",
+     "content", r"\bAKIA[0-9A-Z]{16}\b", "CRITICAL",
+     "AWS access-key ID"),
+    ("github-pat",
+     "content", r"\bgh[pousr]_[A-Za-z0-9_]{36,}", "CRITICAL",
+     "GitHub personal-access-token"),
+    ("bearer-token",
+     "content", r"\bBearer\s+[A-Za-z0-9._~+/=-]{30,}", "HIGH",
+     "Bearer-style token literal in source"),
+    ("password-assign",
+     "content",
+     r"(?i)\bpassword\s*[=:]\s*[\"'](?![\s\"']|<.+>|\{\{|\$\{|env\.)[^\"'\s]{4,}",
+     "HIGH",
+     "plaintext password assignment"),
+    ("apikey-assign",
+     "content",
+     r"(?i)\b(?:api[_\-]?key|access[_\-]?key|secret[_\-]?key)\s*[=:]\s*"
+     r"[\"'](?![\s\"']|<.+>|\{\{|\$\{|env\.)[^\"'\s]{12,}",
+     "HIGH",
+     "plaintext API/access/secret-key assignment"),
+    ("totp-secret-hint",
+     "content",
+     r"(?i)\b(?:totp|otp|2fa)[_\-]?secret\s*[=:]\s*[\"']?[A-Z2-7]{16,}",
+     "HIGH",
+     "TOTP / 2FA secret value"),
+    ("recovery-code-block",
+     "content",
+     r"\b[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}\b(?:\s+\b[a-f0-9]{4}-){2}",
+     "HIGH",
+     "recovery-code block (4-4-4 hex set)"),
+    ("ed25519-priv-near-context",
+     "content",
+     # 64 hex chars where the line/context mentions priv/secret. Tight to
+     # avoid matching transient agent_id (also 64 hex) (JP-redacted) only fires when
+     # 'priv' / 'private' / 'secret' is on the same line within 40 chars.
+     r"(?i)(?:priv|private|secret)\w*[\s=:][\"'\s]*[0-9a-f]{64}\b",
+     "CRITICAL",
+     "looks like a 64-hex private/secret key value"),
     # (JP-redacted) Author / committer rules (JP-redacted)
     ("author-local-host",
      "author", r"\.local$", "HIGH",
@@ -250,17 +296,27 @@ def check_head_tracked() -> None:
 
 
 def check_staged() -> None:
-    """Staged-only mode for pre-commit hooks."""
+    """Staged-only mode for pre-commit hooks.
+
+    Scans only the ADDED ('+') lines of the staged diff (skipping the
+    '+++' header). Removed ('-') lines are deletions (JP-redacted) flagging them
+    would prevent us from ever sanitizing a leak that already exists.
+    """
     staged_paths = sh("git", "diff", "--cached", "--name-only").splitlines()
     for f in staged_paths:
         for r in RULES:
             scan_path(r, f)
         if f in CONTENT_SCAN_EXCLUDE:
             continue
-        # Per-file diff so we can skip the rule-definition file cleanly.
         diff = sh("git", "diff", "--cached", "-U0", "--", f)
+        added = "\n".join(
+            ln[1:] for ln in diff.splitlines()
+            if ln.startswith("+") and not ln.startswith("+++")
+        )
+        if not added.strip():
+            continue
         for r in RULES:
-            scan_text(r, diff, f"staged-diff:{f}")
+            scan_text(r, added, f"staged-diff:{f}")
 
 
 def check_authors() -> None:
@@ -285,17 +341,70 @@ def check_stash_reflog() -> None:
 
 
 def check_full_history() -> None:
-    """Slow path: pickaxe every leak content pattern against full history."""
-    for r in RULES:
-        name, kind, pat, sev, _ = r
-        if kind != "content":
+    """Slow path: walk every (path, blob) reachable from any ref + every
+    dangling blob, and apply each content rule. Respects CONTENT_SCAN_EXCLUDE
+    and RULE_FILE_EXCLUDE so that rule-definition files and gitignore lists
+    do not generate self-referential false positives.
+
+    Reports the first hit per (rule, path) (JP-redacted) that's enough to FAIL the run;
+    an operator agent can then re-run with a focused tool to enumerate all hits
+    for that rule + path.
+    """
+    # 1. Build (path, blob) set from every reachable commit.
+    seen_path_blob: dict[str, set[str]] = {}
+    commits = sh("git", "rev-list", "--all").split()
+    for c in commits:
+        ls = sh("git", "ls-tree", "-r", c)
+        for line in ls.splitlines():
+            parts = line.split(None, 3)
+            if len(parts) == 4 and parts[1] == "blob":
+                _, _, sha, path = parts
+                seen_path_blob.setdefault(path, set()).add(sha)
+    # 2. Add dangling blobs (no known path (JP-redacted) scope them as "dangling").
+    fsck = subprocess.run(
+        ["git", "fsck", "--unreachable", "--no-progress"],
+        capture_output=True, text=True, timeout=60)
+    dangling: set[str] = set()
+    for ln in (fsck.stdout + fsck.stderr).splitlines():
+        m = re.search(r"(?:unreachable|dangling)\s+\w+\s+([0-9a-f]{40})", ln)
+        if m:
+            dangling.add(m.group(1))
+    # Filter to blob type
+    if dangling:
+        bc = subprocess.run(
+            ["git", "cat-file", "--batch-check=%(objectname) %(objecttype)"],
+            input="\n".join(dangling).encode(),
+            capture_output=True, timeout=60)
+        dangling = {ln.split()[0] for ln in bc.stdout.decode().splitlines()
+                    if ln.endswith("blob")}
+        if dangling:
+            seen_path_blob["(dangling)"] = dangling
+
+    # 3. Walk (path, blob) and apply each content rule.
+    fired: set[tuple[str, str]] = set()  # (rule_name, path) for dedupe
+    for path, shas in seen_path_blob.items():
+        if path in CONTENT_SCAN_EXCLUDE:
             continue
-        # git log -G regex is the cheapest way to find any blob ever containing
-        # the pattern. We don't need to enumerate every commit (JP-redacted) one hit is a
-        # FAIL for this rule.
-        out = sh("git", "log", "--all", "-G", pat, "--format=%h", "-1")
-        if out.strip():
-            record(sev, name, "history", f"first hit at {out.strip()}")
+        for sha in shas:
+            blob = subprocess.run(["git", "cat-file", "-p", sha],
+                                  capture_output=True, timeout=20).stdout
+            try:
+                text = blob.decode("utf-8")
+            except UnicodeDecodeError:
+                text = blob.decode("utf-8", "replace")
+            for r in RULES:
+                name, kind, pat, sev, _ = r
+                if kind != "content":
+                    continue
+                if (name, path) in fired:
+                    continue
+                if path in RULE_FILE_EXCLUDE.get(name, set()):
+                    continue
+                m = re.search(pat, text)
+                if m:
+                    fired.add((name, path))
+                    record(sev, name, f"history:{path}",
+                           f"first hit at blob {sha[:10]}")
 
 
 # (JP-redacted) Main (JP-redacted)

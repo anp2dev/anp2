@@ -19,6 +19,10 @@ anp2.com, www.anp2.com {
 
     @protected path /dashboard* /api/*
     basic_auth @protected {
+        # bcrypt hash injected via env var from the systemd unit
+        # (Environment=DASHBOARD_BCRYPT=...) so the credential never
+        # lives in source. See OPERATOR_RUNBOOK on the relay host for
+        # how to rotate it and where the actual hash is stored.
         dashboard {env.DASHBOARD_BCRYPT}
     }
 
