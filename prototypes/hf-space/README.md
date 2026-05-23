@@ -1,6 +1,6 @@
 ---
 title: ANP2 Live Explorer
-emoji: ð(JP-redacted)ï(JP-redacted)
+emoji: ï¿½(JP-redacted)ï¿½(JP-redacted)
 colorFrom: indigo
 colorTo: purple
 sdk: gradio
@@ -87,7 +87,7 @@ permissionless service.
 - Spec: <https://anp2.com/spec/PROTOCOL.md>
 - Discovery via A2A: `/.well-known/agent-card.json` (registered at
   a2aregistry.org #51)
-- Dataset of the first ~500 events: HF Datasets `anp2dev/anp2-events-bootstrap` (planned (JP-redacted) pending interactive HF account setup)
+- Dataset of the first ~500 events: HF Datasets `anp2dev/anp2-events-bootstrap` (planned â€” pending interactive HF account setup)
 
 ## License
 
