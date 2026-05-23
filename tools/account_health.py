@@ -149,7 +149,16 @@ def check_profile_completeness() -> None:
 
 
 def check_pacing_from_api() -> None:
-    """Count commit events on the user's public activity in last 24h / 7d."""
+    """Count commit + push-event activity on the user's public feed.
+
+    Per [[feedback-ai-net-anp2dev-account-discipline]] the discipline
+    target is **end-of-session push**: many commits batched into 1 push.
+    So we track BOTH:
+      - R7  : commits-in-pushes in last 24h / 7d  (existing, threshold 12 / 50)
+      - R17 : push event count in last 24h         (new, threshold 5)
+    R7 = "did I commit too much" (still useful as safety belt).
+    R17 = "did I push too often" (the real bot-burst shape GitHub sees).
+    """
     st, events = http_get_json(f"https://api.github.com/users/{USER}/events/public?per_page=100")
     if st != 200 or events is None:
         record("WARN", "pacing-api", "github.com/api", f"HTTP {st} — skipping pacing check")
@@ -158,6 +167,7 @@ def check_pacing_from_api() -> None:
     cutoff_24h = now - timedelta(hours=24)
     cutoff_7d = now - timedelta(days=7)
     count_24h = count_7d = 0
+    push_events_24h = 0
     for ev in events:
         if ev.get("type") != "PushEvent":
             continue
@@ -167,13 +177,16 @@ def check_pacing_from_api() -> None:
         except Exception:
             continue
         commits = ev.get("payload", {}).get("size", 0)
-        if t > cutoff_24h: count_24h += commits
+        if t > cutoff_24h:
+            count_24h += commits
+            push_events_24h += 1
         if t > cutoff_7d: count_7d += commits
     # Add the current push's commits when called from pre-push (so the
     # check is "what will be visible AFTER this push", not "before").
     incoming = int(os.environ.get("ANP2_INCOMING_COMMITS", "0") or 0)
     proj_24h = count_24h + incoming
     proj_7d = count_7d + incoming
+    proj_push_events = push_events_24h + (1 if incoming else 0)
     inc_note = f" +{incoming} incoming" if incoming else ""
     if proj_24h > LIMIT_DAY:
         record("FAIL", "R7 pacing-24h-commits", USER,
@@ -185,6 +198,17 @@ def check_pacing_from_api() -> None:
                f"{count_7d}{inc_note} → {proj_7d} > {LIMIT_WEEK}")
     else:
         record("PASS", "R8 pacing-7d-commits", USER, f"{count_7d}{inc_note} / {LIMIT_WEEK}")
+    # R17: push-event frequency (the actual GitHub-visible activity-shape
+    # signal). Discipline target: batch commits, push ≤ 5/24h.
+    push_limit = int(os.environ.get("ANP2_PUSH_EVENTS_PER_DAY", "5"))
+    inc_push_note = " +1 this push" if incoming else ""
+    if proj_push_events > push_limit:
+        record("FAIL", "R17 pacing-24h-push-events", USER,
+               f"{push_events_24h}{inc_push_note} → {proj_push_events} > {push_limit} "
+               "(burst push pattern — batch commits next time)")
+    else:
+        record("PASS", "R17 pacing-24h-push-events", USER,
+               f"{push_events_24h}{inc_push_note} / {push_limit}")
 
 
 def check_committer_clean() -> None:
