@@ -53,6 +53,32 @@ SEED_AGENT_IDS: set[str] = {
     "9b9298c700c40bcd5dfc8382f85835191da4f22d0375ece3fc93490d8f8c8e52",  # ANP2Seed
 }
 
+# Name patterns that mark an agent as a synthetic / validation artifact —
+# created during incident-review iterations (Iter 26-28 Sybil / PoW / race
+# bypass tests, quickstart e2e tests, browser webcrypto try.html probes).
+# They are NOT real external adopters but they are also NOT seeds; the
+# Sybil heuristic and the conversion-funnel KPI should exclude them so
+# operator signal stays clean. See [[feedback-ai-net-operator-routines]].
+import re
+SYNTHETIC_NAME_PATTERNS = [
+    re.compile(r"^Iter\d", re.IGNORECASE),         # Iter26cSybil-B1, Iter27-PoW-test, …
+    re.compile(r"attacker", re.IGNORECASE),
+    re.compile(r"PoW-test", re.IGNORECASE),
+    re.compile(r"bypass-attack", re.IGNORECASE),
+    re.compile(r"Sybil-B\d", re.IGNORECASE),
+    re.compile(r"NonMatching", re.IGNORECASE),
+    re.compile(r"E2E-Newcomer", re.IGNORECASE),
+    re.compile(r"e2e-test", re.IGNORECASE),         # try.html browser webcrypto probe
+    re.compile(r"^quickstart-", re.IGNORECASE),     # anp2-quickstart pip-installed CLI
+    re.compile(r"^hermes-probe-", re.IGNORECASE),   # Hermes' own probe naming (legitimate but exploration-only)
+]
+
+
+def _is_synthetic(agent: dict) -> bool:
+    """True if this agent's name matches a synthetic / validation pattern."""
+    name = (agent.get("name") or "").strip()
+    return any(p.search(name) for p in SYNTHETIC_NAME_PATTERNS)
+
 
 def _api(path: str) -> dict | list:
     req = urllib.request.Request(f"{RELAY_API}{path}", headers={"User-Agent": "anp2-community-watch/0.1"})
@@ -93,17 +119,38 @@ def watch(hours: int) -> dict:
     else:
         agents_list = agents
     external_agents = [a for a in agents_list if a.get("agent_id") not in SEED_AGENT_IDS]
+    # Split external into real vs synthetic (incident-review test agents).
+    # Hermes-probe is borderline — counted as synthetic because the name
+    # advertises "probe" (exploration-only intent). True external adoption
+    # would normally use a domain-flavored or service-name agent.
+    real_external_agents = [a for a in external_agents if not _is_synthetic(a)]
+    synthetic_agents     = [a for a in external_agents if _is_synthetic(a)]
     recent_external_kind0 = [
-        a for a in external_agents if (a.get("first_seen") or 0) >= cutoff
+        a for a in real_external_agents if (a.get("first_seen") or 0) >= cutoff
+    ]
+    recent_synthetic_kind0 = [
+        a for a in synthetic_agents if (a.get("first_seen") or 0) >= cutoff
     ]
 
-    # 2. External kind-50 in window (non-seed authors)
+    # 2. External kind-50 in window (non-seed, non-synthetic authors).
+    # The synthetic check needs an agent_id → name lookup since events
+    # don't carry the latest profile name. Build the lookup from agents_list
+    # so we don't double-query the API.
+    synthetic_ids: set[str] = {
+        a.get("agent_id") for a in synthetic_agents if a.get("agent_id")
+    }
     events = _api("/events?kinds=50&limit=500")
     if not isinstance(events, list):
         events = []
     external_kind50 = [
         e for e in events
-        if e.get("agent_id") not in SEED_AGENT_IDS and e.get("created_at", 0) >= cutoff
+        if e.get("agent_id") not in SEED_AGENT_IDS
+        and e.get("agent_id") not in synthetic_ids
+        and e.get("created_at", 0) >= cutoff
+    ]
+    synthetic_kind50 = [
+        e for e in events
+        if e.get("agent_id") in synthetic_ids and e.get("created_at", 0) >= cutoff
     ]
 
     # 3. Treasury position
@@ -137,13 +184,17 @@ def watch(hours: int) -> dict:
         "now": now,
         "hours": hours,
         "external_kind0_recent": recent_external_kind0,
+        "synthetic_kind0_recent": recent_synthetic_kind0,
         "external_kind50_recent": external_kind50,
+        "synthetic_kind50_recent": synthetic_kind50,
         "treasury": trs,
         "funnel_latest": latest_funnel,
         "operator_queue": operator_items,
         "sybil_signals": sybil_signals,
         "agents_total": len(agents_list),
         "agents_external": len(external_agents),
+        "agents_real_external": len(real_external_agents),
+        "agents_synthetic": len(synthetic_agents),
     }
 
 
@@ -154,25 +205,35 @@ def _fmt(s: dict) -> str:
     out.append("")
     out.append(
         f"[1] Network: {s['agents_total']} agents total, "
-        f"{s['agents_external']} external"
+        f"{s['agents_external']} non-seed "
+        f"({s.get('agents_real_external','?')} real external + "
+        f"{s.get('agents_synthetic','?')} synthetic/validation)"
     )
     out.append("")
     rk0 = s["external_kind0_recent"]
-    out.append(f"[2] New external kind-0 (last {s['hours']}h): {len(rk0)}")
+    out.append(f"[2] New REAL external kind-0 (last {s['hours']}h): {len(rk0)}")
     for a in rk0[:10]:
         name = a.get("name") or "?"
         out.append(
             f"      {a.get('agent_id','?')[:16]} name={name!r} "
             f"first_seen={a.get('first_seen')}"
         )
+    syn = s.get("synthetic_kind0_recent") or []
+    if syn:
+        out.append(f"      (also: {len(syn)} synthetic — Iter-attacker / probe / "
+                   f"quickstart-test agents from incident-review iterations; "
+                   f"separated so Sybil heuristic doesn't false-alert)")
     out.append("")
     rk50 = s["external_kind50_recent"]
-    out.append(f"[3] External kind-50 (last {s['hours']}h): {len(rk50)}")
+    syn50 = s.get("synthetic_kind50_recent") or []
+    out.append(f"[3] REAL external kind-50 (last {s['hours']}h): {len(rk50)}")
     for e in rk50[:5]:
         out.append(
             f"      task_id={e.get('id','?')[:16]} by "
             f"{e.get('agent_id','?')[:16]} t={e.get('created_at')}"
         )
+    if syn50:
+        out.append(f"      (also: {len(syn50)} synthetic kind-50 from Iter-attacker test agents — ignored)")
     out.append("")
     trs = s["treasury"] or {}
     out.append(
