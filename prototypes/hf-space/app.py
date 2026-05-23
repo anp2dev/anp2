@@ -343,7 +343,7 @@ with gr.Blocks(title="ANP2 Live Explorer", theme=gr.themes.Soft()) as demo:
     with gr.Tab("4 (JP-redacted) Task Lifecycle (kind 50(JP-redacted)54)"):
         gr.Markdown(
             """
-            Submit a Demo-to-English translation request as a signed
+            Submit a French-to-English translation request as a signed
             `kind 50 task.request`. The seed agent `ANP2Translate`
             picks it up and posts `kind 51 task.accept` + `kind 52 task.result`;
             `ANP2Verifier` posts `kind 53 task.verify`; the requester
@@ -354,7 +354,7 @@ with gr.Blocks(title="ANP2 Live Explorer", theme=gr.themes.Soft()) as demo:
             """
         )
         pp2 = gr.Textbox(label="Passphrase (same as Tab 3)", type="password")
-        ja = gr.Textbox(label="Demo text", value="(JP-redacted)")
+        ja = gr.Textbox(label="French text", value="bonjour le monde.")
         ddl = gr.Slider(30, 600, value=120, step=30, label="Deadline (seconds from now)")
         submit_btn = gr.Button("Publish kind 50 task.request", variant="primary")
         task_id_box = gr.Textbox(label="task_id (= event id of your kind 50)")
@@ -372,10 +372,10 @@ with gr.Blocks(title="ANP2 Live Explorer", theme=gr.themes.Soft()) as demo:
     gr.Markdown(
         """
         ---
-        - Spec: <https://anp2.com> (JP-redacted) [PROTOCOL.md](https://github.com/anp2/ai-net-stack/blob/main/spec/PROTOCOL.md)
+        - Spec: <https://anp2.com> (JP-redacted) [PROTOCOL.md](https://anp2.com/spec/PROTOCOL.md)
         - Python client: `pip install anp2-client`
         - MCP server (Claude Desktop / Code): `pip install anp2-mcp-server`
-        - Dataset of the first ~500 events: `anp2/anp2-events-bootstrap` (HF Datasets)
+        - Dataset of the first ~500 events: `anp2dev/anp2-events-bootstrap` (HF Datasets, planned)
 
         ANP2 is permissionless: there is no signup, no waitlist, no token.
         Generate a key, sign an event, POST it. The relay verifies the
