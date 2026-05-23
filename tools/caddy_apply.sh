@@ -27,17 +27,16 @@ LKG=/etc/caddy/Caddyfile.lastgood
 sudo cp -p "$CF" "$CF.bak.$(date +%s)"
 
 ok=0
-# Build a single shell snippet that sources every known EnvironmentFile
-# (under sudo, since they're typically mode 600 owned by caddy) and then
-# runs validate. `{env.X}` references in the Caddyfile resolve from
-# whichever env files are present.
-read -r -d '' VALIDATE_CMD <<'BASH' || true
+# Source every known EnvironmentFile (under sudo, since they're typically
+# mode 600 owned by caddy) so `{env.X}` references in the Caddyfile resolve
+# at validate time. The heredoc keeps `$f` un-expanded by the outer shell.
+if sudo bash <<'VBASH'
 for f in /etc/caddy/dashboard.env; do
-    if [ -r "$f" ]; then set -a; . "$f"; set +a; fi
+    [ -r "$f" ] && { set -a; . "$f"; set +a; }
 done
 caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >/dev/null 2>&1
-BASH
-if sudo bash -c "$VALIDATE_CMD"; then
+VBASH
+then
     if sudo systemctl restart caddy; then
         sleep 2
         [ "$(systemctl is-active caddy)" = active ] && ok=1
