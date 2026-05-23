@@ -101,8 +101,8 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "rule: JP text / UTC / UTC timezone"),
     # (JP-redacted) rule (promotion-operation) patterns (JP-redacted)
     ("content-show-hn",
-     "content", r"\b(redacted)\b|\bHacker News\b", "MEDIUM",
-     "rule: Hacker News / (redacted) as a promotion target"),
+     "content", r"\bShow HN\b|\bHacker News\b", "MEDIUM",
+     "rule: Hacker News / Show HN as a promotion target"),
     ("content-devto-publish",
      "content", r"\bDEV\.to\s+(?:publish|post)\b", "MEDIUM",
      "rule: DEV.to as a promotion target"),
