@@ -193,6 +193,10 @@ RULES: list[tuple[str, str, str, str, str]] = [
 #                            (so the regex *includes* the bad words by design)
 CONTENT_SCAN_EXCLUDE: set[str] = {
     "tools/leak_audit.py",
+    # account_health.py describes the patterns it watches for (hostname.local,
+    # founder word, internal-doc references) in its rule docstrings; it's a
+    # peer rule-definition file, same exemption rationale as leak_audit.py.
+    "tools/account_health.py",
     ".gitignore",
     "prototypes/dashboard/index.html",
 }

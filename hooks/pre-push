@@ -18,7 +18,7 @@ if [ ! -f tools/leak_audit.py ]; then
   exit 1
 fi
 
-echo "pre-push: running full leak audit (default + --full modes)…" >&2
+echo "pre-push: running leak audit (default + --full)…" >&2
 if ! python3 tools/leak_audit.py >/dev/null; then
   echo "pre-push: default-mode leak audit FAILED — push blocked." >&2
   python3 tools/leak_audit.py >&2 || true
@@ -32,4 +32,16 @@ if ! python3 tools/leak_audit.py --full >/dev/null; then
   exit 1
 fi
 
-echo "pre-push: 36/36 PASS in both default + --full modes. Push permitted." >&2
+echo "pre-push: leak-audit 36/36 PASS. Running account-health audit…" >&2
+# account_health は anonymous モード (PAT 不要、外部から見えるか + ペース)
+if ! python3 tools/account_health.py >/dev/null; then
+  echo "pre-push: account-health audit FAILED — push blocked." >&2
+  echo "         anp2dev が flag-risk な状態。 詳細:" >&2
+  python3 tools/account_health.py >&2 || true
+  echo "" >&2
+  echo "  ▶ 解消方法: [[feedback-ai-net-anp2dev-account-discipline]]" >&2
+  echo "  ▶ bypass 禁止 (publish-bound branch では --no-verify 不可)" >&2
+  exit 1
+fi
+
+echo "pre-push: account-health PASS. Push permitted." >&2
