@@ -21,8 +21,16 @@ from .crypto import (
     generate_keypair,
     sign_event_id,
 )
+from .pow import mint_pow
 
 DEFAULT_RELAY = os.environ.get("ANP2_RELAY", "http://127.0.0.1:8000")
+
+# Iter 27 / PIP-002 mandatory: kinds for which the relay requires a `pow`
+# tag at publish. The client transparently mines a nonce so the canonical
+# event id has POW_MIN_BITS leading zero bits (~4096 hashes, ~40 ms on a
+# modern CPU). Keep in lockstep with the relay's PIP_002_MANDATORY_KINDS.
+POW_REQUIRED_KINDS: frozenset[int] = frozenset({0, 50})
+POW_MIN_BITS = 12
 
 
 class Agent:
@@ -93,8 +101,22 @@ class Agent:
     # ---------- event builder ----------
 
     def _signed(self, kind: int, content: str, tags: list[list[str]] | None = None) -> dict:
-        tags = tags or []
+        tags = list(tags or [])
         ts = int(time.time())
+        # Iter 27: auto-mine PoW for kinds the relay mandates it on (kind-0
+        # identity, kind-50 task.request). `mint_pow` strips any stale
+        # pow/nonce tags and appends fresh ones in place, so the canonical
+        # event id we compute below already includes them.
+        if kind in POW_REQUIRED_KINDS:
+            payload = {
+                "agent_id": self.agent_id,
+                "created_at": ts,
+                "kind": kind,
+                "tags": tags,
+                "content": content,
+            }
+            mint_pow(payload, POW_MIN_BITS)
+            tags = payload["tags"]
         eid = compute_event_id(self.agent_id, ts, kind, tags, content)
         sig = sign_event_id(eid, self.private_hex)
         return {

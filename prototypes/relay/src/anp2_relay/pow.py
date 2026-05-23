@@ -32,6 +32,15 @@ import rfc8785
 PIP_002_MIN_BITS = 12
 PIP_002_MAX_BITS = 24
 
+# Iter 27: kinds that REQUIRE a `pow` tag at publish time. The client side
+# (anp2_client.pow.mint_pow) mines the nonce; the relay verifies. An
+# event with kind in this set published WITHOUT a `pow` tag is rejected
+# with HTTP 400. Outside this set, PoW remains opt-in (kind 6 trust votes
+# carry it to weight `sybil_factor` per PIP-002 (JP-redacted)3). Empty by default for
+# the no-enforcement rollout phase; flip to {0, 50} once seed clients are
+# minting on those kinds.
+PIP_002_MANDATORY_KINDS: frozenset[int] = frozenset({0, 50})
+
 # tanh normalization. 2^16 = 65536 expected hashes (JP-redacted) "a few seconds of
 # mining" per PIP-002 (JP-redacted)3. Convergence target: 10 honest medium-trust votes
 # at the 12-bit floor land sybil_factor (JP-redacted) 0.7.
@@ -85,21 +94,59 @@ def extract_pow_bits(tags: Iterable[list[str]]) -> int | None:
     return None
 
 
-def validate_kind6_pow(
+def mint_pow(payload: dict, difficulty: int, max_iters: int = 1 << 28) -> int:
+    """Mine a nonce so SHA256(JCS(canonical_payload)) has `difficulty`
+    leading zero bits. Mutates `payload['tags']` in place: strips stale
+    pow/nonce tags and appends fresh ones. Mirrors
+    `anp2_client.pow.mint_pow`. Provided here so the relay test suite
+    and any in-process tool can build PoW-valid events without depending
+    on the client lib; the relay's RUNTIME path only verifies (never mines).
+    """
+    if difficulty < 0 or difficulty > 256:
+        raise ValueError(f"difficulty must be in [0, 256], got {difficulty}")
+    base_tags = [
+        t for t in payload.get("tags", []) if t and t[0] not in ("pow", "nonce")
+    ]
+    pow_tag = ["pow", str(difficulty)]
+    payload["tags"] = base_tags + [pow_tag, ["nonce", "0"]]
+    nonce_tag = payload["tags"][-1]
+    for nonce in range(max_iters):
+        nonce_tag[1] = str(nonce)
+        digest = event_id_bytes(
+            payload["agent_id"],
+            payload["created_at"],
+            payload["kind"],
+            payload["tags"],
+            payload["content"],
+        )
+        if count_leading_zero_bits(digest) >= difficulty:
+            return nonce
+    raise RuntimeError(
+        f"PoW mining exhausted {max_iters} iterations at difficulty {difficulty}"
+    )
+
+
+def validate_event_pow(
     event_id_hex: str,
     agent_id: str,
     created_at: int,
     kind: int,
     tags: list[list[str]],
     content: str,
+    *,
     min_bits: int = PIP_002_MIN_BITS,
+    mandatory: bool = False,
 ) -> tuple[bool, str | None]:
-    """Validate a kind 6 event's PoW claim, if any.
+    """Validate an event's PoW claim. Returns (ok, error_detail).
 
-    Returns (ok, error_detail). Semantics:
-      - No `pow` tag present  (JP-redacted) (True, None). PoW is optional for kind 6 in
-        the current phase; absent-PoW votes still propagate trust but
-        contribute zero PoW work to `sybil_factor`.
+    Semantics:
+      - No `pow` tag present
+          mandatory=False (JP-redacted) (True, None). PoW is optional in this phase;
+                            absent-PoW events still propagate (kind 6
+                            voters contribute zero PoW work to sybil_factor).
+          mandatory=True  (JP-redacted) (False, "pow tag required for kind <K>").
+                            Iter 27: required for kinds in
+                            PIP_002_MANDATORY_KINDS (currently {0, 50}).
       - Malformed `pow` tag   (JP-redacted) (False, "pow tag malformed").
       - Declared bits below relay minimum (JP-redacted) (False, "pow_below_minimum").
       - Declared bits above max          (JP-redacted) (False, "pow_above_max").
@@ -112,10 +159,12 @@ def validate_kind6_pow(
     """
     declared = extract_pow_bits(tags)
     if declared is None:
-        # Distinguish "no pow tag" (allowed) from "malformed pow tag" (reject).
+        # Distinguish "no pow tag" from "malformed pow tag".
         has_pow_tag = any(t and len(t) >= 1 and t[0] == "pow" for t in tags)
         if has_pow_tag:
             return False, "pow tag malformed"
+        if mandatory:
+            return False, f"pow tag required for kind {kind}"
         return True, None
 
     if declared < min_bits:
@@ -124,7 +173,6 @@ def validate_kind6_pow(
         return False, f"pow_above_max (declared {declared}, max {PIP_002_MAX_BITS})"
 
     derived = event_id_bytes(agent_id, created_at, kind, tags, content)
-    # Consistency: declared id (event.id) must match the re-derived hash.
     if event_id_hex.lower() != derived.hex():
         return False, "pow id mismatch (event id != derived canonical hash)"
 
@@ -132,3 +180,21 @@ def validate_kind6_pow(
     if actual < declared:
         return False, f"pow_does_not_meet_declared (claimed {declared} bits, found {actual})"
     return True, None
+
+
+def validate_kind6_pow(
+    event_id_hex: str,
+    agent_id: str,
+    created_at: int,
+    kind: int,
+    tags: list[list[str]],
+    content: str,
+    min_bits: int = PIP_002_MIN_BITS,
+) -> tuple[bool, str | None]:
+    """Backwards-compat wrapper for the kind-6 (opt-in) PoW path. Delegates
+    to `validate_event_pow` with mandatory=False so a missing `pow` tag
+    is still accepted-with-zero-work for trust voters."""
+    return validate_event_pow(
+        event_id_hex, agent_id, created_at, kind, tags, content,
+        min_bits=min_bits, mandatory=False,
+    )

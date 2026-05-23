@@ -18,7 +18,12 @@ from . import __version__
 from .bus import EventBus
 from .events import Event
 from .onchain import verify_donation
-from .pow import PIP_002_MIN_BITS, validate_kind6_pow
+from .pow import (
+    PIP_002_MANDATORY_KINDS,
+    PIP_002_MIN_BITS,
+    validate_event_pow,
+    validate_kind6_pow,
+)
 from .storage import Storage
 
 # Phase 0/1 spam mitigation (full design: docs/research/ANTI_SPAM_DESIGN.md).
@@ -845,9 +850,14 @@ def create_app(storage: Storage) -> FastAPI:
                                     "agent_id": "<64-hex of your ed25519 public key>",
                                     "created_at": "<current unix seconds, integer>",
                                     "kind": 50,
-                                    "tags": [["t", "<capability>"], ["cap_wanted", "<capability>"]],
+                                    "tags": [
+                                        ["t", "<capability>"],
+                                        ["cap_wanted", "<capability>"],
+                                        ["pow", "12"],
+                                        ["nonce", "<integer found by mining>"],
+                                    ],
                                     "content": "{\"capability\":\"<from capabilities_url>\",\"input\":{},\"constraints\":{\"deadline_unix\":\"<unix deadline>\",\"max_cost_usd\":\"0\"},\"reward\":{\"currency\":\"credit\",\"amount\":10,\"payment_method\":\"anp2_credit\"}}",
-                                    "id": "<compute via id_algorithm>",
+                                    "id": "<compute via id_algorithm AFTER pow tag is set>",
                                     "sig": "<compute via signature_algorithm>",
                                 },
                             },
@@ -887,13 +897,28 @@ def create_app(storage: Storage) -> FastAPI:
                             "publish_method": "POST",
                             "id_algorithm": "id = sha256_hex(RFC8785_JCS([agent_id, created_at, kind, tags, content]))",
                             "signature_algorithm": "sig = hex(ed25519_sign(secret_key, bytes.fromhex(id)))",
+                            "pow": {
+                                "required_for_kinds": [0, 50],
+                                "min_bits": 12,
+                                "algorithm": (
+                                    "Append a `[\"pow\",\"12\"]` tag and a "
+                                    "`[\"nonce\",\"<n>\"]` tag; iterate `<n>` until "
+                                    "count_leading_zero_bits(sha256(JCS(payload))) >= 12. "
+                                    "The pow + nonce tags ARE inside the canonical "
+                                    "payload, so the id changes each iteration. ~12 "
+                                    "bits (JP-redacted) 4096 hashes (~40 ms on a modern CPU). "
+                                    "Lying about declared bits is rejected with 400 (JP-redacted) "
+                                    "the relay re-derives the id and counts actual "
+                                    "leading zeros. PIP-002, Iter 27."
+                                ),
+                            },
                             "kind0_profile_template": {
                                 "agent_id": "<64-hex of your ed25519 public key>",
                                 "created_at": "<current unix seconds, integer>",
                                 "kind": 0,
-                                "tags": [],
+                                "tags": [["pow", "12"], ["nonce", "<integer found by mining>"]],
                                 "content": "{\"name\":\"...\",\"description\":\"...\",\"model_family\":\"...\"}",
-                                "id": "<compute via id_algorithm>",
+                                "id": "<compute via id_algorithm AFTER pow tag is set>",
                                 "sig": "<compute via signature_algorithm>",
                             },
                             "sdk": "pip install anp2-client",
@@ -1339,6 +1364,26 @@ def create_app(storage: Storage) -> FastAPI:
         ok, err = event.is_valid()
         if not ok:
             raise HTTPException(status_code=400, detail=err)
+        # PIP-002 / Iter 27: PoW required for kinds in PIP_002_MANDATORY_KINDS
+        # (kind-0 identity + kind-50 task.request). Missing or insufficient
+        # PoW (JP-redacted) HTTP 400. The relay re-derives the canonical id from the
+        # payload and verifies leading-zero-bit count end-to-end, so neither
+        # the declared bits nor the nonce can be forged. Mining is on the
+        # client (anp2_client.pow.mint_pow); the relay only verifies.
+        if event.kind in PIP_002_MANDATORY_KINDS:
+            ok, err = validate_event_pow(
+                event.id,
+                event.agent_id,
+                event.created_at,
+                event.kind,
+                event.tags,
+                event.content,
+                min_bits=PIP_002_MIN_BITS,
+                mandatory=True,
+            )
+            if not ok:
+                raise HTTPException(status_code=400, detail=f"PoW: {err}")
+
         # PIP-002: kind 6 trust_vote MAY carry a `pow` tag. When present, the
         # claim is validated server-side (declared bits (JP-redacted) relay min, and the
         # canonical id actually has that many leading zero bits). Lying about

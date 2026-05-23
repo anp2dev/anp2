@@ -26,13 +26,21 @@ import time
 from fastapi.testclient import TestClient
 
 from anp2_relay.crypto import compute_event_id, generate_keypair, sign_event_id
+from anp2_relay.pow import PIP_002_MANDATORY_KINDS, PIP_002_MIN_BITS, mint_pow
 from anp2_relay.server import create_app
 from anp2_relay.storage import Storage
 
 
 def _payload(priv, pub, *, kind, content="", tags=None):
     ts = int(time.time())
-    tags = tags or []
+    tags = list(tags or [])
+    # Iter 27: PIP-002 mandatory PoW for kinds in PIP_002_MANDATORY_KINDS
+    # (kind-0 + kind-50). Mint a nonce so the relay accepts the event.
+    if kind in PIP_002_MANDATORY_KINDS:
+        payload = {"agent_id": pub, "created_at": ts, "kind": kind,
+                   "tags": tags, "content": content}
+        mint_pow(payload, PIP_002_MIN_BITS)
+        tags = payload["tags"]
     eid = compute_event_id(pub, ts, kind, tags, content)
     sig = sign_event_id(eid, priv)
     return {
@@ -300,11 +308,16 @@ def test_history_endpoint_returns_all_revisions(tmp_path):
     c = _client(tmp_path)
     priv, pub = generate_keypair()
     import time as _t
-    # publish two profiles with distinct timestamps
+    # publish two profiles with distinct timestamps. Iter 27: kind-0
+    # mandatory PoW (JP-redacted) mint a nonce so the event passes validation.
     for i, name in enumerate(["v1", "v2"]):
         ts = int(_t.time()) - 10 + i
         tags: list = []
         content = json.dumps({"name": name})
+        payload = {"agent_id": pub, "created_at": ts, "kind": 0,
+                   "tags": tags, "content": content}
+        mint_pow(payload, PIP_002_MIN_BITS)
+        tags = payload["tags"]
         eid = compute_event_id(pub, ts, 0, tags, content)
         sig = sign_event_id(eid, priv)
         c.post("/events", json={"id": eid, "agent_id": pub, "created_at": ts,

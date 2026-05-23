@@ -21,6 +21,7 @@ import time
 from fastapi.testclient import TestClient
 
 from anp2_relay.crypto import compute_event_id, generate_keypair, sign_event_id
+from anp2_relay.pow import PIP_002_MANDATORY_KINDS, PIP_002_MIN_BITS, mint_pow
 from anp2_relay.server import create_app
 from anp2_relay.storage import Storage
 
@@ -29,6 +30,16 @@ from anp2_relay.storage import Storage
 
 
 def _sign(priv: str, pub: str, kind: int, tags: list[list[str]], content: str, ts: int) -> dict:
+    # Iter 27: PIP-002 mandatory PoW for kinds in PIP_002_MANDATORY_KINDS
+    # (kind-0 + kind-50). Mint a nonce so the canonical event id has
+    # PIP_002_MIN_BITS leading zero bits, otherwise the relay rejects with
+    # HTTP 400. Non-mandatory kinds pass through unchanged.
+    tags = list(tags)
+    if kind in PIP_002_MANDATORY_KINDS:
+        payload = {"agent_id": pub, "created_at": ts, "kind": kind,
+                   "tags": tags, "content": content}
+        mint_pow(payload, PIP_002_MIN_BITS)
+        tags = payload["tags"]
     eid = compute_event_id(pub, ts, kind, tags, content)
     sig = sign_event_id(eid, priv)
     return {

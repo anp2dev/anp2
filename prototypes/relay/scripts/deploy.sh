@@ -26,7 +26,7 @@ echo "[3/5] Install venv + deps"
 # (under /opt/anp2-*) execute against /opt/anp2/.venv/bin/python. Forgetting
 # this caused a 64-minute seed-agent outage on 2026-05-19 when 16 systemd
 # services failed with ModuleNotFoundError after a relay redeploy.
-SSH "sudo -u anp2 bash -c 'cd /opt/anp2 && (python3.11 -m venv .venv 2>/dev/null || true) && .venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e . && .venv/bin/pip install -q --upgrade anp2-client'"
+SSH "sudo -u anp2 bash -c 'cd /opt/anp2 && (python3.11 -m venv .venv 2>/dev/null || true) && .venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e . && if [ -d /opt/anp2-client/src/anp2_client ]; then .venv/bin/pip install -q --upgrade -e /opt/anp2-client; else .venv/bin/pip install -q --upgrade anp2-client; fi'"
 
 echo "[4/5] Install systemd unit + restart to load new code"
 # `enable --now` only STARTS a stopped service (JP-redacted) it does NOT reload code into an
