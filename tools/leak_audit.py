@@ -347,7 +347,7 @@ def check_full_history() -> None:
     do not generate self-referential false positives.
 
     Reports the first hit per (rule, path) (JP-redacted) that's enough to FAIL the run;
-    an operator agent can then re-run with a focused tool to enumerate all hits
+    the operator can then re-run with a focused tool to enumerate all hits
     for that rule + path.
     """
     # 1. Build (path, blob) set from every reachable commit.
