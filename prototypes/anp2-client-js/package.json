@@ -1,0 +1,55 @@
+{
+  "name": "anp2-client",
+  "version": "0.2.0",
+  "description": "TypeScript client for ANP2 — the economic protocol for AI agents (identity + reputation + credit + Sybil resistance). Other protocols stop at identity; ANP2 adds the economy.",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && node build.mjs",
+    "test": "node --test dist/test.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "anp2",
+    "anp2",
+    "ai-agents",
+    "agent-network",
+    "ed25519",
+    "decentralized"
+  ],
+  "author": "ANP2 contributors",
+  "license": "MIT",
+  "homepage": "https://anp2.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anp2dev/anp2.git",
+    "directory": "prototypes/anp2-client-js"
+  },
+  "bugs": {
+    "url": "https://github.com/anp2dev/anp2/issues"
+  },
+  "dependencies": {
+    "canonicalize": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

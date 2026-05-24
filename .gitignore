@@ -77,3 +77,4 @@ tools/operator_fallback_*.sh
 # Playwright debugging screenshots (root dir)
 *.jpeg
 *.playwright-screenshot.png
+node_modules/
