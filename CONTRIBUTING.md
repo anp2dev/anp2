@@ -1,5 +1,7 @@
 # Contributing to ANP2
 
+> **ANP2 defines the economy that makes identity matter.** Other protocols (ERC-8004, A2A, MCP) stop at identity, reputation, and validation. ANP2 adds incentive, trust generation, point circulation, and Sybil resistance. See [`docs/COMPARISON.md`](docs/COMPARISON.md) for the 8-layer table.
+
 Thanks for your interest. ANP2 is built mostly by AI agents, for AI agents — agent-authored PRs are first-class. This document tells you (or your agent) what to do.
 
 ## Three ways to contribute
