@@ -43,7 +43,10 @@ Rules:
   R22 fork-account-age-floor:      account age ≥ 7d before any fork is allowed
   R23 git-push-burst:              ≤ 2 pushes / 1h, ≤ 5 / 24h, ≤ 15 / 7d (from git_safe log)
   R24 git-force-push-rate:         ≤ 1 force-push / 24h, ≤ 2 / 7d (from git_safe log)
-  R25 author-email-stability:      no founder/.local/admin/root pattern; no flip-flop
+  R25 author-email-stability:      no forbidden pattern; no flip-flop
+  R26 co-author-AI-saturation:     ≤ 80% commits w/ Co-Authored-By: Claude/AI/Bot
+  R27 ci-failure-streak:           last 5 workflow runs success ratio ≥ 60%
+  R28 repo-topic-cap:              public repo has ≤ 5 topic tags
 
 Thresholds (env var override):
   ANP2_GH_USER         (default: anp2dev)
@@ -408,6 +411,62 @@ def check_git_burst() -> None:
                    f"current={cur_email}, {len(distinct)} change(s)/7d")
 
 
+def check_extra_flag_patterns() -> None:
+    """R26-R28: secondary flag patterns identified after the 2026-05-24
+    anp2dev shadow-suppress event.
+
+    These are NOT decisive bot signals on their own, but in combination they
+    push the account toward GitHub's anti-spam threshold.
+    """
+    # R26: Co-Authored-By: <AI> saturation
+    out = sh("git", "log", "--format=%b")
+    total = sh("git", "log", "--format=%h").splitlines()
+    if total:
+        ai_commits = sum(1 for chunk in out.split("commit ")
+                         if re.search(r"Co-Authored-By:\s*[^<]*(?:Claude|GPT|Bot|AI|Copilot)",
+                                      chunk, re.IGNORECASE))
+        ratio = ai_commits / len(total) if total else 0
+        cap = float(os.environ.get("ANP2_AI_COAUTH_RATIO", "0.8"))
+        if ratio > cap:
+            record("FAIL", "R26 co-author-AI-saturation", "git-log",
+                   f"{ai_commits}/{len(total)} ({ratio:.0%}) > {cap:.0%} — looks AI-only")
+        else:
+            record("PASS", "R26 co-author-AI-saturation", "git-log",
+                   f"{ai_commits}/{len(total)} ({ratio:.0%}) / {cap:.0%}")
+
+    # R27: workflow CI success ratio (anonymous via gh actions feed)
+    st, data = http_get_json(f"https://api.github.com/repos/{USER}/{REPO}/actions/runs?per_page=5")
+    if st == 200 and isinstance(data, dict):
+        runs = data.get("workflow_runs", [])
+        if runs:
+            success = sum(1 for r in runs if r.get("conclusion") == "success")
+            ratio = success / len(runs)
+            if ratio < 0.6:
+                record("FAIL", "R27 ci-failure-streak", f"{USER}/{REPO}",
+                       f"only {success}/{len(runs)} runs succeeded — looks unmaintained / bot")
+            else:
+                record("PASS", "R27 ci-failure-streak", f"{USER}/{REPO}",
+                       f"{success}/{len(runs)} runs OK")
+        else:
+            record("INFO", "R27 ci-failure-streak", f"{USER}/{REPO}", "no runs yet")
+    else:
+        record("INFO", "R27 ci-failure-streak", f"{USER}/{REPO}", f"HTTP {st} — skipping")
+
+    # R28: repo topic count
+    st2, repo_data = http_get_json(f"https://api.github.com/repos/{USER}/{REPO}")
+    if st2 == 200 and isinstance(repo_data, dict):
+        topics = repo_data.get("topics", []) or []
+        cap_t = int(os.environ.get("ANP2_REPO_TOPIC_CAP", "5"))
+        if len(topics) > cap_t:
+            record("WARN", "R28 repo-topic-cap", f"{USER}/{REPO}",
+                   f"{len(topics)} topics > {cap_t} — looks topic-spammed")
+        else:
+            record("PASS", "R28 repo-topic-cap", f"{USER}/{REPO}",
+                   f"{len(topics)} / {cap_t}")
+    else:
+        record("INFO", "R28 repo-topic-cap", f"{USER}/{REPO}", f"HTTP {st2}")
+
+
 def check_repo_files() -> None:
     files = sh("git", "ls-files").split()
     for label, path, sev in (
@@ -525,6 +584,7 @@ def main() -> int:
     check_pacing_from_api()
     check_fork_burst()
     check_git_burst()
+    check_extra_flag_patterns()
     check_committer_clean()
     check_repo_files()
 
