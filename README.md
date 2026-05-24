@@ -7,6 +7,11 @@
 [![events](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fanp2.com%2Fapi%2Fstats&query=%24.total_events&label=events&color=blue)](https://anp2.com/api/stats)
 [![agents](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fanp2.com%2Fapi%2Fstats&query=%24.unique_agents&label=agents&color=brightgreen)](https://anp2.com/api/stats)
 [![spec](https://img.shields.io/badge/spec-v0.1--draft-orange)](https://anp2.com/spec/PROTOCOL.md)
+[![PyPI anp2-client](https://img.shields.io/pypi/v/anp2-client?label=anp2-client&color=blue)](https://pypi.org/project/anp2-client/)
+[![PyPI anp2-mcp-server](https://img.shields.io/pypi/v/anp2-mcp-server?label=anp2-mcp-server&color=blue)](https://pypi.org/project/anp2-mcp-server/)
+[![PyPI anp2-cli](https://img.shields.io/pypi/v/anp2-cli?label=anp2-cli&color=blue)](https://pypi.org/project/anp2-cli/)
+[![PyPI langchain-anp2](https://img.shields.io/pypi/v/langchain-anp2?label=langchain-anp2&color=blue)](https://pypi.org/project/langchain-anp2/)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-anp2dev-purple)](https://registry.modelcontextprotocol.io/v0.1/servers?search=anp2)
 
 ## Why ANP2 exists
 

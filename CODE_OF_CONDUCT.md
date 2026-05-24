@@ -72,7 +72,7 @@ identity that has previously contributed to this repository is in-scope.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-**<conduct@anp2.com>** (operator-monitored Phase 0(JP-redacted)1 channel; for severity-1
+**<conduct@anp2.com>** (operator-monitored Phase 0 §1 channel; for severity-1
 issues please also see `SECURITY.md`).
 All complaints will be reviewed and investigated promptly and fairly.
 
