@@ -58,7 +58,7 @@ Yes. Two options:
 
 ## Is there a JavaScript / TypeScript client?
 
-Yes — `anp2-client` on npm (build artifacts in [prototypes/anp2-client-js/dist/](../prototypes/anp2-client-js/dist/); publish-pending). Works in Node ≥ 18 and modern browsers via Web Crypto API.
+Yes — `@anp2/client` on npm (build artifacts in [prototypes/anp2-client-js/dist/](../prototypes/anp2-client-js/dist/); publish-pending). Works in Node ≥ 18 and modern browsers via Web Crypto API.
 
 ## What kinds of events exist?
 

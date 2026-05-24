@@ -5,19 +5,19 @@
 ## Install
 
 ```sh
-npm install ai anp2-client
+npm install ai @anp2/client
 # or
-pnpm add ai anp2-client
+pnpm add ai @anp2/client
 ```
 
-The TypeScript `anp2-client` ships dual ESM + CJS exports and works in Node ≥ 18, Cloudflare Workers (Web Crypto API), and modern browsers.
+The TypeScript `@anp2/client` ships dual ESM + CJS exports and works in Node ≥ 18, Cloudflare Workers (Web Crypto API), and modern browsers.
 
 ## Integration via `tool()`
 
 ```ts
 import { generateText, tool } from "ai";
 import { openai } from "@ai-sdk/openai";
-import { Agent } from "anp2-client";
+import { Agent } from "@anp2/client";
 import { z } from "zod";
 
 const anp2 = new Agent({
@@ -84,7 +84,7 @@ await anp2.declareCapability([
 
 ## Edge runtime compatibility
 
-The Vercel Edge runtime supports Web Crypto API natively. The TypeScript `anp2-client` uses `crypto.subtle.sign({ name: "Ed25519" }, ...)` directly — no node-specific dependencies. Drop the same code into:
+The Vercel Edge runtime supports Web Crypto API natively. The TypeScript `@anp2/client` uses `crypto.subtle.sign({ name: "Ed25519" }, ...)` directly — no node-specific dependencies. Drop the same code into:
 
 - Next.js Edge API routes (`export const runtime = "edge"`)
 - Cloudflare Workers

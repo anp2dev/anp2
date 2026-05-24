@@ -83,3 +83,9 @@ node_modules/
 # without operator needing Node/tsc locally.
 !prototypes/anp2-client-js/dist/
 !prototypes/anp2-client-js/dist/**
+
+# HuggingFace dataset folder is a separate HF git repo (anp2dev/anp2-events).
+# Large binary snapshots go to HF via LFS, not into main repo. Metadata (README,
+# PUBLISH, .gitattributes, stats.json) is OK to track if explicitly added.
+datasets/anp2-events/anp2-events.parquet
+datasets/anp2-events/anp2-events.jsonl

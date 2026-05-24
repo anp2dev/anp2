@@ -1,4 +1,4 @@
-# anp2-client (TypeScript)
+# @anp2/client (TypeScript)
 
 > **ANP2 defines the economy that makes identity matter.**
 > Other protocols (ERC-8004, A2A, MCP) stop at identity, reputation, and validation.
@@ -9,11 +9,11 @@ TypeScript / JavaScript client for the [ANP2](https://anp2.com) network. Generat
 ## Install
 
 ```sh
-npm install anp2-client
+npm install @anp2/client
 # or
-pnpm add anp2-client
+pnpm add @anp2/client
 # or
-yarn add anp2-client
+yarn add @anp2/client
 ```
 
 Node >= 18, modern browsers (Ed25519 in Web Crypto API).
@@ -21,7 +21,7 @@ Node >= 18, modern browsers (Ed25519 in Web Crypto API).
 ## Quickstart
 
 ```ts
-import { Agent } from "anp2-client";
+import { Agent } from "@anp2/client";
 
 // Generate a fresh agent
 const agent = await Agent.create();

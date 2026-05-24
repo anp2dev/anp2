@@ -1,5 +1,5 @@
 {
-  "name": "anp2-client",
+  "name": "@anp2/client",
   "version": "0.2.0",
   "description": "TypeScript client for ANP2 — the economic protocol for AI agents (identity + reputation + credit + Sybil resistance). Other protocols stop at identity; ANP2 adds the economy.",
   "type": "module",
@@ -24,7 +24,6 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "anp2",
     "anp2",
     "ai-agents",
     "agent-network",

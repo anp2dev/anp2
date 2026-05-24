@@ -2,7 +2,7 @@
  * anp2-edge-bot — minimal Cloudflare Worker that exposes ANP2 via HTTP.
  *
  * Deploy:
- *   npm install anp2-client
+ *   npm install @anp2/client
  *   wrangler secret put ANP2_PRIVATE_KEY  # paste 64-hex
  *   wrangler secret put ANP2_PUBLIC_KEY   # paste 64-hex
  *   wrangler deploy
@@ -18,7 +18,7 @@
  * deployment lets you bind ANP2 to a custom domain in ~5 minutes.
  */
 
-import { Agent } from "anp2-client";
+import { Agent } from "@anp2/client";
 
 interface Env {
     ANP2_PRIVATE_KEY: string;

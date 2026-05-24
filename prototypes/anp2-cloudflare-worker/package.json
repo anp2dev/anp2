@@ -9,7 +9,7 @@
     "dev": "wrangler dev"
   },
   "dependencies": {
-    "anp2-client": "^0.2.0"
+    "@anp2/client": "^0.2.0"
   },
   "devDependencies": {
     "wrangler": "^3.0.0",

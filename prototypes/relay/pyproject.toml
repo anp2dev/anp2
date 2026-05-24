@@ -1,7 +1,7 @@
 [project]
 name = "anp2-relay"
 version = "0.1.0"
-description = "ANP2 — reference relay implementation"
+description = "ANP2 — reference relay implementation (PyPI package name `anp2-relay` is grandfathered)"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

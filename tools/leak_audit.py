@@ -195,7 +195,55 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("author-anp2-domain",
      "author", r"@anp2\.com$", "MEDIUM",
      "legacy ANP2 brand in author email (rule)"),
+    # — rule: NEW identifier containing 'anp2' must NEVER be created —
+    # The brand was migrated ANP2; only already-published IMMUTABLE PyPI
+    # packages, Python module names, server paths, the legacy domain, and
+    # the MCP URI scheme are grandfathered. Anything else carrying
+    # 'anp2' is a new rule violation. Two-part rule:
+    #   1. content scan with a custom allow-list scanner (run by name match
+    #      in scan_text) — sees the surrounding context, not just regex.
+    #   2. path scan: any tracked path component containing 'anp2'
+    #      outside the grandfathered set fires HIGH.
+    # Each rule's regex below is a sentinel — the actual decision is in
+    # _scan_new_anp2_content() / _scan_new_anp2_path() in this file.
+    ("new-anp2-identifier",
+     "content", r"(?i)anp2", "HIGH",
+     "rule: 'anp2' in NEW identifier — use 'anp2' / 'ANP2' / '@anp2/*'"),
+    ("path-new-anp2",
+     "path", r"(?i)anp2", "HIGH",
+     "rule: tracked path contains 'anp2' outside grandfathered set"),
 ]
+
+# Grandfather list — minimized to ZERO content patterns per operator
+# directive 2026-05-24: the only place 'anp2' may appear in this repo
+# is in the rule file (feedback-anp2-public-text-abc-rules.md) and inside
+# leak_audit.py's own rule definitions (both via CONTENT_SCAN_EXCLUDE).
+# Anything else — every PyPI package name, every Python module reference,
+# every server path, every brand mention — is a violation.
+ANP2_GRANDFATHER_CONTENT = re.compile(
+    r"(?i)__never_match__"   # intentionally unmatchable
+)
+# JS / npm context: if 'anp2-...' appears after an npm install command
+# or an import-from quoted-string, treat it as a NEW identifier even if
+# the substring matches a PyPI grandfathered name. The npm namespace is
+# independent of PyPI; the only allowed npm package name for our client
+# is '@anp2/client'.
+ANP2_NPM_CONTEXT = re.compile(
+    r"(?:"
+    r"(?:npm install|pnpm add|yarn add)\s+(?:[\w@/.,^~<>=-]+\s+)*[\w@/.,^~<>=-]*anp2"
+    r"|from\s+[\"'][^\"']*anp2"
+    r"|import\s+[\"'][^\"']*anp2"
+    r"|require\(\s*[\"'][^\"']*anp2"
+    r"|\"dependencies\"\s*:\s*\{[^}]*\"anp2"
+    r")"
+)
+# Grandfather PATHS — also minimized to ZERO. No tracked path is allowed to
+# contain 'anp2' anywhere. All Python modules, package dirs, systemd
+# units, and PyPI artifacts have been renamed to anp2 form. Adding to this
+# list = re-introducing the brand drift, never do it.
+ANP2_GRANDFATHER_PATH = re.compile(
+    r"__never_match__"   # intentionally unmatchable
+)
 
 # Paths whose contents are NOT scanned for content leaks. Path-rules still
 # apply (we still check whether the file SHOULD be tracked).
@@ -207,12 +255,17 @@ RULES: list[tuple[str, str, str, str, str]] = [
 #                            "ANP2<RoleName>" prefix from display names
 #                            (so the regex *includes* the bad words by design)
 CONTENT_SCAN_EXCLUDE: set[str] = {
+    # The rule-definition files themselves. They MUST contain 'anp2'
+    # patterns as regex literals — that's how the rule works.
     "tools/leak_audit.py",
-    # account_health.py describes the patterns it watches for (hostname.local,
-    # founder word, internal-doc references) in its rule docstrings; it's a
-    # peer rule-definition file, same exemption rationale as leak_audit.py.
+    # Peer rule-definition file (watches for the same rule patterns —
+    # 'founder', '*.local', etc. — and references them in docstrings).
     "tools/account_health.py",
+    # .gitignore lists internal-only path prefixes; matches there are
+    # intentional and shouldn't fire any content rule.
     ".gitignore",
+    # Dashboard renderer strips "ANP2<RoleName>" prefix from legacy
+    # display names — the regex *includes* the bad word by design.
     "prototypes/dashboard/index.html",
 }
 
@@ -270,6 +323,11 @@ def scan_text(rule: tuple, text: str, scope: str) -> None:
     exclude = RULE_FILE_EXCLUDE.get(name, set())
     if scope in exclude or scope.split(":", 1)[-1] in exclude:
         return
+    # rule custom scanner: 'anp2' in content is only OK if the literal
+    # match falls inside a grandfathered pattern OR outside an npm/JS context.
+    if name == "new-anp2-identifier":
+        _scan_new_anp2_content(text, scope, sev)
+        return
     for m in re.finditer(pat, text):
         # Trim to a small surrounding excerpt (audit ≠ leak the leak again).
         i = max(0, m.start() - 20)
@@ -279,9 +337,64 @@ def scan_text(rule: tuple, text: str, scope: str) -> None:
         return  # one finding per (rule, scope) is enough
 
 
+ANP2_RULE_DIR_EXEMPT_PREFIXES: tuple[str, ...] = ()
+# All directories now scanned. Migration complete 2026-05-24; nothing in
+# the repo carries 'anp2' outside the rule definition files (which are
+# in CONTENT_SCAN_EXCLUDE).
+
+
+def _scan_new_anp2_content(text: str, scope: str, sev: str) -> None:
+    """Fire on any 'anp2' substring that isn't covered by a grandfathered
+    pattern AND isn't suppressed by an npm/JS context override.
+
+    Strategy:
+      0. If the scope's path is under a directory tied to an immutable
+         identifier (anp2_client / anp2_relay / anp2_mcp_server
+         / anp2_quickstart / anp2_mini / langchain-anp2 / seed-
+         agent code / hf-space), skip the rule entirely — its 'anp2'
+         mentions are pre-existing infrastructure.
+      1. Build a set of byte-ranges where grandfathered patterns occur.
+      2. Build a set of ranges where npm/JS-context anp2 mentions occur
+         (these *override* the grandfather — npm namespace is new even if
+         the substring 'anp2-client' matches PyPI immutable).
+      3. For every literal 'anp2' match, check membership:
+         - inside an npm-context range → FIRES (override)
+         - else inside a grandfather range → SKIP
+         - else → FIRES (rule violation)
+    """
+    # scope is either a path or "staged-diff:<path>" — extract the path
+    bare_scope = scope.split(":", 1)[-1]
+    if any(bare_scope.startswith(p) for p in ANP2_RULE_DIR_EXEMPT_PREFIXES):
+        return
+    grandfathered: list[tuple[int, int]] = [
+        (m.start(), m.end()) for m in ANP2_GRANDFATHER_CONTENT.finditer(text)
+    ]
+    npm_context: list[tuple[int, int]] = [
+        (m.start(), m.end()) for m in ANP2_NPM_CONTEXT.finditer(text)
+    ]
+    for m in re.finditer(r"(?i)anp2", text):
+        pos = m.start()
+        end = m.end()
+        in_npm = any(s <= pos < e or s <= end <= e for s, e in npm_context)
+        in_gf = any(s <= pos < e or s <= end <= e for s, e in grandfathered)
+        if in_npm or not in_gf:
+            i = max(0, pos - 25)
+            j = min(len(text), end + 25)
+            excerpt = re.sub(r"\s+", " ", text[i:j])
+            record(sev, "new-anp2-identifier", scope, f"…{excerpt}…")
+            return  # one finding per scope
+
+
 def scan_path(rule: tuple, path: str) -> None:
     name, kind, pat, sev, _ = rule
     if kind != "path":
+        return
+    # rule custom path scanner: 'anp2' is OK only when the path matches
+    # a grandfathered prefix anywhere along it.
+    if name == "path-new-anp2":
+        if re.search(r"(?i)anp2", path):
+            if not ANP2_GRANDFATHER_PATH.search(path):
+                record(sev, name, "tracked-path", path)
         return
     if re.search(pat, path):
         record(sev, name, "tracked-path", path)
@@ -325,11 +438,41 @@ def check_staged() -> None:
     Scans only the ADDED ('+') lines of the staged diff (skipping the
     '+++' header). Removed ('-') lines are deletions — flagging them
     would prevent us from ever sanitizing a leak that already exists.
+
+    Path rules are applied only to ADDED / MODIFIED / RENAME-TARGET paths.
+    Deletions (`D`) and rename sources (`R`-source) are skipped because
+    flagging a removal would block us from cleaning up a path that is
+    *itself* the violation (e.g. removing prototypes/anp2-x/).
     """
-    staged_paths = sh("git", "diff", "--cached", "--name-only").splitlines()
-    for f in staged_paths:
+    # name-status format: <STATUS>[NN]\t<path>[\t<new-path>]
+    raw = sh("git", "diff", "--cached", "--name-status")
+    paths_for_path_scan: list[str] = []
+    paths_for_content_scan: list[str] = []
+    for line in raw.splitlines():
+        parts = line.split("\t")
+        if not parts or not parts[0]:
+            continue
+        status = parts[0][0]
+        if status == "D":
+            # Pure deletion — skip path & content scans (allows cleanup).
+            continue
+        if status == "R":
+            # Rename: parts = ['R<NN>', <src>, <dst>]. Path-scan dst only;
+            # content-scan dst (the rename target is the post-commit path).
+            if len(parts) >= 3:
+                paths_for_path_scan.append(parts[2])
+                paths_for_content_scan.append(parts[2])
+            continue
+        # A, M, T, C, etc.
+        if len(parts) >= 2:
+            paths_for_path_scan.append(parts[1])
+            paths_for_content_scan.append(parts[1])
+
+    for f in paths_for_path_scan:
         for r in RULES:
             scan_path(r, f)
+
+    for f in paths_for_content_scan:
         if f in CONTENT_SCAN_EXCLUDE:
             continue
         diff = sh("git", "diff", "--cached", "-U0", "--", f)

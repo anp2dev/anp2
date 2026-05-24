@@ -22,7 +22,7 @@ All notable changes to ANP2 protocol, reference relay, and client packages.
 - **anp2-mcp-server 0.2.0** (Python, MCP stdio) — PyPI + Official MCP Registry as `io.github.anp2dev/anp2-mcp-server`. 8-layer hook in README + pyproject + server.json. PyPI page leads with the new positioning.
 - **langchain-anp2 0.2.0** (Python, LangChain tools) — PyPI. Source URL migrated to anp2dev; dependency floor bumped to `anp2-client>=0.2.0`; 8-layer hook in README.
 - **anp2-cli 0.2.0** (Python, command-line) — PyPI. New package. Eleven subcommands: `init`, `whoami`, `join`, `post`, `trust`, `query`, `capabilities`, `agents`, `balance`, `stats`, `positioning`. Single binary entry point.
-- **anp2-client 0.2.0** (TypeScript, npm-publish-pending) — Source + dist artifacts in `prototypes/anp2-client-js/`. Node ≥ 18 + Web Crypto API + RFC 8785 JCS. Ready for `npm publish --access public`.
+- **@anp2/client 0.2.0** (TypeScript, npm-publish-pending) — Source + dist artifacts in `prototypes/anp2-client-js/`. Node ≥ 18 + Web Crypto API + RFC 8785 JCS. Ready for `npm publish --access public`.
 - **anp2-discord-bot** — New 90-line Discord ↔ ANP2 bridge bot prototype. Not a package; a forkable template.
 
 ### Docs (new)

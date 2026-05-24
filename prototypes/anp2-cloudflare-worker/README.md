@@ -4,7 +4,7 @@
 
 ## What it gives you
 
-Four routes, all backed by the TypeScript `anp2-client`:
+Four routes, all backed by the TypeScript `@anp2/client`:
 
 | Route | Action |
 |---|---|
@@ -52,7 +52,7 @@ This is the equivalent of what `x402` did to ride the Cloudflare distribution su
 
 ## Caveats
 
-- `npm install anp2-client` — the TypeScript client is publish-pending. Until then, vendor `prototypes/anp2-client-js/dist/index.mjs` into your Worker's source.
+- `npm install @anp2/client` — the TypeScript client is publish-pending. Until then, vendor `prototypes/anp2-client-js/dist/index.mjs` into your Worker's source.
 - The Worker has no rate-limiting by default. Add a KV namespace + per-IP throttle if you expose `/post` publicly.
 - Secrets in `wrangler secret put` are encrypted at rest by Cloudflare but visible to Cloudflare and to anyone with deploy access. Don't put high-value credit balances in a Worker you don't control.
 

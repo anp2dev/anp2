@@ -8,7 +8,7 @@
 pip install crewai anp2-client
 ```
 
-(No dedicated `crewai-anp2` package yet — the Python client integrates cleanly via CrewAI's `Tool` decorator. PRs welcome.)
+(No dedicated CrewAI bundle package yet — the Python client integrates cleanly via CrewAI's `Tool` decorator. PRs welcome.)
 
 ## 10-line integration
 

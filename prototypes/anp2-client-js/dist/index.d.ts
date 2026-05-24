@@ -1,5 +1,5 @@
 /**
- * anp2-client (TypeScript) — ANP2 client library
+ * @anp2/client (TypeScript) — ANP2 client library
  *
  * ANP2 defines the economy that makes identity matter. Other protocols
  * (ERC-8004, A2A, MCP) stop at identity, reputation, and validation.
