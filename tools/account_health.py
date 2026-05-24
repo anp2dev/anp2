@@ -64,6 +64,10 @@ import urllib.request, urllib.error
 UA = {"User-Agent": "anp2-account-health-audit"}
 USER = os.environ.get("ANP2_GH_USER", "anp2dev")
 REPO = os.environ.get("ANP2_GH_REPO", "anp2")
+# Ambient token: silently used in default-mode API calls to raise the
+# anonymous 60/h rate limit to the authenticated 5000/h. Set later, after
+# load_pat() is defined.
+_AMBIENT_TOKEN: str | None = None
 LIMIT_DAY = int(os.environ.get("ANP2_COMMITS_PER_DAY", "12"))
 LIMIT_WEEK = int(os.environ.get("ANP2_COMMITS_PER_WEEK", "50"))
 CANONICAL_BLOG = "https://anp2.com"
@@ -155,7 +159,10 @@ def check_external_visibility() -> None:
 
 
 def check_profile_completeness() -> None:
-    st, data = http_get_json(f"https://api.github.com/users/{USER}")
+    # Use PAT silently if available — bumps anonymous 60/h → authenticated 5000/h.
+    # Anonymous mode is fine for occasional runs but pre-push + per-message check
+    # share the same anonymous bucket and exhaust it during active sessions.
+    st, data = http_get_json(f"https://api.github.com/users/{USER}", token=_AMBIENT_TOKEN)
     if st != 200 or not data:
         record("FAIL", "profile-api", "github.com/api", f"HTTP {st}")
         return
@@ -186,7 +193,7 @@ def check_pacing_from_api() -> None:
     R7 = "did I commit too much" (still useful as safety belt).
     R17 = "did I push too often" (the real bot-burst shape GitHub sees).
     """
-    st, events = http_get_json(f"https://api.github.com/users/{USER}/events/public?per_page=100")
+    st, events = http_get_json(f"https://api.github.com/users/{USER}/events/public?per_page=100", token=_AMBIENT_TOKEN)
     if st != 200 or events is None:
         record("WARN", "pacing-api", "github.com/api", f"HTTP {st} — skipping pacing check")
         return
@@ -273,7 +280,7 @@ def check_fork_burst() -> None:
     # NOTE: GitHub's /users/<u>/repos `type` parameter accepts only all|owner|member;
     # `type=forks` is silently treated as default (owner) and returns ALL owned repos.
     # We must fetch all repos and filter client-side on the `fork` boolean.
-    st, data = http_get_json(f"https://api.github.com/users/{USER}/repos?type=owner&per_page=100")
+    st, data = http_get_json(f"https://api.github.com/users/{USER}/repos?type=owner&per_page=100", token=_AMBIENT_TOKEN)
     if st == 200 and isinstance(data, list):
         for r in data:
             if not r.get("fork"):
@@ -340,7 +347,7 @@ def check_fork_burst() -> None:
         record("PASS", "R21 pr-external-rate-24h", USER, f"{prs_24h} / {cap_pr}")
 
     # R22: any fork from an account younger than 7 days = automatic FAIL
-    st2, prof = http_get_json("https://api.github.com/users/" + USER)
+    st2, prof = http_get_json("https://api.github.com/users/" + USER, token=_AMBIENT_TOKEN)
     if st2 == 200 and prof and prof.get("created_at"):
         created = datetime.fromisoformat(prof["created_at"].replace("Z", "+00:00")).timestamp()
         age_days = int((now - created) / 86400)
@@ -456,7 +463,7 @@ def check_extra_flag_patterns() -> None:
                    f"{ai_commits}/{len(total)} ({ratio:.0%}) / {cap:.0%}")
 
     # R27: workflow CI success ratio (anonymous via gh actions feed)
-    st, data = http_get_json(f"https://api.github.com/repos/{USER}/{REPO}/actions/runs?per_page=5")
+    st, data = http_get_json(f"https://api.github.com/repos/{USER}/{REPO}/actions/runs?per_page=5", token=_AMBIENT_TOKEN)
     if st == 200 and isinstance(data, dict):
         runs = data.get("workflow_runs", [])
         if runs:
@@ -474,7 +481,7 @@ def check_extra_flag_patterns() -> None:
         record("INFO", "R27 ci-failure-streak", f"{USER}/{REPO}", f"HTTP {st} — skipping")
 
     # R28: repo topic count
-    st2, repo_data = http_get_json(f"https://api.github.com/repos/{USER}/{REPO}")
+    st2, repo_data = http_get_json(f"https://api.github.com/repos/{USER}/{REPO}", token=_AMBIENT_TOKEN)
     if st2 == 200 and isinstance(repo_data, dict):
         topics = repo_data.get("topics", []) or []
         cap_t = int(os.environ.get("ANP2_REPO_TOPIC_CAP", "5"))
@@ -614,6 +621,13 @@ def main() -> int:
     args = ap.parse_args()
 
     use_auth = args.auth or args.full
+
+    # Silently pull the PAT for ambient use in default-mode API calls. This
+    # raises the per-process GitHub API rate cap from 60/h (anonymous) to
+    # 5000/h (authenticated). Failures to load the token are non-fatal —
+    # checks fall back to anonymous.
+    global _AMBIENT_TOKEN
+    _AMBIENT_TOKEN = load_pat()
 
     # Anonymous
     check_external_visibility()
