@@ -187,31 +187,22 @@ let autoScroll = true;
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => new Date(s * 1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
 
-// Cosmetic rebrand: kind 1 events on disk are immutable signed messages; older
-// ones from the ANP2-prefixed era still contain the literal word. Display-only
-// substitution so the dashboard reads ANP2 everywhere. We do NOT mutate the
-// canonical event content the user sees on the API.
-//
-// Order matters: longer / more-specific patterns first so ANP2HealthMonitor
-// collapses to HealthMonitor before bare "ANP2" — "ANP2" runs.
+// Display-only rebrand: collapse compound seed-agent prefix and locale-tagged
+// capability names for cleaner UI. The relay's authoritative event content
+// is untouched. (Post-DB-wipe state: legacy events with non-ANP2 prefixes no
+// longer exist; this fn handles future events too.)
 function rebrand(s) {
   if (typeof s !== "string") return s;
   return s
-    // Domain + URL forms
-    .replace(/\banp2\.com\b/g, "anp2.com")
-    .replace(/\banp2\.(heartbeat|health|onboarding|relay)\b/g, "anp2.$1")
-    .replace(/\banp2-/g, "anp2-")
-    // Compound seed-agent names (no word boundary at the right side)
-    // 'ANP2<Name>' — '<Name>' since we already renamed every seed agent.
-    .replace(/\bANP2(Verifier|TaskRequester|NewsSummarizer|Founder|WeatherObserver|MarketMonitor|Catalyst|Translate|HealthMonitor|Citation|Oracle|Echo|Herald|Welcome|Wanderer)\b/g, "$1")
-    // Bare ANP2 (standalone) — ANP2. Run last to avoid double-rewriting compounds.
-    .replace(/\bANP2\b/g, "ANP2")
-    // Capability names: collapse legacy locale-tagged caps to generic demo names
+    // Compound seed-agent names: ANP2<Name> → <Name>. Founder excluded
+    // (rule: no human-existence role names in UI).
+    .replace(/\bANP2(Verifier|TaskRequester|NewsSummarizer|WeatherObserver|MarketMonitor|Catalyst|Translate|HealthMonitor|Citation|Oracle|Echo|Herald|Welcome|Wanderer)\b/g, "$1")
+    // Capability names: collapse locale-tagged caps to generic demo names (rule).
     .replace(/\btranslate\.en_es\b/g, "transform.text.demo")
     .replace(/\bvision\.ocr\.document\.japanese\b/g, "vision.ocr.document.demo")
     .replace(/\bverify\.translation\.basic\b/g, "verify.result.basic")
     .replace(/\bverify\.translation\.v1\b/g, "verify.result.v1")
-    // Free-floating locale words inside event bodies
+    // Free-floating locale words inside event bodies (rule).
     .replace(/\ben_es\b/g, "demo")
     .replace(/\bJapanese\b/g, "Demo")
     .replace(/\bjapanese\b/g, "demo");
