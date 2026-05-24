@@ -36,6 +36,11 @@ Rules:
   R14 ssh-key-anp2-deploy          (--auth) API /user/keys has anp2-deploy
   R15 pat-expiry-not-imminent      (--auth) PAT expires_at > now + 7d
   R16 branch-protection-on-main    (--auth) main has leak-audit required check
+  R18 fork-burst-1h:               ≤ 1 fork created in last 1h (anti-bot)
+  R19 fork-burst-24h:              ≤ 1 fork created in last 24h
+  R20 fork-burst-7d:               ≤ 3 forks created in last 7d
+  R21 pr-external-rate-24h:        ≤ 2 PRs to external repos in last 24h (via gh_safe log)
+  R22 fork-account-age-floor:      account age ≥ 7d before any fork is allowed
 
 Thresholds (env var override):
   ANP2_GH_USER         (default: anp2dev)
@@ -226,6 +231,105 @@ def check_committer_clean() -> None:
             record("PASS", label, "git-log", f"{len(seen)} identities, all clean")
 
 
+def check_fork_burst() -> None:
+    """R18-R22: fork-creation + PR-submission burst checks.
+
+    These exist BECAUSE: 2026-05-24, anp2dev was shadow-suppressed by
+    GitHub's anti-spam ML model after forking 5 popular awesome-* repos in
+    50 seconds (00:43:37 → 00:44:27 UTC) from a 38-hour-old account. The
+    mass-fork burst is THE highest-weight signal GitHub uses to identify
+    bot accounts. Never again.
+
+    Sources of truth:
+      - GitHub API `/users/<user>/repos?type=forks` for actual fork timestamps
+      - local env/.gh-activity-log.jsonl for ops gh_safe.sh has wrapped
+    The maximum of the two is used (covers direct `gh repo fork` bypass).
+    """
+    import json as _json
+    now = time.time()
+    forks_api: list[float] = []
+    st, data = http_get_json(f"https://api.github.com/users/{USER}/repos?type=forks&per_page=100")
+    if st == 200 and isinstance(data, list):
+        for r in data:
+            try:
+                t = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).timestamp()
+                forks_api.append(t)
+            except Exception:
+                pass
+
+    forks_local: list[float] = []
+    try:
+        with open("env/.gh-activity-log.jsonl") as fh:
+            for line in fh:
+                e = _json.loads(line)
+                if e.get("action") == "fork" and e.get("status") == "OK":
+                    forks_local.append(e.get("unix", 0))
+    except FileNotFoundError:
+        pass
+
+    # union (any fork in API OR local log)
+    forks = sorted(set(forks_api + forks_local))
+
+    n_1h  = sum(1 for t in forks if t >= now - 3600)
+    n_24h = sum(1 for t in forks if t >= now - 86400)
+    n_7d  = sum(1 for t in forks if t >= now - 86400 * 7)
+
+    # R18: 1h cap — a bot signature is multiple forks within seconds/minutes
+    cap_1h = int(os.environ.get("ANP2_FORK_CAP_1H", "1"))
+    if n_1h > cap_1h:
+        record("FAIL", "R18 fork-burst-1h", USER,
+               f"{n_1h} fork(s) in last 1h > cap={cap_1h} — bot pattern, will get flagged")
+    else:
+        record("PASS", "R18 fork-burst-1h", USER, f"{n_1h} / {cap_1h}")
+
+    cap_24h = int(os.environ.get("ANP2_FORK_CAP_24H", "1"))
+    if n_24h > cap_24h:
+        record("FAIL", "R19 fork-burst-24h", USER, f"{n_24h} fork(s) in last 24h > cap={cap_24h}")
+    else:
+        record("PASS", "R19 fork-burst-24h", USER, f"{n_24h} / {cap_24h}")
+
+    cap_7d = int(os.environ.get("ANP2_FORK_CAP_7D", "3"))
+    if n_7d > cap_7d:
+        record("FAIL", "R20 fork-burst-7d", USER, f"{n_7d} fork(s) in last 7d > cap={cap_7d}")
+    else:
+        record("PASS", "R20 fork-burst-7d", USER, f"{n_7d} / {cap_7d}")
+
+    # R21: PR submissions in last 24h (count from gh_safe log only; gh API
+    # search has different rate limits we don't want to rely on)
+    prs_24h = 0
+    try:
+        with open("env/.gh-activity-log.jsonl") as fh:
+            for line in fh:
+                e = _json.loads(line)
+                if e.get("action") == "pr-create" and e.get("status") == "OK" \
+                   and e.get("unix", 0) >= now - 86400:
+                    prs_24h += 1
+    except FileNotFoundError:
+        pass
+    cap_pr = int(os.environ.get("ANP2_PR_CAP_24H", "2"))
+    if prs_24h > cap_pr:
+        record("FAIL", "R21 pr-external-rate-24h", USER, f"{prs_24h} PRs > cap={cap_pr}")
+    else:
+        record("PASS", "R21 pr-external-rate-24h", USER, f"{prs_24h} / {cap_pr}")
+
+    # R22: any fork from an account younger than 7 days = automatic FAIL
+    st2, prof = http_get_json("https://api.github.com/users/" + USER)
+    if st2 == 200 and prof and prof.get("created_at"):
+        created = datetime.fromisoformat(prof["created_at"].replace("Z", "+00:00")).timestamp()
+        age_days = int((now - created) / 86400)
+        if age_days < 7 and n_7d > 0:
+            record("FAIL", "R22 fork-account-age-floor", USER,
+                   f"account is {age_days}d old and has {n_7d} fork(s) — high flag risk")
+        elif age_days < 7:
+            record("PASS", "R22 fork-account-age-floor", USER,
+                   f"account {age_days}d old, no forks (OK — wait ≥ 7d before any fork)")
+        else:
+            record("PASS", "R22 fork-account-age-floor", USER,
+                   f"account {age_days}d ≥ 7d")
+    else:
+        record("WARN", "R22 fork-account-age-floor", USER, f"profile HTTP {st2}")
+
+
 def check_repo_files() -> None:
     files = sh("git", "ls-files").split()
     for label, path, sev in (
@@ -341,6 +445,7 @@ def main() -> int:
     check_external_visibility()
     check_profile_completeness()
     check_pacing_from_api()
+    check_fork_burst()
     check_committer_clean()
     check_repo_files()
 
