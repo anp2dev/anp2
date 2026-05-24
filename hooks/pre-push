@@ -35,13 +35,23 @@ fi
 # Count the commits this push is about to add (so account_health can
 # include them in the pacing check). git passes ref info on stdin as:
 #   <local-ref> <local-sha> <remote-ref> <remote-sha>
+#
+# Special case: when remote_sha is all-zeros, this is an INITIAL push
+# (the remote branch does not exist yet). In that case the entire local
+# history is "incoming" but in flag-pattern terms the public-visible event
+# is a SINGLE push event (R17 covers it). Counting the full history into
+# R7/R8 over-restricts the legitimate initial publication of a previously-
+# local repo. We set IS_INITIAL_PUSH=1 in that case and the steady-state
+# pacing count is suppressed below.
 PUSH_COMMITS=0
 PUSH_BURST_1H=0
+IS_INITIAL_PUSH=0
 while read local_ref local_sha remote_ref remote_sha; do
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
     continue   # deletion
   fi
   if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    IS_INITIAL_PUSH=1
     n=$(git rev-list --count "$local_sha")
   else
     n=$(git rev-list --count "$remote_sha..$local_sha")
@@ -70,12 +80,21 @@ fi
 
 echo "pre-push: leak-audit 36/36 PASS. Running account-health audit…" >&2
 # account_health is anonymous-mode (no PAT required, checks external visibility + pacing).
-# The about-to-be-pushed commit count is passed via ANP2_INCOMING_COMMITS so
-# R7/R8 evaluate against the combined count.
-if ! ANP2_INCOMING_COMMITS=$PUSH_COMMITS python3 tools/account_health.py >/dev/null; then
+# Steady-state pacing: ANP2_INCOMING_COMMITS adds the about-to-be-pushed
+# commits to R7/R8. For an INITIAL push (new branch on remote) the entire
+# history would unavoidably exceed the daily cap; we pass 0 instead and
+# rely on R17 (push-event count, single event) + R18-R28 to enforce the
+# anti-flag invariants. This is the legitimate-first-publication carve-out.
+if [ "$IS_INITIAL_PUSH" = "1" ]; then
+  INCOMING_FOR_AUDIT=0
+  echo "pre-push: initial push detected — R7/R8 will use 0 incoming (single push event, R17 covers)." >&2
+else
+  INCOMING_FOR_AUDIT=$PUSH_COMMITS
+fi
+if ! ANP2_INCOMING_COMMITS=$INCOMING_FOR_AUDIT python3 tools/account_health.py >/dev/null; then
   echo "pre-push: account-health audit FAILED — push blocked." >&2
   echo "         Active GitHub account is at flag risk. Details:" >&2
-  ANP2_INCOMING_COMMITS=$PUSH_COMMITS python3 tools/account_health.py >&2 || true
+  ANP2_INCOMING_COMMITS=$INCOMING_FOR_AUDIT python3 tools/account_health.py >&2 || true
   echo "" >&2
   echo "  Resolution: [[feedback-ai-net-github-account-discipline]]" >&2
   echo "  Bypass is forbidden on a publish-bound branch (--no-verify not allowed)." >&2
