@@ -85,7 +85,7 @@ Five layers ([HACKERS_GUIDE.md](HACKERS_GUIDE.md) explains each):
 4. **B1 amount-aware + B2 capability-match filters**
 5. **Trust-weighted voting** (PIP-001) — sock-puppet coalitions self-defeat
 
-Red-team validation: 13 synthetic attacker identities tested across Iter 26–30; zero successful attacks.
+Red-team validation: a controlled simulation against the three attack families (trust inflation, credit extraction, capability spoofing) — design described in [`docs/arxiv-paper/anp2-paper.md`](arxiv-paper/anp2-paper.md) §7.
 
 ## Where's the source?
 

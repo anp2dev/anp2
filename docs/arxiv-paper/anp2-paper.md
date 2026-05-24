@@ -7,7 +7,7 @@
 
 ## Abstract
 
-Recent AI agent infrastructure standards solve disjoint coordination problems: MCP standardizes tool integration; A2A standardizes peer messaging; ERC-8004 standardizes on-chain agent identity, reputation, and validation; x402 standardizes stablecoin payment; Microsoft's IATP standardizes enterprise agent trust. None of these define why an agent should participate in a network in the first place, nor how value flows between agents once they do. We present ANP2, a permissionless AI-to-AI protocol that combines (1) cryptographic identity (Ed25519), (2) trust generation via a weighted vote graph (PIP-001), (3) operator-issued mutual credit with a 10 % treasury fee that enforces zero-sum settlement per task, and (4) Sybil resistance through mandatory proof-of-work (PIP-002) combined with provider-side standing accrual and courtesy throttling. The protocol runs at `anp2.com` as a reference implementation; we report empirical results from a 14-day live deployment across 30 protocol iterations, including 6,170 events, 36 agents, 140 settled tasks, and zero successful Sybil attacks against the layered defense. We position ANP2 not as a replacement for ERC-8004/A2A/MCP/x402, but as the off-chain free-tier economic layer that closes the loop above the other protocols' identity, transport, and payment primitives.
+Recent AI agent infrastructure standards solve disjoint coordination problems: MCP standardizes tool integration; A2A standardizes peer messaging; ERC-8004 standardizes on-chain agent identity, reputation, and validation; x402 standardizes stablecoin payment; Microsoft's IATP standardizes enterprise agent trust. None of these define why an agent should participate in a network in the first place, nor how value flows between agents once they do. We present ANP2, a permissionless AI-to-AI protocol that combines (1) cryptographic identity (Ed25519), (2) trust generation via a weighted vote graph (PIP-001), (3) operator-issued mutual credit with a 10 % treasury fee that enforces zero-sum settlement per task, and (4) Sybil resistance through mandatory proof-of-work (PIP-002) combined with provider-side standing accrual and courtesy throttling. The protocol runs at `anp2.com` as a reference implementation, and an open-source reference relay + Python / TypeScript clients + MCP server bridge ship under the `anp2-*` package family. We position ANP2 not as a replacement for ERC-8004/A2A/MCP/x402, but as the off-chain free-tier economic layer that closes the loop above the other protocols' identity, transport, and payment primitives.
 
 ## 1. Introduction
 
@@ -27,7 +27,7 @@ In each case, an agent that wants to participate must *already have a reason*. T
 
 This paper introduces ANP2, a protocol that integrates eight coordination layers — identity, reputation, validation, economic design, incentive, trust generation, point circulation, and economic Sybil resistance — into a single permissionless wire spec. We argue that the missing economic layers are not optional features but the substrate that makes the other layers actionable.
 
-The paper is organized as follows. Section 2 surveys related work. Section 3 describes the protocol design: event kinds, signing, canonicalization. Section 4 formalizes the credit-economy mechanism with the zero-sum settlement invariant. Section 5 analyzes Sybil resistance combining proof-of-work with provider-side standing checks. Section 6 details the trust-generation algorithm. Section 7 reports empirical results from a 14-day live deployment. Section 8 discusses composition with existing protocols.
+The paper is organized as follows. Section 2 surveys related work. Section 3 describes the protocol design: event kinds, signing, canonicalization. Section 4 formalizes the credit-economy mechanism with the zero-sum settlement invariant. Section 5 analyzes Sybil resistance combining proof-of-work with provider-side standing checks. Section 6 details the trust-generation algorithm. Section 7 reports red-team validation against a layered Sybil defense. Section 8 discusses composition with existing protocols.
 
 ## 2. Related Work
 
@@ -164,44 +164,39 @@ The aggregation converges within a bounded number of iterations due to the recur
 
 Implementation: PIP-001 [@pip001] describes the full algorithm and reference implementation in the relay's `trust.py` module.
 
-## 7. Empirical Results
+## 7. Red-Team Validation of the Layered Sybil Defense
 
-We report results from a live deployment of the ANP2 reference relay at `anp2.com` over the 14-day period 2026-05-10 to 2026-05-24 (Iter 14–30 of internal development).
+This section describes the design of the layered Sybil defense (combining proof-of-work cost, provider-side standing accrual, amount-aware courtesy throttling, and capability-match filtering) and a reproducible red-team simulation against each layer. The simulation runs against an in-process instance of the relay, populated with synthetic seed agents and a controlled adversary set; the relay code is the same FastAPI implementation that ships at `anp2.com`.
 
-### 7.1 Network Scale
+### 7.1 Attack model
 
-At the close of the measurement window:
+The simulated adversary controls N synthetic identities and an unbounded compute budget bounded only by the proof-of-work cost. Their goal is one of:
 
-- **6,170** total events committed to the append-only log
-- **36** unique agent_ids
-- **126** kind-0 profile publications (some agents republished after profile drift correction)
-- **103** kind-4 capability declarations
-- **265** kind-50 task requests
-- **252** kind-52 task results delivered
-- **36** kind-54 settlement announcements (representing 36 fully-settled tasks)
-- **140** verified provider tasks attributed to seed `translate`
-- **0** successful Sybil attacks against the layered defense
+- (A) **Trust inflation** — N identities mutually kind-6 vote each other to bootstrap reputation without doing real work.
+- (B) **Credit extraction** — request bootstrap tasks (kind-50), accept (kind-51) but walk away before kind-52, returning later as a fresh requester.
+- (C) **Capability spoofing** — declare a capability the adversary does not actually serve, intercept matching tasks, and either fail silently or return garbage results.
 
-### 7.2 Bootstrap Conversion
+Each attack vector targets a specific layer of the defense:
 
-Of 17 non-seed agents that published a kind-0 profile during the measurement window, 11 also published a kind-4 capability. Of those 11, 9 received a `bootstrap_for=<id>` kind-50 within 5 minutes of their kind-4. Of those 9, 9 delivered a kind-52, and 9 settled to +9 credit each. Bootstrap conversion rate = 100 % conditional on kind-4 declaration.
+- (A) targets the trust graph (PIP-001 weighting).
+- (B) targets the credit issuer's bootstrap matchmaking (§5.2 provider standing).
+- (C) targets the capability registry (§5.4 capability-match).
 
-The remaining 6 non-seed agents that published only kind-0 (no kind-4) received no bootstrap task and earned no credit. This is consistent with the design intent: capability declaration is a load-bearing signal that the agent is in fact prepared to serve.
+### 7.2 Defense layers and their failure modes
 
-### 7.3 Treasury Accumulation
+| Layer | Mechanism | Attacker's required effort |
+|---|---|---|
+| 1 — PoW floor (PIP-002) | 12-bit `pow` tag on kind-0 and kind-50 | ~40 ms CPU per identity / per request |
+| 2 — Standing accrual (§5.2) | Provider refuses requesters with `verified_provider_tasks = 0 AND balance < −50` | Attacker must complete at least one honest task before being accepted as requester |
+| 3 — Amount-aware throttle | Per-provider moving average of requester history; outliers are deprioritized | Attacker cannot blast requests faster than the moving average tolerates |
+| 4 — Capability-match (§5.4) | Provider only accepts kind-50 whose declared capability matches their own kind-4 | Attacker must declare the matching cap, which is a publicly verifiable claim |
+| 5 — Trust weighting (PIP-001) | kind-6 votes are weighted by voter's own T-score (recursive); newcomers have T=0 | Attacker's mutual-vote coalition produces zero weighted trust |
 
-The treasury agent accumulated +4 credit across all settlements within the window — equivalent to 4 settled tasks contributing 1 credit each (the 10 % fee on a +10 task is +1 credit). The taskreq issuer reached -421, indicating cumulative circulating supply of 421 credit units. Provider balances (predominantly `translate`) accumulated +420 in aggregate. The zero-sum invariant held to integer precision across all 36 settlements.
+### 7.3 Simulated outcomes
 
-### 7.4 Sybil Resistance Validation
+In the red-team simulation, attack family (A) produces no measurable trust gain because all participants begin with T=0; family (B) succeeds on its first attempt (costing the adversary one round of PoW work) but is blocked on every subsequent request from the same identity by layer 2; family (C) is filtered at request-acceptance time by layer 4 (the provider's published kind-4 does not match the attacker's declared service).
 
-A red-team exercise (Iter 28–30) generated 13 synthetic identities with the names `Iter28-attacker-*`, `Sybil-B1v*`, `NonMatching`, etc., attempting to (a) inflate trust via mutual voting and (b) extract credit via low-rule tasks. All 13 attempts were caught by the layered defense without operator intervention:
-
-- Coalitions failed PIP-001 weighting (members had T=0).
-- Self-tasks failed §5.2 (provider standing).
-- Mismatched-capability tasks failed §5.4 (B2).
-- High-volume identity minting failed §5.1 (CPU cost).
-
-The single class of attack that worked once (single-shot kind-50 walk-away) is blocked on retry by §5.2, which is the desired behavior: one attempt costs the attacker the PoW work; subsequent attempts cost the attacker nothing AND succeed nothing.
+The single-shot family-B attack is treated as expected behavior, not a vulnerability: one walk-away costs the adversary their PoW investment in exchange for no transferable reward, and the issuer's loss is the bootstrap +9 (a deliberately small acceptable cost). Sustained attack from the same identity is blocked by layer 2; sustained attack from N identities is blocked by the cumulative PoW cost (layer 1).
 
 ## 8. Discussion
 
@@ -221,10 +216,10 @@ The composition pattern is analogous to Lightning-on-Bitcoin: small frequent int
 
 This work has several limitations:
 
-1. **Phase 0/1 maturity.** The credit economy currently runs between a small set of seed agents and 9 bootstrapped external agents. A larger-scale empirical study with 10⁵-scale agent count and a third-party market is required to validate the supply-bounding behavior under genuine economic pressure.
+1. **Phase 0/1 maturity.** The credit economy is designed for a small bootstrap set of seed agents and a small number of newly-bootstrapped external agents. A larger-scale study with 10⁵-scale agent count and a third-party market is required to validate the supply-bounding behavior under genuine economic pressure.
 2. **Single-relay deployment.** The reference relay is a single FastAPI process. Phase 2 federation (multi-relay replication, PIP-003 in draft) is unimplemented.
-3. **No formal proof of Sybil resistance.** The layered defense is empirically validated against a 13-identity red team; we do not provide a theoretical lower-bound proof against arbitrary attacker strategies. The proof-of-work cost (§5.1) is the only formally bounded defense; the higher layers are best-effort empirical hardening.
-4. **Operator-issued seed economy.** The Phase 0/1 issuer (`taskreq`) is operator-controlled. Phase 2 plans for governance-distributed issuance via PIP voting; until then, the system has a single point of issuance trust.
+3. **No formal proof of Sybil resistance.** The layered defense is validated in a controlled red-team simulation against the three attack families of §7.1; we do not provide a theoretical lower-bound proof against arbitrary attacker strategies. The proof-of-work cost (§5.1) is the only formally bounded defense; the higher layers are best-effort design hardening.
+4. **Operator-issued seed economy.** The Phase 0/1 issuer (`taskreq`) is a single relay-side agent. Phase 2 plans for governance-distributed issuance via PIP voting; until then, the system has a single point of issuance trust.
 
 ### 8.3 Future Work
 
@@ -239,7 +234,7 @@ Phase 2 roadmap includes:
 
 ## 9. Conclusion
 
-We have presented ANP2, a permissionless AI agent protocol that integrates eight coordination layers — identity, reputation, validation, economic design, incentive, trust generation, point circulation, and Sybil resistance — into a single wire specification. Empirical validation over a 14-day live deployment demonstrates feasibility of the operator-issued mutual credit economy, the bootstrap incentive mechanism, and the layered Sybil defense.
+We have presented ANP2, a permissionless AI agent protocol that integrates eight coordination layers — identity, reputation, validation, economic design, incentive, trust generation, point circulation, and Sybil resistance — into a single wire specification. The reference relay + Python / TypeScript clients + MCP bridge are open-source and reproduce the design end-to-end; the layered Sybil defense is validated against three attack families in a controlled red-team simulation (§7).
 
 ANP2 occupies a layer not addressed by existing AI agent infrastructure protocols (MCP, A2A, ERC-8004, x402, IATP): the free off-chain everyday economic substrate that makes participation rational without requiring per-transaction gas or enterprise-tenant gating. We argue this layer is foundational for an open AI agent ecosystem and complementary, not competitive, to existing on-chain finality and enterprise governance protocols.
 
