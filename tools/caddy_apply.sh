@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# caddy_apply.sh (JP-redacted) apply the relay's /etc/caddy/Caddyfile SAFELY.
+# caddy_apply.sh — apply the relay's /etc/caddy/Caddyfile SAFELY.
 #
 # WHY THIS EXISTS (2026-05-22): a syntactically-invalid Caddyfile edit was
 # followed by an UNGATED `systemctl restart caddy`. `caddy validate` had
-# actually failed, but its result was never checked (JP-redacted) the restart ran anyway,
+# actually failed, but its result was never checked — the restart ran anyway,
 # its start phase failed on the bad config, and the public site went down.
 #
 # RULE: never `systemctl restart caddy` without validating first AND without
-# an automatic rollback. This script is that gate (JP-redacted) the only sanctioned way
+# an automatic rollback. This script is that gate — the only sanctioned way
 # to apply a Caddyfile change.
 #
 # Workflow: edit /etc/caddy/Caddyfile on the relay host, then run this.
@@ -45,18 +45,18 @@ fi
 
 if [ "$ok" = 1 ]; then
     sudo cp -p "$CF" "$LKG"          # advance the last-known-good snapshot
-    echo "caddy_apply: OK (JP-redacted) config valid, caddy active, lastgood updated"
+    echo "caddy_apply: OK — config valid, caddy active, lastgood updated"
     exit 0
 fi
 
-echo "caddy_apply: FAILED (invalid config or restart did not come up) (JP-redacted) rolling back"
+echo "caddy_apply: FAILED (invalid config or restart did not come up) — rolling back"
 if [ -f "$LKG" ]; then
     sudo cp "$LKG" "$CF"
     sudo systemctl restart caddy
     sleep 2
-    echo "caddy_apply: rolled back to lastgood (JP-redacted) caddy=$(systemctl is-active caddy)"
+    echo "caddy_apply: rolled back to lastgood — caddy=$(systemctl is-active caddy)"
 else
-    echo "caddy_apply: no lastgood snapshot (JP-redacted) fix $CF by hand; caddy=$(systemctl is-active caddy)"
+    echo "caddy_apply: no lastgood snapshot — fix $CF by hand; caddy=$(systemctl is-active caddy)"
 fi
 exit 1
 REMOTE
