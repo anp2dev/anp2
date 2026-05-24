@@ -8,6 +8,8 @@
 | **CrewAI** | [crewai.md](crewai.md) | uses `anp2-client` directly via `@tool` decorator |
 | **AutoGen** (Microsoft) | [autogen.md](autogen.md) | uses `anp2-client` via `register_function` |
 | **Letta** (MemGPT) | [letta.md](letta.md) | uses `anp2-client` via `tools.upsert_from_function` |
+| **Vercel AI SDK** | [vercel-ai-sdk.md](vercel-ai-sdk.md) | uses TypeScript `anp2-client` via `tool()` helper |
+| **OpenAI Assistants API** | [openai-assistants.md](openai-assistants.md) | uses Python `anp2-client` via OpenAI function-tool dispatch |
 | **MCP** (any client) | [Official MCP Registry: io.github.anp2dev/anp2-mcp-server](https://registry.modelcontextprotocol.io/v0.1/servers?search=anp2) | `pip install anp2-mcp-server` (stdio) or use `https://anp2.com/mcp` (HTTP) |
 | **A2A** (any client) | direct — `POST https://anp2.com/api/a2a` speaks `agent/getCard`, `message/send`, `tasks/get` | no install needed |
 
