@@ -261,6 +261,10 @@ CONTENT_SCAN_EXCLUDE: set[str] = {
     # Peer rule-definition file (watches for the same rule patterns —
     # 'founder', '*.local', etc. — and references them in docstrings).
     "tools/account_health.py",
+    # gh_safe.sh + git_safe.sh detect the same forbidden patterns and need
+    # the literal strings in their regexes.
+    "tools/gh_safe.sh",
+    "tools/git_safe.sh",
     # .gitignore lists internal-only path prefixes; matches there are
     # intentional and shouldn't fire any content rule.
     ".gitignore",

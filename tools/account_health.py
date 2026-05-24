@@ -41,6 +41,9 @@ Rules:
   R20 fork-burst-7d:               ≤ 3 forks created in last 7d
   R21 pr-external-rate-24h:        ≤ 2 PRs to external repos in last 24h (via gh_safe log)
   R22 fork-account-age-floor:      account age ≥ 7d before any fork is allowed
+  R23 git-push-burst:              ≤ 2 pushes / 1h, ≤ 5 / 24h, ≤ 15 / 7d (from git_safe log)
+  R24 git-force-push-rate:         ≤ 1 force-push / 24h, ≤ 2 / 7d (from git_safe log)
+  R25 author-email-stability:      no founder/.local/admin/root pattern; no flip-flop
 
 Thresholds (env var override):
   ANP2_GH_USER         (default: anp2dev)
@@ -330,6 +333,81 @@ def check_fork_burst() -> None:
         record("WARN", "R22 fork-account-age-floor", USER, f"profile HTTP {st2}")
 
 
+def check_git_burst() -> None:
+    """R23-R25: git push / force-push / author-email rate checks.
+
+    Reads env/.git-activity-log.jsonl populated by tools/git_safe.sh. The
+    log is gitignored. If git_safe wasn't used (direct git push), the log
+    won't have that event — fall back to GitHub /events API (R17 already
+    covers that surface from a different angle).
+    """
+    import json as _json
+    now = time.time()
+    pushes: list[float] = []
+    forces: list[float] = []
+    emails: list[tuple[float, str]] = []
+    try:
+        with open("env/.git-activity-log.jsonl") as fh:
+            for line in fh:
+                e = _json.loads(line)
+                if e.get("status") != "OK":
+                    continue
+                t = e.get("unix", 0)
+                act = e.get("action", "")
+                if act == "push":         pushes.append(t)
+                if act == "push-force":   forces.append(t); pushes.append(t)
+                if act == "config-email": emails.append((t, e.get("target", "")))
+    except FileNotFoundError:
+        pass
+
+    def in_window(ts_list, w): return sum(1 for t in ts_list if t >= now - w)
+
+    # R23: push burst
+    p1, p24, p7 = in_window(pushes, 3600), in_window(pushes, 86400), in_window(pushes, 86400 * 7)
+    c1 = int(os.environ.get("ANP2_PUSH_CAP_1H", "2"))
+    c24 = int(os.environ.get("ANP2_PUSH_CAP_24H", "5"))
+    c7 = int(os.environ.get("ANP2_PUSH_CAP_7D", "15"))
+    if p1 > c1 or p24 > c24 or p7 > c7:
+        record("FAIL", "R23 git-push-burst", "git_safe-log",
+               f"{p1}/{c1}h, {p24}/{c24}d, {p7}/{c7}w — slow down")
+    else:
+        record("PASS", "R23 git-push-burst", "git_safe-log",
+               f"{p1}/{c1}h {p24}/{c24}d {p7}/{c7}w")
+
+    # R24: force-push rate
+    f24, f7 = in_window(forces, 86400), in_window(forces, 86400 * 7)
+    fc24 = int(os.environ.get("ANP2_FORCE_PUSH_CAP_24H", "1"))
+    fc7 = int(os.environ.get("ANP2_FORCE_PUSH_CAP_7D", "2"))
+    if f24 > fc24 or f7 > fc7:
+        record("FAIL", "R24 git-force-push-rate", "git_safe-log",
+               f"{f24}/{fc24}d, {f7}/{fc7}w — force-push is rare-by-design")
+    else:
+        record("PASS", "R24 git-force-push-rate", "git_safe-log",
+               f"{f24}/{fc24}d {f7}/{fc7}w")
+
+    # R25: author email stability — flip-flop detection
+    # 1) ban founder/.local/admin/root in CURRENT email (catches direct git config)
+    try:
+        cur_email = subprocess.check_output(
+            ["git", "config", "user.email"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except Exception:
+        cur_email = ""
+    if re.search(r"founder@|\.local$|admin@|root@", cur_email, re.IGNORECASE):
+        record("FAIL", "R25 author-email-stability", "git-config",
+               f"current user.email '{cur_email}' matches forbidden pattern")
+    else:
+        # 2) flip-flop check: ≥ 3 distinct emails set in last 7 days = suspicious
+        e7d = [(t, e) for t, e in emails if t >= now - 86400 * 7]
+        distinct = {e for _, e in e7d}
+        if len(distinct) >= 3:
+            record("FAIL", "R25 author-email-stability", "git_safe-log",
+                   f"{len(distinct)} distinct emails set in last 7d (flip-flop pattern)")
+        else:
+            record("PASS", "R25 author-email-stability", "git-config",
+                   f"current={cur_email}, {len(distinct)} change(s)/7d")
+
+
 def check_repo_files() -> None:
     files = sh("git", "ls-files").split()
     for label, path, sev in (
@@ -446,6 +524,7 @@ def main() -> int:
     check_profile_completeness()
     check_pacing_from_api()
     check_fork_burst()
+    check_git_burst()
     check_committer_clean()
     check_repo_files()
 

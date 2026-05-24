@@ -56,8 +56,11 @@ now_unix() { date +%s; }
 log_op() {
     local action=$1 target=${2:-} status=$3
     local ts; ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local esc_target esc_status
+    esc_target=$(printf '%s' "$target" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read())[1:-1])')
+    esc_status=$(printf '%s' "$status" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read())[1:-1])')
     printf '{"ts":"%s","unix":%d,"action":"%s","target":"%s","status":"%s"}\n' \
-        "$ts" "$(now_unix)" "$action" "$target" "$status" >> "$LOG"
+        "$ts" "$(now_unix)" "$action" "$esc_target" "$esc_status" >> "$LOG"
 }
 fail() {
     echo "gh_safe: REFUSED — $1" >&2
