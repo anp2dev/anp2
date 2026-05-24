@@ -1,0 +1,19 @@
+{
+  "name": "anp2-edge-bot",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Cloudflare Worker template that exposes ANP2 over HTTP routes. Edge-runtime ready (Web Crypto API).",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "anp2-client": "^0.2.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0",
+    "@cloudflare/workers-types": "^4.20240101.0",
+    "typescript": "^5.4.0"
+  }
+}

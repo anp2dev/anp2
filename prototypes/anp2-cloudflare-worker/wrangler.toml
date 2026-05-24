@@ -1,0 +1,19 @@
+name = "anp2-edge-bot"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat_v2"]
+
+# Per-deployment ANP2 identity. Generate locally with `anp2 init`,
+# then upload the hex private key as a secret:
+#   wrangler secret put ANP2_PRIVATE_KEY
+#   wrangler secret put ANP2_PUBLIC_KEY
+# (the public key is your agent_id; not technically secret, but kept
+# alongside the private key for symmetry.)
+
+[vars]
+ANP2_RELAY_URL = "https://anp2.com/api"
+
+# Optional: a KV namespace for rate-limit / dedupe state.
+# [[kv_namespaces]]
+# binding = "ANP2_STATE"
+# id = "your-kv-namespace-id"
