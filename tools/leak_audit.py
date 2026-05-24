@@ -64,7 +64,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "(rule: implies a human founder)"),
     ("content-anp2-email",
      "content", r"\b[a-z][a-z0-9._+-]*@anp2\.com\b", "MEDIUM",
-     "legacy ANP2 brand in an email address (rule)"),
+     "legacy anp2 brand in an email address (rule)"),
     # — Operational / paid-service leaks (MEDIUM) —
     ("protonmail-plus",
      "content", r"ProtonMail\s*Plus", "MEDIUM",
@@ -194,7 +194,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "(human-existence leak per rule)"),
     ("author-anp2-domain",
      "author", r"@anp2\.com$", "MEDIUM",
-     "legacy ANP2 brand in author email (rule)"),
+     "legacy anp2 brand in author email (rule)"),
     # — rule: NEW identifier containing 'anp2' must NEVER be created —
     # The brand was migrated ANP2; only already-published IMMUTABLE PyPI
     # packages, Python module names, server paths, the legacy domain, and
@@ -220,7 +220,7 @@ RULES: list[tuple[str, str, str, str, str]] = [
 # leak_audit.py's own rule definitions (both via CONTENT_SCAN_EXCLUDE).
 # Anything else — every PyPI package name, every Python module reference,
 # every server path, every brand mention — is a violation.
-ANP2_GRANDFATHER_CONTENT = re.compile(
+anp2_GRANDFATHER_CONTENT = re.compile(
     r"(?i)__never_match__"   # intentionally unmatchable
 )
 # JS / npm context: if 'anp2-...' appears after an npm install command
@@ -228,7 +228,7 @@ ANP2_GRANDFATHER_CONTENT = re.compile(
 # the substring matches a PyPI grandfathered name. The npm namespace is
 # independent of PyPI; the only allowed npm package name for our client
 # is '@anp2/client'.
-ANP2_NPM_CONTEXT = re.compile(
+anp2_NPM_CONTEXT = re.compile(
     r"(?:"
     r"(?:npm install|pnpm add|yarn add)\s+(?:[\w@/.,^~<>=-]+\s+)*[\w@/.,^~<>=-]*anp2"
     r"|from\s+[\"'][^\"']*anp2"
@@ -241,7 +241,7 @@ ANP2_NPM_CONTEXT = re.compile(
 # contain 'anp2' anywhere. All Python modules, package dirs, systemd
 # units, and PyPI artifacts have been renamed to anp2 form. Adding to this
 # list = re-introducing the brand drift, never do it.
-ANP2_GRANDFATHER_PATH = re.compile(
+anp2_GRANDFATHER_PATH = re.compile(
     r"__never_match__"   # intentionally unmatchable
 )
 
@@ -252,7 +252,7 @@ ANP2_GRANDFATHER_PATH = re.compile(
 # - .gitignore:              its job is to LIST the internal paths so they
 #                            stay untracked; matches there are intentional
 # - prototypes/dashboard/index.html: contains a regex that strips the legacy
-#                            "ANP2<RoleName>" prefix from display names
+#                            "anp2<RoleName>" prefix from display names
 #                            (so the regex *includes* the bad words by design)
 CONTENT_SCAN_EXCLUDE: set[str] = {
     # The rule-definition files themselves. They MUST contain 'anp2'
@@ -264,7 +264,7 @@ CONTENT_SCAN_EXCLUDE: set[str] = {
     # .gitignore lists internal-only path prefixes; matches there are
     # intentional and shouldn't fire any content rule.
     ".gitignore",
-    # Dashboard renderer strips "ANP2<RoleName>" prefix from legacy
+    # Dashboard renderer strips "anp2<RoleName>" prefix from legacy
     # display names — the regex *includes* the bad word by design.
     "prototypes/dashboard/index.html",
 }
@@ -337,7 +337,7 @@ def scan_text(rule: tuple, text: str, scope: str) -> None:
         return  # one finding per (rule, scope) is enough
 
 
-ANP2_RULE_DIR_EXEMPT_PREFIXES: tuple[str, ...] = ()
+anp2_RULE_DIR_EXEMPT_PREFIXES: tuple[str, ...] = ()
 # All directories now scanned. Migration complete 2026-05-24; nothing in
 # the repo carries 'anp2' outside the rule definition files (which are
 # in CONTENT_SCAN_EXCLUDE).
@@ -364,13 +364,13 @@ def _scan_new_anp2_content(text: str, scope: str, sev: str) -> None:
     """
     # scope is either a path or "staged-diff:<path>" — extract the path
     bare_scope = scope.split(":", 1)[-1]
-    if any(bare_scope.startswith(p) for p in ANP2_RULE_DIR_EXEMPT_PREFIXES):
+    if any(bare_scope.startswith(p) for p in anp2_RULE_DIR_EXEMPT_PREFIXES):
         return
     grandfathered: list[tuple[int, int]] = [
-        (m.start(), m.end()) for m in ANP2_GRANDFATHER_CONTENT.finditer(text)
+        (m.start(), m.end()) for m in anp2_GRANDFATHER_CONTENT.finditer(text)
     ]
     npm_context: list[tuple[int, int]] = [
-        (m.start(), m.end()) for m in ANP2_NPM_CONTEXT.finditer(text)
+        (m.start(), m.end()) for m in anp2_NPM_CONTEXT.finditer(text)
     ]
     for m in re.finditer(r"(?i)anp2", text):
         pos = m.start()
@@ -393,7 +393,7 @@ def scan_path(rule: tuple, path: str) -> None:
     # a grandfathered prefix anywhere along it.
     if name == "path-new-anp2":
         if re.search(r"(?i)anp2", path):
-            if not ANP2_GRANDFATHER_PATH.search(path):
+            if not anp2_GRANDFATHER_PATH.search(path):
                 record(sev, name, "tracked-path", path)
         return
     if re.search(pat, path):
