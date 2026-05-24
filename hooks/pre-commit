@@ -28,3 +28,34 @@ if ! python3 tools/leak_audit.py --staged; then
   echo "  • last-resort bypass: git commit --no-verify" >&2
   exit 1
 fi
+
+# ── Flag-risk gate ───────────────────────────────────────────────────
+# If the publish-target account is flagged (shadow-suppressed), even local
+# commits to publish-bound branches accumulate state that, when eventually
+# pushed, makes the situation worse. Block commits to main when Flag-risk
+# is FAIL, unless an explicit operator override token is presented.
+current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+if [ "$current_branch" = "main" ] && [ -x tools/flag_risk_check.sh ]; then
+  if ! bash tools/flag_risk_check.sh >/dev/null 2>&1; then
+    # FAIL state. Check for override token.
+    override_file="env/.flag-risk-commit-override"
+    presented="${ANP2_FLAG_RISK_OVERRIDE:-}"
+    stored=""
+    [ -r "$override_file" ] && stored=$(cat "$override_file")
+    if [ -z "$stored" ] || [ "$stored" != "$presented" ]; then
+      echo "" >&2
+      echo "pre-commit: Flag-risk FAIL — commit to main BLOCKED while account is flagged." >&2
+      echo "  • The flagged account state is at:" >&2
+      bash tools/flag_risk_check.sh >&2 || true
+      echo "" >&2
+      echo "  • Defense-build override (operator-issued, single-use):" >&2
+      echo "      tools/defense_build_override_issue.sh" >&2
+      echo "      ANP2_FLAG_RISK_OVERRIDE=<token> git commit ..." >&2
+      echo "  • Or commit on a non-main branch (won't be auto-pushed)." >&2
+      exit 1
+    fi
+    # Consume override token
+    rm -f "$override_file"
+    echo "pre-commit: Flag-risk override consumed (single-use)" >&2
+  fi
+fi

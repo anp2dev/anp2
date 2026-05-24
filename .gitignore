@@ -89,3 +89,4 @@ node_modules/
 # PUBLISH, .gitattributes, stats.json) is OK to track if explicitly added.
 datasets/anp2-events/anp2-events.parquet
 datasets/anp2-events/anp2-events.jsonl
+CLAUDE.md

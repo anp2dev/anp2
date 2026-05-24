@@ -458,7 +458,7 @@ def check_extra_flag_patterns() -> None:
         topics = repo_data.get("topics", []) or []
         cap_t = int(os.environ.get("ANP2_REPO_TOPIC_CAP", "5"))
         if len(topics) > cap_t:
-            record("WARN", "R28 repo-topic-cap", f"{USER}/{REPO}",
+            record("FAIL", "R28 repo-topic-cap", f"{USER}/{REPO}",
                    f"{len(topics)} topics > {cap_t} — looks topic-spammed")
         else:
             record("PASS", "R28 repo-topic-cap", f"{USER}/{REPO}",

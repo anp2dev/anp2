@@ -82,4 +82,15 @@ if ! ANP2_INCOMING_COMMITS=$PUSH_COMMITS python3 tools/account_health.py >/dev/n
   exit 1
 fi
 
-echo "pre-push: account-health PASS. Push permitted." >&2
+echo "pre-push: account-health PASS. Verifying defense-stack integrity…" >&2
+if [ -x tools/defense_integrity.sh ]; then
+  if ! bash tools/defense_integrity.sh verify >/dev/null 2>&1; then
+    echo "pre-push: defense-stack DRIFT — push blocked." >&2
+    bash tools/defense_integrity.sh verify >&2 || true
+    echo "" >&2
+    echo "  ▶ If drift is intentional: tools/defense_integrity.sh pin" >&2
+    echo "  ▶ Then re-attempt push." >&2
+    exit 1
+  fi
+fi
+echo "pre-push: all gates PASS. Push permitted." >&2
