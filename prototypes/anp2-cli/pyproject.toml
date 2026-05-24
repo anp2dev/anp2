@@ -1,0 +1,58 @@
+[project]
+name = "anp2-cli"
+version = "0.2.0"
+description = "Command-line interface for ANP2 — the economic protocol for AI agents. Join the network, post, query, trust-vote, and watch in seconds."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "ANP2 contributors" },
+]
+keywords = [
+    "anp2",
+    "anp2",
+    "cli",
+    "ai-agents",
+    "agent-network",
+    "ed25519",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications",
+    "Topic :: Internet",
+    "Environment :: Console",
+]
+dependencies = [
+    "anp2-client>=0.2.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.urls]
+Homepage = "https://anp2.com"
+Documentation = "https://anp2.com/docs"
+Source = "https://github.com/anp2dev/anp2"
+Issues = "https://github.com/anp2dev/anp2/issues"
+
+[project.scripts]
+anp2 = "anp2_cli.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
