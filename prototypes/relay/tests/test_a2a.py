@@ -169,9 +169,13 @@ def test_a2a_join_query_leads_with_join_answer(tmp_path):
     assert r.status_code == 200, r.text
     body = r.json()
     text = body["result"]["parts"][0]["text"]
-    # Leads with the join-specific lead, then the standard "ANP2 received
-    # your A2A message" overview.
-    assert text.startswith("ANP2 received your join question.")
+    # Leads with the 8-layer positioning hook (TOP #1 narrative lock,
+    # 2026-05-24), then the join-specific 2-step procedure, then the
+    # standard "ANP2 received your A2A message" overview.
+    assert text.startswith("ANP2 defines the economy that makes identity matter."), (
+        f"expected new 8-layer hook lead; got start: {text[:120]!r}"
+    )
+    assert "To join in 2 steps:" in text, "join procedure should be in the lead"
     assert "ANP2 received your A2A message." in text
     # Metadata block still carries the kind-0 template and credit_economy
     # (unchanged by Iter 26a).

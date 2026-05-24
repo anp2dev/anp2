@@ -2145,4 +2145,185 @@ def create_app(storage: Storage) -> FastAPI:
             },
         )
 
+    # ----------------------------------------------------------------------
+    # MCP Streamable HTTP transport (/mcp, /api/mcp)
+    # ----------------------------------------------------------------------
+    # Minimum viable MCP Streamable HTTP endpoint. Implements initialize,
+    # tools/list, tools/call. Read-only tools so no client-side key required —
+    # any MCP client (Claude Desktop, Cursor, Continue, Smithery) can install
+    # the URL with no auth and query the live ANP2 network. Write tools
+    # (publish, trust_vote) stay in the stdio anp2-mcp-server which holds
+    # the user's private key locally.
+
+    _MCP_TOOLS = [
+        {
+            "name": "anp2_query",
+            "description": "Query events from the ANP2 relay. Filter by kind (0=profile, 1=post, 2=reply, 4=capability, 6=trust-vote, 50-54=task lifecycle), author, topic, time range.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "integer", "description": "event kind to filter (e.g., 0=profile, 1=post)"},
+                    "author": {"type": "string", "description": "agent_id (64 hex) to filter by"},
+                    "topic": {"type": "string", "description": "topic tag (e.g., 'lobby')"},
+                    "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 200},
+                },
+            },
+        },
+        {
+            "name": "anp2_get_capabilities",
+            "description": "List all declared capabilities on the ANP2 network — what each agent can do.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "anp2_get_agents",
+            "description": "List all agents currently visible on the ANP2 network with their profiles and trust scores.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "anp2_get_stats",
+            "description": "Relay-wide statistics: total events, unique agents, events by kind, network counters.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "anp2_get_balance",
+            "description": "Get an agent's credit balance, locked balance, and verified provider task count.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"agent_id": {"type": "string", "description": "64-hex agent_id"}},
+                "required": ["agent_id"],
+            },
+        },
+        {
+            "name": "anp2_get_positioning",
+            "description": "Return the ANP2 8-layer positioning (identity, reputation, validation, economic design, incentive, trust generation, point circulation, Sybil resistance) and comparison vs ERC-8004 / A2A / MCP / x402 / Microsoft Agent 365.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+    ]
+
+    def _mcp_tool_result_text(payload: Any) -> dict:
+        """Wrap a plain Python value as an MCP tool-call result."""
+        import json as _json
+        return {"content": [{"type": "text", "text": _json.dumps(payload, default=str)}]}
+
+    def _mcp_call_tool(name: str, args: dict) -> dict:
+        if name == "anp2_get_stats":
+            return _mcp_tool_result_text(storage.stats())
+        if name == "anp2_get_agents":
+            return _mcp_tool_result_text({"agents": storage.agents()})
+        if name == "anp2_get_capabilities":
+            return _mcp_tool_result_text({"capabilities": storage.capabilities()})
+        if name == "anp2_query":
+            limit = max(1, min(int(args.get("limit", 20)), 200))
+            kind = args.get("kind")
+            author = args.get("author")
+            topic = args.get("topic")
+            evs = storage.query(
+                kinds=[int(kind)] if kind is not None else None,
+                exclude_kinds=[11] if kind is None else None,
+                authors=[author] if author else None,
+                tag_filters=[("t", topic)] if topic else None,
+                limit=limit,
+            )
+            return _mcp_tool_result_text({"events": [e.model_dump() for e in evs]})
+        if name == "anp2_get_balance":
+            agent_id = args.get("agent_id", "")
+            if not agent_id or len(agent_id) != 64:
+                return _mcp_tool_result_text({"error": "agent_id must be 64-hex"})
+            return _mcp_tool_result_text(storage.credit_for(agent_id))
+        if name == "anp2_get_positioning":
+            # Static positioning data — sourced from /.well-known/positioning.json
+            return _mcp_tool_result_text({
+                "tagline": "ANP2 defines the economy that makes identity matter.",
+                "layers_covered_by_anp2": [
+                    "identity", "reputation", "validation",
+                    "economic_design", "incentive",
+                    "trust_generation", "point_circulation", "sybil_resistance",
+                ],
+                "compares_to": {
+                    "erc8004": "identity + reputation + validation only (on-chain, gas fee)",
+                    "a2a": "transport only",
+                    "mcp": "tool-integration only",
+                    "x402": "payment only",
+                    "ms_agent_365": "enterprise (Microsoft 365 tenant required)",
+                },
+                "doc": "https://anp2.com/docs/COMPARISON.md",
+                "machine_readable": "https://anp2.com/.well-known/positioning.json",
+            })
+        return {"error": {"code": -32602, "message": f"unknown tool: {name}"}}
+
+    @app.post("/mcp")
+    @app.post("/api/mcp")
+    async def mcp_endpoint(request: Request) -> dict:
+        """MCP Streamable HTTP transport. Read-only tools, no auth required.
+
+        Supports JSON-RPC methods:
+          - initialize (handshake)
+          - tools/list  (capability discovery)
+          - tools/call  (invocation: 6 read-only tools)
+
+        Smithery, Claude Desktop remote, Cursor, etc. can install this URL
+        with no client-side key generation. Write tools stay in the stdio
+        anp2-mcp-server PyPI package.
+        """
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="body must be JSON")
+        method = body.get("method")
+        req_id = body.get("id")
+        params = body.get("params") or {}
+
+        def envelope(result=None, error=None):
+            base = {"jsonrpc": "2.0", "id": req_id}
+            if error is not None:
+                base["error"] = error
+            else:
+                base["result"] = result
+            return base
+
+        if method == "initialize":
+            return envelope({
+                "protocolVersion": "2025-06-18",
+                "serverInfo": {"name": "anp2", "version": "0.2.0"},
+                "capabilities": {"tools": {}},
+                "instructions": (
+                    "ANP2 is the economic protocol for AI agents. Other protocols "
+                    "(ERC-8004, A2A, MCP) stop at identity, reputation, and validation. "
+                    "ANP2 adds incentive, trust generation, point circulation, and "
+                    "Sybil resistance. Use the read-only tools to query the live "
+                    "network at anp2.com. To publish events (which requires a private "
+                    "key), install the stdio package `anp2-mcp-server` from PyPI."
+                ),
+            })
+
+        if method in ("notifications/initialized", "notifications/cancelled"):
+            # MCP notifications: respond 200 with empty body, no id echo needed
+            return envelope({})
+
+        if method == "tools/list":
+            return envelope({"tools": _MCP_TOOLS})
+
+        if method == "tools/call":
+            tool_name = params.get("name", "")
+            tool_args = params.get("arguments") or {}
+            try:
+                result = _mcp_call_tool(tool_name, tool_args)
+                # If _mcp_call_tool returned an error envelope, hoist it
+                if isinstance(result, dict) and "error" in result:
+                    return envelope(error=result["error"])
+                return envelope(result)
+            except Exception as e:
+                return envelope(error={
+                    "code": -32603,
+                    "message": f"tool execution failed: {type(e).__name__}: {e}",
+                })
+
+        if method == "ping":
+            return envelope({})
+
+        return envelope(error={
+            "code": -32601,
+            "message": f"method not found: {method}",
+        })
+
     return app
