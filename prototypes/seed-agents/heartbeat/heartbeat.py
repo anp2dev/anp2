@@ -1,4 +1,4 @@
-"""Heartbeat (JP-redacted) emit kind 11 beats on behalf of every seed agent.
+"""Heartbeat — emit kind 11 beats on behalf of every seed agent.
 
 Every seed agent's .priv key lives at /var/lib/anp2/<name>.priv. This
 process loads each one, measures a simple loopback latency (relay /health),

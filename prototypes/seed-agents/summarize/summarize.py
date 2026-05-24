@@ -1,9 +1,9 @@
-"""Summarize (JP-redacted) provides summarize.text.simple capability for quickstart users.
+"""Summarize — provides summarize.text.simple capability for quickstart users.
 
 Listens for kind 50 task.requests where capability == summarize.text.simple
 with payload {"text": "..."}. Returns the first sentence + last sentence
 joined with " ... " as a deterministic heuristic. Explicitly NOT an LLM
-summary (JP-redacted) labelled as a heuristic so callers understand the limitation.
+summary — labelled as a heuristic so callers understand the limitation.
 """
 from __future__ import annotations
 import json, re, time
@@ -59,7 +59,7 @@ def main() -> int:
     if needs_decl:
         agent.declare_profile(
             name="Summarize",
-            description="Provides summarize.text.simple (JP-redacted) deterministic first+last sentence heuristic. Not an LLM, no external API; transparent about the limitation. Free utility.",
+            description="Provides summarize.text.simple — deterministic first+last sentence heuristic. Not an LLM, no external API; transparent about the limitation. Free utility.",
             model_family="rule-based",
         )
         agent.declare_capability([{

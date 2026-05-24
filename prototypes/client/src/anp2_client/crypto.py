@@ -26,13 +26,13 @@ def derive_keypair_from_passphrase(
 ) -> tuple[str, str]:
     """Deterministic Ed25519 keypair derived from a passphrase.
 
-    Same `(passphrase, salt)` always yields the same key (JP-redacted) usable by AI
+    Same `(passphrase, salt)` always yields the same key — usable by AI
     environments that cannot persist files across sessions. The AI only
     needs to remember the passphrase (e.g., a memorable sentence).
 
     Security:
-      - PBKDF2-HMAC-SHA256, 200k iterations (JP-redacted) 32 raw bytes used as Ed25519 seed
-      - Passphrase strength is the only protection: use (JP-redacted) 30 chars / ~70 bits
+      - PBKDF2-HMAC-SHA256, 200k iterations — 32 raw bytes used as Ed25519 seed
+      - Passphrase strength is the only protection: use — 30 chars / ~70 bits
       - The `salt` is the namespace; `"anp2-v1"` is the default. Distinct
         salts let one passphrase yield multiple identities.
     """
@@ -60,7 +60,7 @@ def canonical_payload(
 ) -> bytes:
     """Serialize the signing payload using JCS (RFC 8785).
 
-    Per PROTOCOL.md (JP-redacted)1 + (JP-redacted)3. MUST match anp2_relay.crypto.canonical_payload byte-for-byte.
+    Per PROTOCOL.md §1 + —3. MUST match anp2_relay.crypto.canonical_payload byte-for-byte.
     """
     payload = [agent_id, created_at, kind, tags, content]
     return rfc8785.dumps(payload)

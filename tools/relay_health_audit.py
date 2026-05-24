@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""relay_health_audit.py (JP-redacted) ANP2 relay runtime health & KPI audit.
+"""relay_health_audit.py — ANP2 relay runtime health & KPI audit.
 
-WHY THIS EXISTS (Iter 16, 2026-05-22): three serious problems (JP-redacted) a 91%
+WHY THIS EXISTS (Iter 16, 2026-05-22): three serious problems — a 91%
 heartbeat-polluted event log, an empty live task-lifecycle demo, and an A2A
-bridge that handed external agents prose instead of an actionable join path (JP-redacted)
+bridge that handed external agents prose instead of an actionable join path —
 all festered unnoticed for days. Every one was visible in the live API the
 whole time; nothing was watching. This script watches.
 
@@ -61,7 +61,7 @@ def main() -> None:
     base = ap.parse_args().base.rstrip("/")
     now = int(time.time())
 
-    # 1 (JP-redacted) relay reachable + stats
+    # 1 — relay reachable + stats
     stats = None
     try:
         _, body = http_get(f"{base}/api/stats")
@@ -71,8 +71,8 @@ def main() -> None:
     except Exception as e:
         record("FAIL", "relay /api/stats", repr(e))
 
-    # 2 (JP-redacted) content-kind balance + the kind-11 non-persistence guard. Kind 11
-    #     (health beats) is ephemeral infra (PROTOCOL (JP-redacted)5.5): it is not written
+    # 2 — content-kind balance + the kind-11 non-persistence guard. Kind 11
+    #     (health beats) is ephemeral infra (PROTOCOL §5.5): it is not written
     #     to the event log. Check (a) no single content kind dominates, and
     #     (b) no RECENT kind-11 has been persisted (that would be a regression).
     if stats:
@@ -84,7 +84,7 @@ def main() -> None:
             pct = 100 * c / content_total
             msg = f"largest content kind {k} = {pct:.0f}% of {content_total} non-infra events"
             if pct >= 70:
-                record("FAIL", "content-kind balance", msg + " (JP-redacted) one kind dominates")
+                record("FAIL", "content-kind balance", msg + " — one kind dominates")
             elif pct >= 55:
                 record("WARN", "content-kind balance", msg)
             else:
@@ -98,14 +98,14 @@ def main() -> None:
         evs = json.loads(body)
         if evs and (now - int(evs[0]["created_at"])) < 900:
             record("FAIL", "kind-11 not persisted",
-                   "a kind-11 beat from the last 15 min is in the event log (JP-redacted) non-persistence regressed")
+                   "a kind-11 beat from the last 15 min is in the event log — non-persistence regressed")
         else:
             record("PASS", "kind-11 not persisted",
-                   "no recent kind-11 in the log (ephemeral, PROTOCOL (JP-redacted)5.5)")
+                   "no recent kind-11 in the log (ephemeral, PROTOCOL §5.5)")
     except Exception as e:
         record("FAIL", "kind-11 not persisted", repr(e))
 
-    # 3 (JP-redacted) network freshness (is the network producing events at all)
+    # 3 — network freshness (is the network producing events at all)
     try:
         _, body = http_get(f"{base}/api/events?limit=1")
         evs = json.loads(body)
@@ -113,7 +113,7 @@ def main() -> None:
         if age is None:
             record("FAIL", "network freshness", "no events returned")
         elif age > 1800:
-            record("FAIL", "network freshness", f"newest event {age}s old (JP-redacted) stalled")
+            record("FAIL", "network freshness", f"newest event {age}s old — stalled")
         elif age > 600:
             record("WARN", "network freshness", f"newest event {age}s old")
         else:
@@ -121,19 +121,19 @@ def main() -> None:
     except Exception as e:
         record("FAIL", "network freshness", repr(e))
 
-    # 4 (JP-redacted) default feed must exclude kind 11 (Iter-16 regression guard)
+    # 4 — default feed must exclude kind 11 (Iter-16 regression guard)
     try:
         _, body = http_get(f"{base}/api/events?limit=50")
         kinds = sorted({e["kind"] for e in json.loads(body)})
         if 11 in kinds:
             record("FAIL", "default feed excludes kind 11",
-                   "kind 11 present in default /api/events (JP-redacted) regression")
+                   "kind 11 present in default /api/events — regression")
         else:
             record("PASS", "default feed excludes kind 11", f"feed kinds: {kinds}")
     except Exception as e:
         record("FAIL", "default feed excludes kind 11", repr(e))
 
-    # 5 (JP-redacted) live task-lifecycle demo populated (the landing page's flagship pane)
+    # 5 — live task-lifecycle demo populated (the landing page's flagship pane)
     try:
         _, body = http_get(f"{base}/api/events?kinds=50,51,52,53,54&limit=20")
         n = len(json.loads(body))
@@ -141,11 +141,11 @@ def main() -> None:
             record("PASS", "live task-lifecycle demo", f"{n} task events available")
         else:
             record("FAIL", "live task-lifecycle demo",
-                   "no kind 50-54 events (JP-redacted) landing demo would render empty")
+                   "no kind 50-54 events — landing demo would render empty")
     except Exception as e:
         record("FAIL", "live task-lifecycle demo", repr(e))
 
-    # 6 (JP-redacted) A2A machine-actionable handoff present (Iter-16 regression guard)
+    # 6 — A2A machine-actionable handoff present (Iter-16 regression guard)
     try:
         _, body = http_post_json(f"{base}/api/a2a", {
             "jsonrpc": "2.0", "id": 1, "method": "message/send",
@@ -155,11 +155,11 @@ def main() -> None:
             record("PASS", "A2A handoff", "result.metadata.anp2 present")
         else:
             record("FAIL", "A2A handoff",
-                   "metadata.anp2 missing (JP-redacted) A2A bridge regressed to prose-only")
+                   "metadata.anp2 missing — A2A bridge regressed to prose-only")
     except Exception as e:
         record("FAIL", "A2A handoff", repr(e))
 
-    # 7 (JP-redacted) publish errors stay actionable (Iter-16 regression guard): a
+    # 7 — publish errors stay actionable (Iter-16 regression guard): a
     #     deliberately wrong id must yield a 400 that names the cause. The
     #     malformed event is rejected, never stored.
     try:
@@ -175,11 +175,11 @@ def main() -> None:
             record("PASS", "publish error is actionable", "400 carries the JCS hint")
         else:
             record("FAIL", "publish error is actionable",
-                   f"detail={detail[:70]!r} (JP-redacted) not actionable")
+                   f"detail={detail[:70]!r} — not actionable")
     except Exception as e:
         record("FAIL", "publish error is actionable", repr(e))
 
-    # 8 (JP-redacted) key public endpoints respond 200
+    # 8 — key public endpoints respond 200
     for path in ("/", "/llms.txt", "/robots.txt", "/sitemap.xml",
                  "/spec/PROTOCOL.md", "/docs/ONBOARDING_AI.md",
                  "/.well-known/anp2.json", "/.well-known/agent-card.json",
@@ -193,7 +193,7 @@ def main() -> None:
         except Exception as e:
             record("FAIL", f"endpoint {path}", repr(e))
 
-    # 9 (JP-redacted) A2A -> publish conversion funnel (informational; server-side only (JP-redacted)
+    # 9 — A2A -> publish conversion funnel (informational; server-side only —
     #     reads journald [A2A-IN] lines + the Caddy access log; skipped
     #     gracefully off-host). Surfaces the inbound-interest vs actual-
     #     participation gap every run so handoff/outreach changes are measurable.
@@ -241,12 +241,12 @@ def main() -> None:
                f"{agents} agents on the network")
     else:
         record("PASS", "A2A->publish funnel",
-               "skipped (server-only check (JP-redacted) needs journald + access log)")
+               "skipped (server-only check — needs journald + access log)")
 
     # report
     label = {"PASS": "OK  ", "WARN": "WARN", "FAIL": "FAIL"}
     stamp = time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())
-    print(f"ANP2 relay health audit (JP-redacted) {base} (JP-redacted) {stamp}")
+    print(f"ANP2 relay health audit — {base} — {stamp}")
     print("-" * 68)
     for level, name, detail in results:
         print(f"  [{label[level]}] {name}: {detail}")

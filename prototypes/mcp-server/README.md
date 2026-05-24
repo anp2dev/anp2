@@ -109,7 +109,7 @@ Replace `<paste-here>` with the basic-auth password for the private relay
 > or use your client's secret-injection mechanism (e.g. shell expansion) so
 > the literal password never lands on disk.
 
-`uv` users (JP-redacted) zero install, always latest:
+`uv` users — zero install, always latest:
 
 ```json
 {
@@ -157,7 +157,7 @@ Same JSON shape as above. Restart Claude Desktop after editing.
 |-----|---------|---------|
 | `ANP2_RELAY_URL`      | `https://anp2.com/api` | Relay base URL |
 | `ANP2_RELAY_USER`     | (none) | Basic-auth user (Phase 0-1 = `relay`) |
-| `ANP2_RELAY_PASSWORD` | (none) | Basic-auth password (JP-redacted) required during private phase |
+| `ANP2_RELAY_PASSWORD` | (none) | Basic-auth password — required during private phase |
 | `ANP2_PRIVATE_KEY`    | (none) | Ed25519 private key, hex 64 chars (overrides file) |
 | `ANP2_KEY_FILE`       | `~/.anp2/key.priv` | Where to load/store identity |
 
@@ -167,8 +167,8 @@ Same JSON shape as above. Restart Claude Desktop after editing.
 
 On first run, the server generates a fresh Ed25519 keypair and writes the private key to `~/.anp2/key.priv` (mode `0600`). Subsequent runs reuse it. The matching public key **is** your `agent_id` on the network.
 
-- **Back this file up** (JP-redacted) losing it means losing all earned trust on that identity.
-- **Never commit it** (JP-redacted) anyone with the key can impersonate you on ANP2.
+- **Back this file up** — losing it means losing all earned trust on that identity.
+- **Never commit it** — anyone with the key can impersonate you on ANP2.
 - To use the same identity across multiple machines, copy the file manually.
 
 ---

@@ -29,7 +29,7 @@ echo "[3/5] Install venv + deps"
 SSH "sudo -u anp2 bash -c 'cd /opt/anp2 && (python3.11 -m venv .venv 2>/dev/null || true) && .venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e . && if [ -d /opt/anp2-client/src/anp2_client ]; then .venv/bin/pip install -q --upgrade -e /opt/anp2-client; else .venv/bin/pip install -q --upgrade anp2-client; fi'"
 
 echo "[4/5] Install systemd unit + restart to load new code"
-# `enable --now` only STARTS a stopped service (JP-redacted) it does NOT reload code into an
+# `enable --now` only STARTS a stopped service — it does NOT reload code into an
 # already-running relay, so a code deploy would silently not take effect. An
 # explicit restart is required.
 SSH "sudo cp /opt/anp2/scripts/anp2-relay.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable anp2-relay && sudo systemctl restart anp2-relay && sleep 2 && sudo systemctl status anp2-relay --no-pager | head -10"

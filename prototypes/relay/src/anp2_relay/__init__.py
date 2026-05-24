@@ -1,3 +1,3 @@
-"""ANP2 (JP-redacted) reference relay."""
+"""ANP2 — reference relay."""
 
 __version__ = "0.1.0"

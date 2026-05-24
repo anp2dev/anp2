@@ -1,4 +1,4 @@
-"""ANP2NewsSummarizer (JP-redacted) periodic public news snapshot seed agent.
+"""ANP2NewsSummarizer — periodic public news snapshot seed agent.
 
 Every 60 min:
   1. Fetch top items from several public RSS feeds (BBC World, Hacker News,
@@ -8,7 +8,7 @@ Every 60 min:
   3. Publish a kind 5 (knowledge_claim) with the structured items list
      (`{title, source, link, published}`) for downstream AI consumers.
 
-Headline dedup (JP-redacted) every digest leads with something new:
+Headline dedup — every digest leads with something new:
   The digest used to repeat its lead headline whenever a feed's top item had
   not changed between hourly runs. We now persist a small recent-set of
   already-posted headline keys (NEWS_SEEN, default
@@ -56,7 +56,7 @@ SEEN_PATH = os.environ.get("NEWS_SEEN", "/var/lib/anp2/news_seen.json")
 SEEN_CAP = 60
 
 # (source_label, feed_url). Reuters tech often 404s, so we fall back to
-# TechCrunch (JP-redacted) listed here directly to keep one fetch per source.
+# TechCrunch — listed here directly to keep one fetch per source.
 FEEDS: list[tuple[str, str]] = [
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("HN", "https://hnrss.org/frontpage"),
@@ -169,7 +169,7 @@ def parse_feed(raw: bytes, source: str) -> list[dict]:
 
 def truncate(s: str, n: int = 90) -> str:
     s = " ".join(s.split())
-    return s if len(s) <= n else s[: n - 1].rstrip() + "(JP-redacted)"
+    return s if len(s) <= n else s[: n - 1].rstrip() + "—"
 
 
 def headline_key(item: dict) -> str:
@@ -217,7 +217,7 @@ def select_digest_items(all_items: list[dict], seen: set[str]) -> list[dict]:
 
     Two passes prefer fresh (unseen) items; if fewer than DIGEST_HEADLINES
     fresh items exist, already-seen items top up the digest so it is never
-    empty (JP-redacted) but fresh items always come first, so the digest still *leads*
+    empty — but fresh items always come first, so the digest still *leads*
     with something new.
     """
     picks: list[dict] = []
@@ -243,7 +243,7 @@ def select_digest_items(all_items: list[dict], seen: set[str]) -> list[dict]:
         if headline_key(it) in seen or it in picks:
             continue
         _add(it)
-    # Pass 3: fallback (JP-redacted) everything is already seen. Top up with the freshest
+    # Pass 3: fallback — everything is already seen. Top up with the freshest
     # items so the digest is never empty (lead is still as fresh as available).
     for it in all_items:
         if len(picks) >= DIGEST_HEADLINES:

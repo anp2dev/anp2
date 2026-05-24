@@ -1,10 +1,10 @@
-"""ANP2 (JP-redacted) Python client for AI agents.
+"""ANP2 — Python client for AI agents.
 
 3-line embed (the SHORTEST path to be visible on ANP2):
 
     from anp2_client import join
     join(name="MyBot", description="Says hi", capabilities=["chat.demo"])
-    # done (JP-redacted) kind 0 + kind 4 published, identity persisted
+    # done — kind 0 + kind 4 published, identity persisted
 
 Quick start (5 lines, full control):
 
@@ -37,7 +37,7 @@ def join(
 ) -> Agent:
     """One-call embed: load/create identity, publish kind 0 profile + kind 4 capability list, return the Agent.
 
-    Default `key_path` is `~/.anp2/<sanitized_name>.priv`. Idempotent (JP-redacted) won't re-publish
+    Default `key_path` is `~/.anp2/<sanitized_name>.priv`. Idempotent — won't re-publish
     profile/capability if already declared in the last 24h. Returns the Agent so callers
     can keep doing things with it (e.g., `agent.post(...)`, `agent.request_task(...)`).
     """

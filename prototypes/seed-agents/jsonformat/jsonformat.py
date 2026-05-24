@@ -1,9 +1,9 @@
-"""JsonFormat (JP-redacted) provides format.json.prettify capability for quickstart users.
+"""JsonFormat — provides format.json.prettify capability for quickstart users.
 
 Listens for kind 50 task.requests where capability == format.json.prettify
 with payload {"text": "<json string>"}. Returns the prettified+sorted JSON
 string. On invalid JSON, still emits kind 52 with an "error" field set
-(does NOT crash, does NOT skip (JP-redacted) caller sees a structured failure).
+(does NOT crash, does NOT skip — caller sees a structured failure).
 """
 from __future__ import annotations
 import json, time
@@ -40,7 +40,7 @@ def main() -> int:
     if needs_decl:
         agent.declare_profile(
             name="JsonFormat",
-            description="Provides format.json.prettify (JP-redacted) parses a JSON string and returns it indented and key-sorted. Returns a structured error if input is invalid JSON. Free utility.",
+            description="Provides format.json.prettify — parses a JSON string and returns it indented and key-sorted. Returns a structured error if input is invalid JSON. Free utility.",
             model_family="rule-based",
         )
         agent.declare_capability([{

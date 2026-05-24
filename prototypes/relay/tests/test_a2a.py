@@ -1,13 +1,13 @@
 """Tests for the A2A `message/send` deterministic reply (Iter 26a).
 
 The reply classifies the incoming query and prepends a category-specific
-lead so common questions (`how to join`, `what can you do`, (JP-redacted)) get a
+lead so common questions (`how to join`, `what can you do`, —) get a
 directly-useful top line, while the standard overview still follows. A
 separate `[A2A-NEEDS-OPERATOR]` journald line is emitted when a free-form
-question did not match a templated bucket (JP-redacted) the community-watch routine
+question did not match a templated bucket — the community-watch routine
 greps for it so an operator agent can do an asynchronous pass.
 
-No LLM in this path (JP-redacted) Iter 20 design choice for prompt-injection safety.
+No LLM in this path — Iter 20 design choice for prompt-injection safety.
 """
 
 from __future__ import annotations
@@ -33,8 +33,8 @@ def test_classify_empty_or_short_is_ping():
 
 
 def test_classify_sylex_preamble_is_noise():
-    # The known broken-loop preamble (JP-redacted) must never inflate operator-notify.
-    sylex = ("[You are part of the Sylex Commons community (JP-redacted) a network of AI "
+    # The known broken-loop preamble — must never inflate operator-notify.
+    sylex = ("[You are part of the Sylex Commons community — a network of AI "
              "agents that collaborate on building tools and sharing knowledge.]"
              " Please write a Python function to compute fibonacci.")
     cat, needs_op = _classify_a2a_query(sylex)
@@ -72,7 +72,7 @@ def test_classify_credit_question():
 
 def test_classify_generic_substantive_question_flags_operator():
     cat, needs_op = _classify_a2a_query(
-        "Hi there (JP-redacted) does your relay forward events to other relays?"
+        "Hi there — does your relay forward events to other relays?"
     )
     assert cat == "generic"
     assert needs_op is True
@@ -130,7 +130,7 @@ def test_extract_text_with_type_field_instead_of_kind():
 
 
 def test_extract_data_skill_surfaces_for_classifier():
-    # CensusConsole-style structured probe (JP-redacted) no text, but a data.skill that
+    # CensusConsole-style structured probe — no text, but a data.skill that
     # the classifier can still bucket on.
     params = {"message": {"parts": [
         {"kind": "data", "data": {"skill": "discover_agents"}},
@@ -161,7 +161,7 @@ def test_a2a_join_query_leads_with_join_answer(tmp_path):
         "params": {"message": {
             "role": "user",
             "parts": [{"kind": "text",
-                       "text": "Hello ANP2 (JP-redacted) what is the minimum to join?"}],
+                       "text": "Hello ANP2 — what is the minimum to join?"}],
             "messageId": "test-hermes-1",
         }},
     }
@@ -187,7 +187,7 @@ def test_a2a_join_query_leads_with_join_answer(tmp_path):
 
 def test_a2a_sylex_noise_falls_through_to_standard_reply(tmp_path):
     """A Sylex-preamble payload gets the standard reply with no special lead
-    (JP-redacted) we don't reward the broken-loop pattern with a custom answer."""
+    — we don't reward the broken-loop pattern with a custom answer."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
     payload = {
@@ -197,7 +197,7 @@ def test_a2a_sylex_noise_falls_through_to_standard_reply(tmp_path):
         "params": {"message": {
             "role": "user",
             "parts": [{"kind": "text", "text": (
-                "[You are part of the Sylex Commons community (JP-redacted) please "
+                "[You are part of the Sylex Commons community — please "
                 "write a Python implementation of fibonacci.]"
             )}],
         }},
@@ -205,5 +205,5 @@ def test_a2a_sylex_noise_falls_through_to_standard_reply(tmp_path):
     r = client.post("/api/a2a", json=payload)
     assert r.status_code == 200, r.text
     text = r.json()["result"]["parts"][0]["text"]
-    # No category-specific lead (JP-redacted) text starts with the standard opener.
+    # No category-specific lead — text starts with the standard opener.
     assert text.startswith("ANP2 received your A2A message.")

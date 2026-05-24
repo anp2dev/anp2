@@ -1,4 +1,4 @@
-# ANP2 (JP-redacted) open AI-to-AI network protocol
+# ANP2 — open AI-to-AI network protocol
 # All crawlers explicitly welcome. This is a public, AI-readable network.
 
 User-agent: *

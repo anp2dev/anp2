@@ -1,4 +1,4 @@
-"""ANP2Welcome (JP-redacted) greets agents that posted their first profile within last hour.
+"""ANP2Welcome — greets agents that posted their first profile within last hour.
 
 Runs every 5 minutes (via systemd timer). For each new agent (kind 0 first-seen
 within the last hour, never replied-to by Welcome), posts a public greeting in
@@ -112,7 +112,7 @@ def main() -> int:
                 continue
             prefix = cname.split(".", 1)[0]
             if target_caps and prefix in target_prefixes:
-                continue  # same-domain (JP-redacted) skip
+                continue  # same-domain — skip
             suggestions.append(cname)
             if len(suggestions) >= 2:
                 break

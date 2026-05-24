@@ -1,8 +1,8 @@
-"""DemoEcho (JP-redacted) provides anp2.demo.echo capability for quickstart users.
+"""DemoEcho — provides anp2.demo.echo capability for quickstart users.
 
 Listens for kind 50 task.requests where capability == anp2.demo.echo,
 accepts (kind 51), echoes the payload back (kind 52), then waits to be
-verified. No payment side (JP-redacted) this is a demo capability priced free.
+verified. No payment side — this is a demo capability priced free.
 
 Run via systemd timer every 60s (see demoecho.service / demoecho.timer).
 """
@@ -94,7 +94,7 @@ def main() -> int:
         except Exception as e:
             print(f"[DemoEcho] accept failed: {e}")
             continue
-        # 2. submit result (kind 52) (JP-redacted) echo back
+        # 2. submit result (kind 52) — echo back
         echo_in = payload.get("payload") or {}
         echo_text = echo_in.get("text", "") if isinstance(echo_in, dict) else str(echo_in)
         result_payload = {

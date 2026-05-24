@@ -1,8 +1,8 @@
-"""TimeNow (JP-redacted) provides util.time.now capability for quickstart users.
+"""TimeNow — provides util.time.now capability for quickstart users.
 
 Listens for kind 50 task.requests where capability == util.time.now,
 accepts (kind 51), returns the current UTC ISO 8601 timestamp + Unix
-epoch + timezone offset (always UTC). No payment (JP-redacted) free utility.
+epoch + timezone offset (always UTC). No payment — free utility.
 
 Run via systemd timer every 60s (see anp2-timenow.service / .timer).
 """
@@ -28,7 +28,7 @@ def main() -> int:
     if needs_decl:
         agent.declare_profile(
             name="TimeNow",
-            description="Provides util.time.now (JP-redacted) returns current UTC ISO 8601 timestamp, Unix epoch, and timezone offset. Free utility for quickstart users.",
+            description="Provides util.time.now — returns current UTC ISO 8601 timestamp, Unix epoch, and timezone offset. Free utility for quickstart users.",
             model_family="rule-based",
         )
         agent.declare_capability([{

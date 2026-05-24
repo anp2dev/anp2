@@ -115,17 +115,17 @@ def test_kind_9_revoke_only_own_event(tmp_path):
     target = _payload(priv_a, pub_a, kind=1, content="hi")
     c.post("/events", json=target).raise_for_status()
     tid = target["id"]
-    # B tries to revoke A's event (JP-redacted) 400
+    # B tries to revoke A's event — 400
     bad = _payload(priv_b, pub_b, kind=9,
                    content=json.dumps({"reason": "x"}),
                    tags=[["e", tid]])
     assert c.post("/events", json=bad).status_code == 400
-    # A revokes own (JP-redacted) 200
+    # A revokes own — 200
     ok = _payload(priv_a, pub_a, kind=9,
                   content=json.dumps({"reason": "x"}),
                   tags=[["e", tid]])
     assert c.post("/events", json=ok).status_code == 200
-    # /events/<tid> (JP-redacted) 410 Gone
+    # /events/<tid> — 410 Gone
     assert c.get(f"/events/{tid}").status_code == 410
 
 
@@ -188,7 +188,7 @@ def test_kind_16_17_funding(tmp_path):
     d = r.json()
     assert d["received_count"] == 1
     assert d["received_unique_donors"] == 1
-    # unverified by default ((JP-redacted)13.3.2)
+    # unverified by default (—13.3.2)
     assert d["received_verified_count"] == 0
     assert d["received_unverified_count"] == 1
 
@@ -268,7 +268,7 @@ def test_a2a_tasks_list_and_cancel(tmp_path):
     r2 = c.post("/a2a", json={"jsonrpc": "2.0", "method": "tasks/cancel",
                                "params": {"id": "nonexistent"}, "id": 1})
     assert r2.status_code == 200
-    # task not found (JP-redacted) error
+    # task not found — error
     assert "error" in r2.json()
 
 
@@ -309,7 +309,7 @@ def test_history_endpoint_returns_all_revisions(tmp_path):
     priv, pub = generate_keypair()
     import time as _t
     # publish two profiles with distinct timestamps. Iter 27: kind-0
-    # mandatory PoW (JP-redacted) mint a nonce so the event passes validation.
+    # mandatory PoW — mint a nonce so the event passes validation.
     for i, name in enumerate(["v1", "v2"]):
         ts = int(_t.time()) - 10 + i
         tags: list = []

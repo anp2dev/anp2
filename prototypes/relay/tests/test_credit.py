@@ -1,15 +1,15 @@
-"""Tests for the ANP2 operator-issued credit economy (PROTOCOL (JP-redacted)18.11).
+"""Tests for the ANP2 operator-issued credit economy (PROTOCOL §18.11).
 
 Credit is a relay-derived ledger: balances are a pure function of the event
 log (kinds 50/51/52/53/55), never stored. On each passed settlement the
 relay routes a 10% transaction fee to a fixed treasury agent; across
 {requester, provider, treasury} the sum is always exactly zero. The relay
-does NOT enforce a hard credit limit at publish (JP-redacted) provider acceptance is
+does NOT enforce a hard credit limit at publish — provider acceptance is
 voluntary.
 
 Settlement counts only a NEUTRAL verifier's verdict (a kind 53 from an
 agent that is neither the requester nor the provider, and not the treasury
-(JP-redacted) (JP-redacted)18.6 / (JP-redacted)18.11), so neither side can mint credit by self-verifying.
+— —18.6 / —18.11), so neither side can mint credit by self-verifying.
 
 Coverage:
   (a) full credit task: passed -> requester -N, provider +(N-fee), treasury +fee
@@ -18,7 +18,7 @@ Coverage:
   (d) no hard credit limit at publish (the old 422 enforcement was removed)
   (e) GET /agents/<id>/credit returns the right shape, with fee accounting
   (f) a disputed task is terminal, not left locked
-  (g) cancel is honoured only from the requester ((JP-redacted)18.9)
+  (g) cancel is honoured only from the requester (—18.9)
   (h) self-attested verdicts (requester/provider) do NOT settle credit
   (i) treasury accrues fees across multiple passed settlements
   (j) standing-accrual guards: self-tasks and zero-reward tasks do NOT
@@ -185,7 +185,7 @@ def _run_task(client, *, priv_req, pub_req, priv_prov, pub_prov, priv_ver, pub_v
 def test_credit_full_task_settles_debit_and_credit(tmp_path):
     """kind 50 (anp2_credit, N) + 51 + 52 + neutral 53 passed
     -> requester -N, provider +(N - fee), treasury +fee (10% floor,
-    PROTOCOL (JP-redacted)18.11). Sum across {requester, provider, treasury} is zero."""
+    PROTOCOL §18.11). Sum across {requester, provider, treasury} is zero."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
 
@@ -273,9 +273,9 @@ def test_credit_open_task_locks_requester_amount(tmp_path):
 
 
 def test_no_hard_credit_limit_enforcement(tmp_path):
-    """PROTOCOL (JP-redacted)18.11 (phase 0/1): the relay does NOT enforce a hard credit
+    """PROTOCOL §18.11 (phase 0/1): the relay does NOT enforce a hard credit
     limit at publish. Any agent may post a kind-50 task.request regardless of
-    balance (JP-redacted) provider acceptance is voluntary and informed by the requester's
+    balance — provider acceptance is voluntary and informed by the requester's
     public balance / history. The relay still rejects malformed rewards
     (negative amount) with HTTP 400, and `mocked` reward tasks remain
     accepted (they don't touch the credit ledger at all)."""
@@ -290,7 +290,7 @@ def test_no_hard_credit_limit_enforcement(tmp_path):
         priv_req, pub_req, amount=10000, ts=t0))
     assert r1.status_code == 200, r1.text
 
-    # Posting a second huge task is also fine (JP-redacted) no hard cap, even though the
+    # Posting a second huge task is also fine — no hard cap, even though the
     # requester now has 10000 of open `locked` exposure.
     r2 = client.post("/events", json=_make_credit_request(
         priv_req, pub_req, amount=99999, ts=t0 + 1))
@@ -332,7 +332,7 @@ def test_no_hard_credit_limit_enforcement(tmp_path):
 
 
 def test_credit_endpoint_returns_expected_shape(tmp_path):
-    """GET /agents/<id>/credit (and /api/...) returns the (JP-redacted)18.11 shape, with
+    """GET /agents/<id>/credit (and /api/...) returns the §18.11 shape, with
     the 10% treasury fee correctly accounted for on the provider side."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
@@ -361,7 +361,7 @@ def test_credit_endpoint_returns_expected_shape(tmp_path):
         assert body["available"] == -amount
         assert body["verified_provider_tasks"] == 0
 
-    # provider side (JP-redacted) receives 90% of the gross reward
+    # provider side — receives 90% of the gross reward
     r = client.get(f"/agents/{pub_prov}/credit")
     assert r.status_code == 200
     assert r.json()["balance"] == provider_share
@@ -380,8 +380,8 @@ def test_credit_endpoint_returns_expected_shape(tmp_path):
 
 def test_credit_disputed_task_not_locked(tmp_path):
     """Conflicting NEUTRAL kind-53 verdicts (>=1 passed AND >=1 failed) make
-    the task `disputed` (JP-redacted) terminal, moves zero credit, not left locked
-    (PROTOCOL (JP-redacted)18.7 / (JP-redacted)18.11)."""
+    the task `disputed` — terminal, moves zero credit, not left locked
+    (PROTOCOL §18.7 / —18.11)."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
     priv_req, pub_req = generate_keypair()
@@ -411,11 +411,11 @@ def test_credit_disputed_task_not_locked(tmp_path):
     assert storage.credit_for(pub_prov)["balance"] == 0
 
 
-# ---------- (g) cancel honoured only from the requester ((JP-redacted)18.9) ----------
+# ---------- (g) cancel honoured only from the requester (—18.9) ----------
 
 
 def test_credit_cancel_only_from_requester(tmp_path):
-    """PROTOCOL (JP-redacted)18.9: only the requester can cancel, only before any kind-51
+    """PROTOCOL §18.9: only the requester can cancel, only before any kind-51
     accept. A kind-55 from a third party must NOT release the requester's
     locked credit."""
     storage = Storage(tmp_path / "credit.db")
@@ -430,7 +430,7 @@ def test_credit_cancel_only_from_requester(tmp_path):
     task_id = req["id"]
     assert storage.credit_for(pub_req)["locked"] == amount   # open -> locked
 
-    # a kind-55 from a NON-requester must be ignored (JP-redacted) still locked
+    # a kind-55 from a NON-requester must be ignored — still locked
     _post(client, _make_cancel(priv_other, pub_other, task_id, ts=t0 + 1))
     assert storage.credit_for(pub_req)["locked"] == amount
 
@@ -444,7 +444,7 @@ def test_credit_cancel_only_from_requester(tmp_path):
 
 def test_credit_self_verification_does_not_settle(tmp_path):
     """A kind-53 authored by the requester or the provider carries no
-    settlement weight (PROTOCOL (JP-redacted)18.6 / (JP-redacted)18.11) (JP-redacted) credit must not move, so a
+    settlement weight (PROTOCOL §18.6 / —18.11) — credit must not move, so a
     provider cannot mint credit by passing its own task. The task stays open
     (the requester's amount stays locked) until a neutral verdict arrives."""
     storage = Storage(tmp_path / "credit.db")
@@ -463,10 +463,10 @@ def test_credit_self_verification_does_not_settle(tmp_path):
     res = _make_result(priv_prov, pub_prov, task_id, acc["id"], pub_req, ts=t0 + 2)
     _post(client, res)
 
-    # provider self-verifies passed (JP-redacted) must NOT settle
+    # provider self-verifies passed — must NOT settle
     _post(client, _make_verify(priv_prov, pub_prov, task_id, res["id"], pub_prov,
                                verdict="passed", ts=t0 + 3))
-    # requester self-verifies passed (JP-redacted) must NOT settle either
+    # requester self-verifies passed — must NOT settle either
     _post(client, _make_verify(priv_req, pub_req, task_id, res["id"], pub_prov,
                                verdict="passed", ts=t0 + 4))
     assert storage.credit_for(pub_prov)["balance"] == 0
@@ -487,7 +487,7 @@ def test_credit_self_verification_does_not_settle(tmp_path):
 def test_treasury_accrues_fee_across_multiple_passed_tasks(tmp_path):
     """Across N passed kind-50 settlements the treasury's balance equals the
     sum of fees, and the zero-sum invariant holds across all participants.
-    This exercises the fee-recycling property of PROTOCOL (JP-redacted)18.11."""
+    This exercises the fee-recycling property of PROTOCOL §18.11."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
 
@@ -528,9 +528,9 @@ def test_treasury_accrues_fee_across_multiple_passed_tasks(tmp_path):
 
 def test_self_task_does_not_inflate_verified_provider_tasks(tmp_path):
     """A task where requester == provider is a closed loop that does no real
-    work for anyone else. It must NOT inflate `verified_provider_tasks` (JP-redacted)
+    work for anyone else. It must NOT inflate `verified_provider_tasks` —
     otherwise a single sock-puppet could farm standing for free by riding an
-    automatic neutral verifier (PROTOCOL (JP-redacted)18.11)."""
+    automatic neutral verifier (PROTOCOL §18.11)."""
     storage = Storage(tmp_path / "credit.db")
     client = TestClient(create_app(storage))
 

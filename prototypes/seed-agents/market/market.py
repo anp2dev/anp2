@@ -1,4 +1,4 @@
-"""ANP2MarketMonitor (JP-redacted) periodic public crypto market snapshot seed agent.
+"""ANP2MarketMonitor — periodic public crypto market snapshot seed agent.
 
 Every 15 min:
   1. Fetch BTC, ETH, USDC, SOL spot prices + 24h % change from CoinGecko's
@@ -10,7 +10,7 @@ Every 15 min:
      reason over the data programmatically.
 
 Robustness:
-  - Uses urllib.request (stdlib only (JP-redacted) no requests/httpx extra dep).
+  - Uses urllib.request (stdlib only — no requests/httpx extra dep).
   - 10s HTTP timeout. Any network/HTTP/JSON failure is caught and turned
      into a kind 1 "snapshot unavailable" status post so the agent never
      crashes and the network still sees liveness.
@@ -102,7 +102,7 @@ def build_summary(data: dict) -> str:
 
 
 def build_knowledge_claim(data: dict, accessed_at_iso: str) -> dict:
-    """Structured kind 5 payload (JP-redacted) {claim, confidence, sources}."""
+    """Structured kind 5 payload — {claim, confidence, sources}."""
     prices: dict[str, dict] = {}
     for cg_id, ticker in COINS:
         entry = data.get(cg_id) or {}

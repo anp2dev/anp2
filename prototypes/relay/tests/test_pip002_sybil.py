@@ -1,4 +1,4 @@
-"""Tests for PIP-002 (JP-redacted) kind 6 PoW validation + sybil_factor_pow.
+"""Tests for PIP-002 — kind 6 PoW validation + sybil_factor_pow.
 
 Covers:
   - kind 6 with valid PoW is accepted and lifts sybil_factor_pow > 0
@@ -8,7 +8,7 @@ Covers:
   - kind 6 lying about PoW (declared >= min but real id has fewer leading
     zeros) rejected (400)
   - sybil_factor_pow exactly matches the spec formula
-    tanh((JP-redacted) 2^pow_bits / 2^16) for the synthetic vote set
+    tanh(— 2^pow_bits / 2^16) for the synthetic vote set
   - sybil_factor_pow is bounded in (0, 1)
 """
 
@@ -139,7 +139,7 @@ def test_validate_pow_below_minimum_rejects():
 
 
 def test_validate_pow_does_not_meet_declared_rejects():
-    """Lying about PoW (claimed 12 bits, real id has < 12 leading zeros) (JP-redacted) reject."""
+    """Lying about PoW (claimed 12 bits, real id has < 12 leading zeros) — reject."""
     priv, pub = generate_keypair()
     _, target = generate_keypair()
     ts = int(time.time())
@@ -147,7 +147,7 @@ def test_validate_pow_does_not_meet_declared_rejects():
     tags = [["p", target], ["pow", "12"], ["nonce", "0"]]
     content = json.dumps({"score": 1})
     eid = compute_event_id(pub, ts, 6, tags, content)
-    # If by extreme luck nonce=0 yielded (JP-redacted)12 leading zeros, bail (JP-redacted) re-run
+    # If by extreme luck nonce=0 yielded §12 leading zeros, bail — re-run
     # the test would catch the path; this asserts the actual leading-zero
     # check fires when it doesn't.
     actual = count_leading_zero_bits(bytes.fromhex(eid))
@@ -208,7 +208,7 @@ def test_publish_kind6_without_pow_still_accepted(tmp_path):
 
 
 def test_publish_kind6_with_lying_pow_rejected(tmp_path):
-    """Claimed pow_bits (JP-redacted) relay min but the canonical id does not satisfy it."""
+    """Claimed pow_bits — relay min but the canonical id does not satisfy it."""
     storage = Storage(tmp_path / "p002c.db")
     client = TestClient(create_app(storage))
 
@@ -258,12 +258,12 @@ def test_publish_kind6_below_minimum_rejected(tmp_path):
 
 
 def test_sybil_factor_pow_no_votes_is_one():
-    """An agent with no incoming votes at all (JP-redacted) factor 1.0 (back-compat)."""
+    """An agent with no incoming votes at all — factor 1.0 (back-compat)."""
     assert sybil_factor_pow("nobody", []) == 1.0
 
 
 def test_sybil_factor_pow_no_pow_tag_is_one():
-    """Incoming votes WITHOUT pow tag (JP-redacted) factor 1.0 (back-compat)."""
+    """Incoming votes WITHOUT pow tag — factor 1.0 (back-compat)."""
     t_now = 1_700_000_000
     votes = [
         Vote(voter="A", target="T", score=1, created_at=t_now, pow_bits=None),
@@ -273,7 +273,7 @@ def test_sybil_factor_pow_no_pow_tag_is_one():
 
 
 def test_sybil_factor_pow_matches_spec_formula():
-    """Direct check: sybil_factor_pow == tanh((JP-redacted) 2^pow_bits / NORM)."""
+    """Direct check: sybil_factor_pow == tanh(— 2^pow_bits / NORM)."""
     t_now = 1_700_000_000
     votes = [
         Vote(voter="A", target="T", score=1, created_at=t_now, pow_bits=12),
@@ -287,7 +287,7 @@ def test_sybil_factor_pow_matches_spec_formula():
 
 def test_sybil_factor_pow_bounded_below_or_equal_one():
     """tanh squashes any finite work sum into (0, 1]; large clusters saturate
-    to 1.0 in float64 (JP-redacted) the spec's "bounded factor" property still holds."""
+    to 1.0 in float64 — the spec's "bounded factor" property still holds."""
     t_now = 1_700_000_000
     votes = [
         Vote(voter=f"v{i}", target="T", score=1, created_at=t_now, pow_bits=20)
@@ -305,7 +305,7 @@ def test_sybil_factor_pow_bounded_below_or_equal_one():
 
 
 def test_sybil_factor_pow_concentrates_with_more_work():
-    """More cumulative PoW work (JP-redacted) factor closer to 1."""
+    """More cumulative PoW work — factor closer to 1."""
     t_now = 1_700_000_000
     one = [Vote(voter="A", target="T", score=1, created_at=t_now, pow_bits=12)]
     many = [
@@ -347,7 +347,7 @@ def test_trust_endpoint_surfaces_sybil_factor_pow(tmp_path):
 
 
 def test_trust_endpoint_back_compat_factor_is_one(tmp_path):
-    """An agent voted for ONLY by pre-PIP-002 (no pow tag) voters (JP-redacted) factor 1.0."""
+    """An agent voted for ONLY by pre-PIP-002 (no pow tag) voters — factor 1.0."""
     storage = Storage(tmp_path / "p002f.db")
     client = TestClient(create_app(storage))
 

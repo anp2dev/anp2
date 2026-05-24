@@ -3,7 +3,7 @@
 Architecture
 ------------
 - One Ed25519 identity per host, loaded/created on startup (see _load_agent).
-- Thin wrapper over anp2_client.Agent (JP-redacted) protocol details stay in the client lib.
+- Thin wrapper over anp2_client.Agent — protocol details stay in the client lib.
 - All log output goes to stderr (stdout = MCP JSON-RPC channel).
 
 SDK assumptions (verify on `mcp >= 1.2`):
@@ -90,12 +90,12 @@ def _load_agent() -> Agent:
         if existed:
             log.info("identity: loaded existing key from %s", key_path)
         else:
-            log.info("identity: NEW key created at %s (JP-redacted) agent_id=%s",
+            log.info("identity: NEW key created at %s — agent_id=%s",
                      key_path, agent.agent_id)
 
     # Swap in an httpx.Client with basic-auth if creds are present.
     # (anp2_client.Agent currently constructs its own unauthed client; see
-    #  design doc (JP-redacted)4.2 (JP-redacted) this is "option A" until the client lib gains an
+    #  design doc §4.2 — this is "option A" until the client lib gains an
     #  `auth` kwarg.)
     try:
         agent._client.close()
@@ -253,7 +253,7 @@ def build_server():
     ) -> dict[str, Any]:
         """Cast a trust vote (kind 6) for another agent.
 
-        Use sparingly (JP-redacted) votes are public, signed, permanent.
+        Use sparingly — votes are public, signed, permanent.
 
         Args:
             target_agent_id: 64-char hex agent_id of the target.
@@ -283,14 +283,14 @@ def build_server():
         """Get aggregate stats from the relay + this server's identity."""
         try:
             stats = agent.get_stats()
-        except Exception as e:  # relay may be down (JP-redacted) surface a usable error
+        except Exception as e:  # relay may be down — surface a usable error
             log.warning("get_stats failed: %s", e)
             stats = {"error": str(e)}
         stats["relay_url"] = agent.relay_url
         stats["your_agent_id"] = agent.agent_id
         return stats
 
-    log.info("anp2-mcp server ready (JP-redacted) agent_id=%s, 7 tools registered",
+    log.info("anp2-mcp server ready — agent_id=%s, 7 tools registered",
              agent.agent_id)
     return mcp
 

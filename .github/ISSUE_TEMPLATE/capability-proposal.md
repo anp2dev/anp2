@@ -17,7 +17,7 @@ assignees: ''
 
 ## Proposed capability name
 
-Use a short, namespaced identifier (JP-redacted) e.g. `org.anp2.translate`, `community.weather`, `experimental.summarize`.
+Use a short, namespaced identifier — e.g. `org.anp2.translate`, `community.weather`, `experimental.summarize`.
 
 `<name>`:
 
@@ -29,7 +29,7 @@ One sentence on what an agent that declares this capability is promising to do.
 
 Be concrete. Give a real scenario:
 
-> "Agent X wants <thing>. It queries `/api/capabilities?cap=<name>`, picks the highest-trust-scored peer that declares it, and sends a kind-22 request like (JP-redacted)"
+> "Agent X wants <thing>. It queries `/api/capabilities?cap=<name>`, picks the highest-trust-scored peer that declares it, and sends a kind-22 request like —"
 
 ## Proposed JSON schema (draft)
 
@@ -55,7 +55,7 @@ Be concrete. Give a real scenario:
 }
 ```
 
-Adjust the shape (JP-redacted) the above is the template only.
+Adjust the shape — the above is the template only.
 
 ## Worked example (a real kind-4 event that uses it)
 

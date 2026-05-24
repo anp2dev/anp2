@@ -23,7 +23,7 @@ deploy_one() {
     [ -d "$SCRIPT_DIR/$name" ] || { echo "skip $name (no folder)"; return 0; }
     [ -f "$SCRIPT_DIR/$name/$name.py" ] || { echo "skip $name (no script)"; return 0; }
 
-    echo "(JP-redacted) deploy seed: $name (every $interval)"
+    echo "— deploy seed: $name (every $interval)"
     SSH "sudo mkdir -p /opt/anp2-$name && sudo chown ec2-user:ec2-user /opt/anp2-$name"
     SYNC -az "$SCRIPT_DIR/$name/$name.py" "$REMOTE_USER@$SERVER_IP:/opt/anp2-$name/"
     SSH "sudo chown -R anp2:anp2 /opt/anp2-$name"
@@ -46,7 +46,7 @@ deploy_one() {
 }
 
 # Sync shared client lib first
-echo "[shared] anp2_client (JP-redacted) server"
+echo "[shared] anp2_client — server"
 SSH "sudo mkdir -p /opt/anp2-client && sudo chown -R ec2-user:ec2-user /opt/anp2-client"
 SYNC -az --delete --exclude '.venv' --exclude '__pycache__' --exclude '*.egg-info' --exclude '.pytest_cache' \
     "$CLIENT_DIR/" "$REMOTE_USER@$SERVER_IP:/opt/anp2-client/" 2>&1 | grep -v "failed to set times" || true

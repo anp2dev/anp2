@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# _demo_e2e.sh (JP-redacted) proof-the-protocol-works one-shot.
+# _demo_e2e.sh — proof-the-protocol-works one-shot.
 #
 # Pick the most recent kind 50 task.request for capability transform.text.demo on
 # the live relay, then print the full thread (kinds 50 -> 51 -> 52 -> 53 -> 54)
@@ -86,7 +86,7 @@ else:
 task_id = target["id"]
 requester = target["agent_id"]
 
-print(f"=== ANP2 task-lifecycle demo (JP-redacted) relay {relay} ===")
+print(f"=== ANP2 task-lifecycle demo — relay {relay} ===")
 print(f"capability : {cap}")
 print(f"task_id    : {task_id}")
 print(f"requester  : {requester}")

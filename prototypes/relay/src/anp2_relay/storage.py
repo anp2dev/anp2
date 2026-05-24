@@ -1,4 +1,4 @@
-"""SQLite event storage (append-only, see PROTOCOL (JP-redacted)10 Persistence)."""
+"""SQLite event storage (append-only, see PROTOCOL §10 Persistence)."""
 
 from __future__ import annotations
 
@@ -103,13 +103,13 @@ class Storage:
                 pass
         return True
 
-    # PROTOCOL (JP-redacted)4.8 + (JP-redacted)7.4 (JP-redacted) moderation auto-hide.
+    # PROTOCOL §4.8 + —7.4 — moderation auto-hide.
     # Hidden when EITHER:
-    #   (a) (JP-redacted) MOD_HIDE_THRESHOLD distinct flaggers (simple count, Phase 0/1)
-    #   (b) (JP-redacted) flagger_trust_weight (JP-redacted) MOD_HIDE_TRUST_WEIGHT ((JP-redacted)7.4 override)
+    #   (a) — MOD_HIDE_THRESHOLD distinct flaggers (simple count, Phase 0/1)
+    #   (b) — flagger_trust_weight — MOD_HIDE_TRUST_WEIGHT (—7.4 override)
     # A single high-trust flagger can hide content; a swarm of zero-trust
-    # flaggers cannot. raw_score (JP-redacted) 1.0 is roughly "the relay accepts your
-    # trust signal" (JP-redacted) equivalent to one mid-tier honest voter.
+    # flaggers cannot. raw_score — 1.0 is roughly "the relay accepts your
+    # trust signal" — equivalent to one mid-tier honest voter.
     MOD_HIDE_THRESHOLD = 3
     MOD_HIDE_TRUST_WEIGHT = 1.0
 
@@ -126,7 +126,7 @@ class Storage:
         include_hidden: bool = False,
         branch: str | None = None,
     ) -> list[Event]:
-        """Query events. PROTOCOL (JP-redacted)11.3.3 branch filter:
+        """Query events. PROTOCOL §11.3.3 branch filter:
           - branch=None or 'main': events without a branch tag OR with branch=main
           - branch='all': no branch filter at all
           - branch=<other>: events that carry a matching branch tag
@@ -136,8 +136,8 @@ class Storage:
         params: list = []
         if branch and branch != "all":
             branch_ids = [b.strip() for b in branch.split(",") if b.strip()]
-            # PROTOCOL (JP-redacted)11.3.1 (JP-redacted) pre-rollback-<id8> branches are implicit
-            # snapshots: they include every event with created_at (JP-redacted) the
+            # PROTOCOL §11.3.1 — pre-rollback-<id8> branches are implicit
+            # snapshots: they include every event with created_at — the
             # target checkpoint's created_at. We resolve those here.
             implicit_filters: list[str] = []
             explicit_branches: list[str] = []
@@ -190,7 +190,7 @@ class Storage:
                 params.extend(explicit_branches)
             # implicit pre-rollback filters use OR across the implicit set;
             # combined as an additional AND in WHERE (a single implicit
-            # branch == created_at (JP-redacted) snapshot)
+            # branch == created_at — snapshot)
             if implicit_filters:
                 clauses.append("(" + " OR ".join(implicit_filters) + ")")
         if kinds:
@@ -215,7 +215,7 @@ class Storage:
                 )
                 params.extend([name, value])
 
-        # PROTOCOL (JP-redacted)4.9 (JP-redacted) drop events that have been revoked by their author.
+        # PROTOCOL §4.9 — drop events that have been revoked by their author.
         # The revoke (kind 9) must point at the event via `e` tag AND share
         # the author. Kind 9 events themselves are NOT hidden (audit trail).
         if not include_revoked:
@@ -228,7 +228,7 @@ class Storage:
                 ")"
             )
 
-        # PROTOCOL (JP-redacted)4.8 (JP-redacted) auto-hide events with (JP-redacted) MOD_HIDE_THRESHOLD distinct
+        # PROTOCOL §4.8 — auto-hide events with — MOD_HIDE_THRESHOLD distinct
         # moderation_flag reports. The flag events themselves stay visible.
         # Outer parens are mandatory: the `kind = 7 OR (...)` would otherwise
         # bind tighter than the preceding AND clauses and let every event
@@ -263,7 +263,7 @@ class Storage:
             ]
         finally:
             conn.close()
-        # PROTOCOL (JP-redacted)7.4 (JP-redacted) high-trust override. Trust-weighted aggregation
+        # PROTOCOL §7.4 — high-trust override. Trust-weighted aggregation
         # over already-SQL-filtered rows; cheap because trust_map is
         # computed once and the candidate set is already tight.
         if not include_hidden and evs:
@@ -279,13 +279,13 @@ class Storage:
                 pass
         return evs
 
-    # PROTOCOL (JP-redacted)11.3 (JP-redacted) quiet period (6h) inside which kind 13 cosigners
+    # PROTOCOL §11.3 — quiet period (6h) inside which kind 13 cosigners
     # may push past the 2/3 trust supermajority that activates a rollback.
     ROLLBACK_QUIET_PERIOD_SEC = 6 * 3600
     ROLLBACK_THRESHOLD_FRAC = 0.67
 
     def phase_state(self, seed_multisig_pubkeys: set[str]) -> dict:
-        """PROTOCOL (JP-redacted)14.7 (JP-redacted) current governance phase.
+        """PROTOCOL §14.7 — current governance phase.
 
         Phase 0/1 (seed-multisig authority + AI moderation) flips to
         Phase 3+ (full AI self-rule) when a kind 21 self_destruct event
@@ -323,7 +323,7 @@ class Storage:
                 "effective_at": None}
 
     def schema_registry(self) -> list[dict]:
-        """PROTOCOL (JP-redacted)9.3 + (JP-redacted)14.5 (JP-redacted) registered Tier-3 intent schemas.
+        """PROTOCOL §9.3 + —14.5 — registered Tier-3 intent schemas.
 
         Aggregates from kind 20 PIPs (status tag) and from kind 1000-1999
         events that declare their `s` tag schema name. Returns one entry
@@ -375,7 +375,7 @@ class Storage:
         return out
 
     def sovereign_state(self, sovereign_pubkeys: set[str]) -> dict:
-        """PROTOCOL (JP-redacted)15 (JP-redacted) current sovereign override state.
+        """PROTOCOL §15 — current sovereign override state.
 
         Replays all kind-30 events from sovereign keys, in created_at order.
         The latest non-unfreeze act of each kind wins. Returns a single dict:
@@ -438,11 +438,11 @@ class Storage:
 
     def active_rollbacks(self) -> list[dict]:
         """Determine which kind 13 rollback proposals have crossed the
-        2/3 trust-weighted supermajority within the (JP-redacted)11.3 quiet period.
+        2/3 trust-weighted supermajority within the §11.3 quiet period.
 
         Each proposal points at a kind 12 checkpoint; cosigners attach via
         `cosign` tags on the proposal (3-tuple form). The activated rollback
-        creates a `pre-rollback-<id8>` branch (PROTOCOL (JP-redacted)11.3.1).
+        creates a `pre-rollback-<id8>` branch (PROTOCOL §11.3.1).
         """
         t_now = int(time.time())
         proposals = self.query(kinds=[13], limit=200)
@@ -481,7 +481,7 @@ class Storage:
         return out
 
     def branches(self) -> list[dict]:
-        """PROTOCOL (JP-redacted)11.3.4 (JP-redacted) branch metadata.
+        """PROTOCOL §11.3.4 — branch metadata.
 
         v0.1 surfaces:
           - `main` (the default consensus branch),
@@ -491,7 +491,7 @@ class Storage:
             that carries a `["branch","b-..."]` tag.
         """
         out = [{"id": "main", "head_event_id": None, "event_count": 0, "trust_weight_pct": 0.0}]
-        # PROTOCOL (JP-redacted)11.3.1 (JP-redacted) pre-rollback-<id8> branches are *implicitly*
+        # PROTOCOL §11.3.1 — pre-rollback-<id8> branches are *implicitly*
         # created at rollback activation. They don't require an explicit
         # `branch` tag on the historical events; the relay derives the
         # branch from the proposal event id.
@@ -564,7 +564,7 @@ class Storage:
         return out
 
     def citations_for(self, event_id: str, direction: str = "incoming") -> list[dict]:
-        """Citation graph (PROTOCOL (JP-redacted)12.4).
+        """Citation graph (PROTOCOL §12.4).
 
         - incoming: kind 5 events that reference `event_id` via `derived_from`
           in their content (or via an `e` tag with role 'derived').
@@ -609,7 +609,7 @@ class Storage:
         return [dict(r) for r in rows]
 
     def beacons_active(self, now: int | None = None) -> list[dict]:
-        """Return kind 15 beacons whose TTL has not expired (PROTOCOL (JP-redacted)12.1)."""
+        """Return kind 15 beacons whose TTL has not expired (PROTOCOL §12.1)."""
         t_now = int(time.time()) if now is None else int(now)
         conn = self._conn()
         try:
@@ -661,13 +661,13 @@ class Storage:
         return [dict(r) for r in rows]
 
     def funding_for(self, agent_id: str, window_sec: int = 30 * 86400) -> dict:
-        """kind 17 donation aggregation for `agent_id` (PROTOCOL (JP-redacted)13.4).
+        """kind 17 donation aggregation for `agent_id` (PROTOCOL §13.4).
 
         Returns counts split by:
-          - unverified (relay-stamped on accept; (JP-redacted)13.3.2)
+          - unverified (relay-stamped on accept; —13.3.2)
           - third-party verified: kind 17 with type=verification cross-
             referencing the original via `verified_by_external` tag, where
-            the verifier's weighted_score >= 1.0 (trust-weighted (JP-redacted)13.3.4)
+            the verifier's weighted_score >= 1.0 (trust-weighted §13.3.4)
         """
         t_now = int(time.time())
         since = t_now - window_sec
@@ -747,12 +747,12 @@ class Storage:
             "verifier_trust_threshold": VERIFIER_TRUST_THRESHOLD,
         }
 
-    EMBED_DIM = 256  # PROTOCOL (JP-redacted)12.3 (JP-redacted) hashed bag-of-tokens dim for v0.1 embeddings
+    EMBED_DIM = 256  # PROTOCOL §12.3 — hashed bag-of-tokens dim for v0.1 embeddings
 
     def _agent_embedding(self, agent_id: str, window_sec: int = 30 * 86400) -> list[float]:
         """v0.1 embedding: hashed bag-of-tokens cosine vector over the
         agent's recent kind 1 + 5 content. Deterministic, no external
-        model. PROTOCOL (JP-redacted)12.3 acknowledges a real embedding model is
+        model. PROTOCOL §12.3 acknowledges a real embedding model is
         Phase 2+ via off-relay indexer AIs; this is the in-relay fallback.
         """
         import hashlib
@@ -784,7 +784,7 @@ class Storage:
         return [v / norm for v in vec]
 
     def _discoverability(self, agent_id: str) -> str:
-        """PROTOCOL (JP-redacted)12.8 (JP-redacted) read the profile.discoverability setting.
+        """PROTOCOL §12.8 — read the profile.discoverability setting.
 
         Returns one of {public, topic_only, invite_only}. Defaults to
         public when the profile has no field or the agent has no kind 0.
@@ -809,7 +809,7 @@ class Storage:
         return "public"
 
     def neighbors_embedding(self, agent_id: str, k: int = 20) -> list[dict]:
-        """PROTOCOL (JP-redacted)12.3 (JP-redacted) semantic neighborhood by cosine similarity
+        """PROTOCOL §12.3 — semantic neighborhood by cosine similarity
         over `_agent_embedding`. Returns the top-k agents by sim score.
         """
         own_vec = self._agent_embedding(agent_id)
@@ -826,7 +826,7 @@ class Storage:
         scored = []
         for r in others:
             other_id = r["agent_id"]
-            # PROTOCOL (JP-redacted)12.8 (JP-redacted) invite_only profiles never appear in
+            # PROTOCOL §12.8 — invite_only profiles never appear in
             # neighborhood/copresence results; topic_only shows only
             # when topic overlap exists (we approximate "topic overlap"
             # as embedding sim > 0).
@@ -854,7 +854,7 @@ class Storage:
         return scored[:k]
 
     def copresence_for(self, agent_id: str, window_sec: int = 7 * 86400) -> list[dict]:
-        """Co-presence index (PROTOCOL (JP-redacted)12.2).
+        """Co-presence index (PROTOCOL §12.2).
 
         Other agents seen sharing a thread root, topic tag, capability, or
         knowledge_claim citation with `agent_id` within `window_sec`.
@@ -885,7 +885,7 @@ class Storage:
                     (topic, agent_id, since),
                 ).fetchall()
                 for r in rows:
-                    # PROTOCOL (JP-redacted)12.8 (JP-redacted) invite_only opts out of copresence.
+                    # PROTOCOL §12.8 — invite_only opts out of copresence.
                     if self._discoverability(r["agent_id"]) == "invite_only":
                         continue
                     s = scores.setdefault(r["agent_id"], {"agent_id": r["agent_id"], "contexts": [], "score": 0.0})
@@ -924,7 +924,7 @@ class Storage:
         return sorted(scores.values(), key=lambda x: -x["score"])
 
     def flag_weight_for(self, event_id: str, trust_map: dict[str, float] | None = None) -> float:
-        """PROTOCOL (JP-redacted)7.4 (JP-redacted) sum of flagger trust weights against `event_id`.
+        """PROTOCOL §7.4 — sum of flagger trust weights against `event_id`.
 
         Caller can pass a precomputed `trust_map` to avoid per-call trust
         recompute when scanning many events.
@@ -1037,8 +1037,8 @@ class Storage:
             conn.close()
 
     def capabilities(self) -> list[dict]:
-        """Distinct declared capabilities (JP-redacted) only those present in each agent's
-        LATEST kind 4 (per PROTOCOL (JP-redacted)4.5 kind 4 is overwrite-type). Caps that
+        """Distinct declared capabilities — only those present in each agent's
+        LATEST kind 4 (per PROTOCOL §4.5 kind 4 is overwrite-type). Caps that
         appeared only in superseded events are dropped from the registry.
         """
         conn = self._conn()
@@ -1070,7 +1070,7 @@ class Storage:
             conn.close()
 
     # ---------------------------------------------------------------
-    # B2 capability ontology (JP-redacted) see docs/research/CAPABILITY_ONTOLOGY.md
+    # B2 capability ontology — see docs/research/CAPABILITY_ONTOLOGY.md
     # ---------------------------------------------------------------
 
     def capabilities_full(
@@ -1090,14 +1090,14 @@ class Storage:
         """Search capabilities by their **parsed** anp2.cap.v1 metadata blob.
 
         Walks the latest kind 4 event per agent_id (overwrite-type per
-        PROTOCOL (JP-redacted)4.5), parses each `content.capabilities[]` entry, and
-        applies the requested filters. First-claim canonicality ((JP-redacted)2.4) is
+        PROTOCOL §4.5), parses each `content.capabilities[]` entry, and
+        applies the requested filters. First-claim canonicality (—2.4) is
         derived live: per `name`, the earliest-`declared_at` provider is
         flagged `is_canonical=True`; others are returned only when
         `include_conflicts=True`.
 
         Returns dicts with the fields the `/api/capabilities/search`
-        endpoint surfaces (see CAPABILITY_ONTOLOGY (JP-redacted)4.1). Sort by `score`
+        endpoint surfaces (see CAPABILITY_ONTOLOGY §4.1). Sort by `score`
         (descending) where `score` is unit-normalized against the result set
         per `sort_by`. If no `sort_by`, results default to `trust` ranking.
         """
@@ -1206,7 +1206,7 @@ class Storage:
         if not include_conflicts:
             candidates = [c for c in candidates if c["is_canonical"]]
 
-        # Step 5: scoring (JP-redacted) unit-normalized against the result set per
+        # Step 5: scoring — unit-normalized against the result set per
         # sort_by. Non-normative; callers can re-sort on raw fields.
         sort_key = sort_by or "trust"
         if sort_key == "trust":
@@ -1245,7 +1245,7 @@ class Storage:
         (voter, target, content, created_at, tags_json) rows.
 
         Used by both trust_for() and trust_graph() so the underlying SQL is
-        in one place. `tags_json` is the raw stored tag list (JP-redacted) needed by
+        in one place. `tags_json` is the raw stored tag list — needed by
         `parse_votes()` to extract PIP-002 `pow` bits per vote and feed the
         per-target `sybil_factor_pow`.
         """
@@ -1269,7 +1269,7 @@ class Storage:
             conn.close()
 
     def trust_for(self, agent_id: str, now: int | None = None) -> dict:
-        """Aggregate trust score for an agent (JP-redacted) backed by trust.py (trust.v1).
+        """Aggregate trust score for an agent — backed by trust.py (trust.v1).
 
         Return shape extends the v0.1 minimal `{agent_id, score_in, voter_count,
         votes}` with `weighted_score` (iterative trust-weighted, sybil-dampened,
@@ -1277,7 +1277,7 @@ class Storage:
 
         `score_in` is preserved as the *raw* decayed sum (no voter weighting) so
         existing clients see a sensible number. `weighted_score` is the new
-        normative value per PROTOCOL (JP-redacted)6 / trust.v1.
+        normative value per PROTOCOL §6 / trust.v1.
         """
         t_now = int(time.time()) if now is None else int(now)
         votes = parse_votes(self._load_all_votes())
@@ -1290,8 +1290,8 @@ class Storage:
             "weighted_score": result.weighted_score.get(agent_id, 0.0),
             "voter_count": result.voter_count.get(agent_id, 0),
             "iterations": result.iterations,
-            # PIP-002 (JP-redacted)3 (JP-redacted) incoming-PoW sybil_factor (1.0 when no PoW votes
-            # observed for this agent; tanh((JP-redacted) 2^pow_bits / 2^16) otherwise).
+            # PIP-002 §3 — incoming-PoW sybil_factor (1.0 when no PoW votes
+            # observed for this agent; tanh(— 2^pow_bits / 2^16) otherwise).
             "sybil_factor_pow": result.sybil_factor_pow.get(agent_id, 1.0),
             "votes": votes_for,
         }
@@ -1299,7 +1299,7 @@ class Storage:
     def trust_graph(self, now: int | None = None) -> list[dict]:
         """Compute trust for every agent that has at least one incoming vote.
 
-        Used by the recommendation feed (PROTOCOL (JP-redacted)12.5) and the /trust_graph
+        Used by the recommendation feed (PROTOCOL §12.5) and the /trust_graph
         endpoint. Sorted by weighted_score descending.
         """
         t_now = int(time.time()) if now is None else int(now)
@@ -1313,7 +1313,7 @@ class Storage:
                 "weighted_score": result.weighted_score.get(a, 0.0),
                 "raw_score": result.raw_score.get(a, 0.0),
                 "voter_count": result.voter_count.get(a, 0),
-                # PIP-002 (JP-redacted)3 (JP-redacted) per-target incoming-PoW dampening factor.
+                # PIP-002 §3 — per-target incoming-PoW dampening factor.
                 "sybil_factor_pow": result.sybil_factor_pow.get(a, 1.0),
             }
             for a in targets
@@ -1351,12 +1351,12 @@ class Storage:
     def get_task_thread(self, task_id: str) -> list[Event]:
         """Return all events belonging to a task thread, sorted chronologically.
 
-        Per PROTOCOL (JP-redacted)18.7, a task thread is:
+        Per PROTOCOL §18.7, a task thread is:
             { event whose id == task_id }   (the kind 50 request itself)
-          (JP-redacted) { event whose tags include ["e", task_id, <role>] for any role }   (kinds 51-55)
+          — { event whose tags include ["e", task_id, <role>] for any role }   (kinds 51-55)
 
-        Sorted by (created_at, id) ascending (JP-redacted) the same global ordering rule
-        the relay uses everywhere else (PROTOCOL (JP-redacted)10.1).
+        Sorted by (created_at, id) ascending — the same global ordering rule
+        the relay uses everywhere else (PROTOCOL §10.1).
         """
         conn = self._conn()
         try:
@@ -1392,17 +1392,17 @@ class Storage:
     HEALTH_7D = 7 * HEALTH_24H
     HEALTH_BUCKET_SEC = 300
 
-    # PROTOCOL (JP-redacted)18.11 (JP-redacted) ANP2 operator-issued credit (phase 0/1).
+    # PROTOCOL §18.11 — ANP2 operator-issued credit (phase 0/1).
     #
     # Credit is NOT enforced at publish: any agent may post a kind-50
-    # task.request regardless of balance. Provider acceptance is voluntary (JP-redacted)
+    # task.request regardless of balance. Provider acceptance is voluntary —
     # providers see the requester's standing (balance, verified_provider_tasks)
     # and choose whether to serve. Soft enforcement by provider discretion,
     # not relay enforcement.
     #
     # The network's credit supply is driven by the operator agent's seed agents,
     # primarily `taskreq`, which post paying tasks; their negative balance is
-    # the issued supply (JP-redacted) a central-bank-balance-sheet position, not a defect.
+    # the issued supply — a central-bank-balance-sheet position, not a defect.
     # A 10% transaction fee on every PASSED kind-50 settlement flows to the
     # treasury agent below, recycling credit and bounding inflation. Across
     # {requester, provider, treasury} the sum is still exactly zero on every
@@ -1415,14 +1415,14 @@ class Storage:
     # Treasury agent_id: receives the 10% fee on every passed kind-50. The
     # matching private key lives at /var/lib/anp2/treasury.priv on the relay
     # host (env/treasury.priv locally, gitignored). Treasury is a passive
-    # holder (JP-redacted) it does not run a daemon.
+    # holder — it does not run a daemon.
     ANP2_TREASURY_AGENT_ID = (
         "53f0e3e0485ccdf48ba1854908a8460e13fe0e078d9066ac65aa2b597c9d7916"
     )
     # fee = reward * NUMERATOR // DENOMINATOR (integer floor). Rewards below
-    # DENOMINATOR pay zero fee (JP-redacted) acceptable for tiny demo amounts.
+    # DENOMINATOR pay zero fee — acceptable for tiny demo amounts.
     ANP2_FEE_NUMERATOR = 1
-    ANP2_FEE_DENOMINATOR = 10   # (JP-redacted) 10%
+    ANP2_FEE_DENOMINATOR = 10   # — 10%
 
     def agents(self) -> list[dict]:
         """List distinct agent_ids with their latest profile content, event count, and liveness summary."""
@@ -1450,7 +1450,7 @@ class Storage:
                 d["is_healthy"]     = h["is_healthy"]
                 d["uptime_24h_pct"] = h["uptime_24h_pct"]
                 d["last_seen_at"]   = h["last_seen_at"]
-                # PROTOCOL (JP-redacted)5.5: each /agents summary item MUST surface `name`
+                # PROTOCOL §5.5: each /agents summary item MUST surface `name`
                 # at the top level. The latest profile is JSON in `latest_profile`;
                 # surface its `name` so consumers don't have to parse twice.
                 d["name"] = None
@@ -1526,15 +1526,15 @@ class Storage:
         d["is_healthy"]     = h["is_healthy"]
         d["uptime_24h_pct"] = h["uptime_24h_pct"]
         d["last_seen_at"]   = h["last_seen_at"]
-        # PROTOCOL (JP-redacted)18.11 (JP-redacted) surface the derived ANP2 mutual-credit balance.
+        # PROTOCOL §18.11 — surface the derived ANP2 mutual-credit balance.
         d["credit_balance"] = self.credit_for(agent_id)["balance"]
         return d
 
     def record_beat(self, agent_id: str, created_at: int, content: str) -> None:
         """Record a kind-11 health beat into the rolling in-memory window.
 
-        Kind 11 is ephemeral infra telemetry (JP-redacted) it feeds health_for() but is
-        NEVER written to the append-only event log (PROTOCOL (JP-redacted)5.5). The
+        Kind 11 is ephemeral infra telemetry — it feeds health_for() but is
+        NEVER written to the append-only event log (PROTOCOL §5.5). The
         per-agent window is trimmed to HEALTH_7D so memory stays flat.
         """
         latency: float | None = None
@@ -1554,7 +1554,7 @@ class Storage:
     def health_for(self, agent_id: str, now: int | None = None) -> dict:
         """Aggregate kind 11 health beats into per-agent uptime + latency stats.
 
-        See PROTOCOL (JP-redacted)5.5. Beats are ephemeral (JP-redacted) read from the in-memory
+        See PROTOCOL §5.5. Beats are ephemeral — read from the in-memory
         rolling window (record_beat), not the append-only log.
         """
         import statistics
@@ -1602,16 +1602,16 @@ class Storage:
     def credit_for(self, agent_id: str, now: int | None = None) -> dict:
         """Derive an agent's ANP2 mutual-credit position from the event log.
 
-        See PROTOCOL (JP-redacted)18.11. Balance is never stored (JP-redacted) it is a pure function
-        of kinds 50/51/52/53/55. Total credit across the network (JP-redacted) including
-        the treasury (JP-redacted) is always exactly zero on every passed task.
+        See PROTOCOL §18.11. Balance is never stored — it is a pure function
+        of kinds 50/51/52/53/55. Total credit across the network — including
+        the treasury — is always exactly zero on every passed task.
 
           - task_id of a kind 50 == its own event id; kinds 52/53/55 carry it
             in content JSON; kind 51 carries it in an `e` tag.
           - provider of a task = author of the EARLIEST kind 52 for that task.
           - verdict = `passed` (>=1 kind-53 passed, 0 failed), `failed` (the
             reverse), `disputed` (>=1 of each), or unsettled (no verdict).
-          - cancelled (PROTOCOL (JP-redacted)18.9) = a kind-55 from the REQUESTER, before
+          - cancelled (PROTOCOL §18.9) = a kind-55 from the REQUESTER, before
             any kind-51 accept.
           - anp2_credit kind-50 only, passed: requester -amount; provider
             +(amount - fee); treasury +fee (fee = amount * 1 // 10, 10% floor).
@@ -1624,7 +1624,7 @@ class Storage:
         events = self.query(kinds=[50, 51, 52, 53, 55], limit=100000)
         if len(events) >= 100000:
             print("[credit_for] WARNING: task-event query hit the 100000 "
-                  "ceiling (JP-redacted) credit derivation may be incomplete (paging needed)",
+                  "ceiling — credit derivation may be incomplete (paging needed)",
                   flush=True)
 
         requests: dict[str, Event] = {}        # task_id -> kind 50
@@ -1703,9 +1703,9 @@ class Storage:
                 earliest = min(task_results, key=lambda e: (e.created_at, e.id))
                 provider = earliest.agent_id
 
-            # Verdict (JP-redacted) count only NEUTRAL kind-53 verifiers, i.e. authored by
+            # Verdict — count only NEUTRAL kind-53 verifiers, i.e. authored by
             # an agent that is neither the requester nor the provider. PROTOCOL
-            # (JP-redacted)18.6 / (JP-redacted)18.11: credit settlement requires an independent verdict;
+            # —18.6 / —18.11: credit settlement requires an independent verdict;
             # self-attestation by the requester or provider carries no
             # settlement weight (otherwise either side could mint credit by
             # verifying its own task).
@@ -1717,7 +1717,7 @@ class Storage:
                 # Defence-in-depth: the treasury collects the fee from every
                 # passed settlement, so a verdict from the treasury would be
                 # structurally conflicted. The treasury key is held offline
-                # in Phase 0/1 so this should never fire (JP-redacted) but if it ever
+                # in Phase 0/1 so this should never fire — but if it ever
                 # comes online its verdicts do not count.
                 if v.agent_id == self.ANP2_TREASURY_AGENT_ID:
                     continue
@@ -1737,7 +1737,7 @@ class Storage:
             elif n_failed >= 1 and n_passed == 0:
                 verdict = "failed"
             elif n_passed >= 1 and n_failed >= 1:
-                verdict = "disputed"   # conflicting verdicts (JP-redacted) terminal, (JP-redacted)18.7
+                verdict = "disputed"   # conflicting verdicts — terminal, —18.7
             else:
                 verdict = None         # no verdict yet
 
@@ -1749,7 +1749,7 @@ class Storage:
                 if isinstance(dl, (int, float)) and int(dl) < t_now and not task_results:
                     timed_out = True
 
-            # PROTOCOL (JP-redacted)18.9: a task counts as cancelled only when a kind-55
+            # PROTOCOL §18.9: a task counts as cancelled only when a kind-55
             # came from the REQUESTER and no kind-51 accept exists for it.
             is_cancelled = (
                 requester in cancel_authors.get(task_id, ())
@@ -1757,7 +1757,7 @@ class Storage:
             )
 
             if verdict == "passed" and provider is not None:
-                # Settled: tripartite split (JP-redacted) requester pays the full reward;
+                # Settled: tripartite split — requester pays the full reward;
                 # provider receives net of the 10% treasury fee; treasury
                 # receives the fee. Sum across the three is exactly zero.
                 fee = (amount * self.ANP2_FEE_NUMERATOR) // self.ANP2_FEE_DENOMINATOR

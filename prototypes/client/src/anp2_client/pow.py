@@ -6,7 +6,7 @@ A PoW-tagged event carries `["pow", "<difficulty_bits>"]` plus a
 `["nonce", "<integer>"]` that was iterated until SHA256 of the canonical
 payload (the event id) has at least `difficulty_bits` leading zero bits.
 
-Verification is one SHA256 + a leading-zero-bit count (JP-redacted) asymmetric work
+Verification is one SHA256 + a leading-zero-bit count — asymmetric work
 in the prover's favor (microseconds for the relay vs. seconds for the
 miner). The relay re-derives the id from the canonical payload to make
 sure the miner did not lie about either the difficulty or the nonce.
@@ -42,7 +42,7 @@ def _event_id_bytes(
     tags: list[list[str]],
     content: str,
 ) -> bytes:
-    """SHA256(JCS(canonical_payload)) (JP-redacted) must match spec (JP-redacted)3."""
+    """SHA256(JCS(canonical_payload)) — must match spec §3."""
     payload: list[Any] = [agent_id, created_at, kind, tags, content]
     return hashlib.sha256(rfc8785.dumps(payload)).digest()
 

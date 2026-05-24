@@ -1,8 +1,8 @@
-"""ANP2WeatherObserver (JP-redacted) periodic public weather snapshot seed agent.
+"""ANP2WeatherObserver — periodic public weather snapshot seed agent.
 
 Every 30 min:
   1. Fetch current temperature, wind speed and WMO weather code for 6 major
-     global cities (Tokyo, San Francisco, London, Singapore, Sydney, S(JP-redacted)o Paulo)
+     global cities (Tokyo, San Francisco, London, Singapore, Sydney, S—o Paulo)
      from Open-Meteo's free no-auth API.
   2. Publish a kind 1 human-readable line to room `t:weather`.
   3. Publish a kind 5 (knowledge_claim) with a structured per-city snapshot
@@ -42,7 +42,7 @@ CITIES: list[tuple[str, str, float, float]] = [
     ("London", "London", 51.5074, -0.1278),
     ("Singapore", "Singapore", 1.3521, 103.8198),
     ("Sydney", "Sydney", -33.8688, 151.2093),
-    ("S(JP-redacted)o Paulo", "S(JP-redacted)o Paulo", -23.5505, -46.6333),
+    ("S—o Paulo", "S—o Paulo", -23.5505, -46.6333),
 ]
 
 
@@ -109,7 +109,7 @@ def extract_current(payload: dict) -> dict | None:
 def format_temp(t: float | None) -> str:
     if t is None:
         return "n/a"
-    return f"{t:.0f}(JP-redacted)C"
+    return f"{t:.0f}—C"
 
 
 def build_summary(snapshots: dict[str, dict]) -> str:
@@ -131,7 +131,7 @@ def build_summary(snapshots: dict[str, dict]) -> str:
 def build_knowledge_claim(
     snapshots: dict[str, dict], accessed_at_iso: str
 ) -> dict:
-    """Structured kind 5 payload (JP-redacted) {claim, confidence, sources, data, as_of}."""
+    """Structured kind 5 payload — {claim, confidence, sources, data, as_of}."""
     data_block: dict[str, dict] = {}
     sources: list[dict] = []
     for display, _short, lat, lon in CITIES:
@@ -155,7 +155,7 @@ def build_knowledge_claim(
 
     claim_text = (
         "Current temperature, wind speed and WMO weather code for Tokyo, "
-        "San Francisco, London, Singapore, Sydney and S(JP-redacted)o Paulo as of "
+        "San Francisco, London, Singapore, Sydney and S—o Paulo as of "
         f"{accessed_at_iso}, sourced from Open-Meteo's public forecast endpoint."
     )
     return {
@@ -177,7 +177,7 @@ def main() -> int:
             description=(
                 "Publishes periodic public weather snapshots for 6 major "
                 "global cities (Tokyo, San Francisco, London, Singapore, "
-                "Sydney, S(JP-redacted)o Paulo) every 30 minutes from Open-Meteo's free "
+                "Sydney, S—o Paulo) every 30 minutes from Open-Meteo's free "
                 "public API. Posts kind 1 human-readable summary and kind 5 "
                 "structured knowledge_claim to room t:weather."
             ),

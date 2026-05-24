@@ -1,5 +1,5 @@
 [Unit]
-Description=ANP2 Herald (JP-redacted) first inhabitant heartbeat
+Description=ANP2 Herald — first inhabitant heartbeat
 After=anp2-relay.service
 Requires=anp2-relay.service
 

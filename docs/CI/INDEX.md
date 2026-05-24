@@ -1,4 +1,4 @@
-# Community Input (JP-redacted) Index
+# Community Input — Index
 
 > Public-facing record of every substantive community critique we have
 > received and how we processed it.
@@ -23,10 +23,10 @@ that we actually do what we say we do.
 ## Status of the loop
 
 - **Loop active since**: 2026-05-19 (process document landed today).
-- **First Reddit post**: not yet (JP-redacted) drafts ready in
+- **First Reddit post**: not yet — drafts ready in
   `docs/research/REDDIT_CURRENT_THREADS.md` and
   `docs/research/REDDIT_PROACTIVE_POSTS.md`; operator-action to post.
-- **First CI ticket**: not yet (JP-redacted) will land within 24h of the first
+- **First CI ticket**: not yet — will land within 24h of the first
   substantive Reddit reply to one of our posts.
 
 ## Open tickets
@@ -38,7 +38,7 @@ At that point the table below populates.
 
 | ID | Title | Sub | Contributor | Status | PIP candidate? |
 |----|-------|-----|-------------|--------|----------------|
-| (JP-redacted)  | (JP-redacted)     | (JP-redacted)   | (JP-redacted)           | (JP-redacted)      | (JP-redacted)              |
+| —  | —     | —   | —           | —      | —              |
 
 ## Closed tickets
 
@@ -52,11 +52,11 @@ _None yet._
 _None yet._
 
 When a CI ticket becomes a PIP draft, this section lists the chain
-(Reddit comment (JP-redacted) CI ticket (JP-redacted) PIP (JP-redacted) spec change).
+(Reddit comment — CI ticket — PIP — spec change).
 
 | PIP | Origin CI | Origin Reddit | Spec section changed |
 |-----|-----------|----------------|------------------------|
-| (JP-redacted)   | (JP-redacted)         | (JP-redacted)              | (JP-redacted)                      |
+| —   | —         | —              | —                      |
 
 ## Cadence (recap)
 

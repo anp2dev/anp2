@@ -1,4 +1,4 @@
-"""ANP2Translate (JP-redacted) fr -> en translator seed agent (Phase 0-1 stub).
+"""ANP2Translate — fr -> en translator seed agent (Phase 0-1 stub).
 
 Watches kind 1 posts that either:
   - carry tag `[["t","translate-request"]]`, OR
@@ -41,20 +41,20 @@ WINDOW_SEC = 1800  # only react to posts in last 30 min
 TRIGGER_TOPIC = "translate-request"
 MENTION = "@translate"
 
-# PROTOCOL (JP-redacted)18.11 (JP-redacted) provider-side standing gate (Iter 26).
+# PROTOCOL §18.11 — provider-side standing gate (Iter 26).
 #
-# Operator-issued credit issuers (JP-redacted) their kind-50s bypass the courtesy throttle
+# Operator-issued credit issuers — their kind-50s bypass the courtesy throttle
 # below (they are the network's designated supply controllers; their negative
 # balance is intentional, not a Sybil signal). Update this list when a new
 # issuer seed is added.
 ANP2_ISSUER_AGENT_IDS = frozenset([
-    # taskreq seed (JP-redacted) the canonical issuer for Phase 0/1
+    # taskreq seed — the canonical issuer for Phase 0/1
     "62144704d3d1c1c8f0506882a27e9693ec331909c11a1a98b37802ccff6d561e",
 ])
 
 # Courtesy throttle: a kind-50 requester with no verified provider track
 # record (`verified_provider_tasks == 0`) is served as a courtesy only while
-# its balance stays at or above COURTESY_BALANCE_LIMIT. Past that, decline (JP-redacted)
+# its balance stays at or above COURTESY_BALANCE_LIMIT. Past that, decline —
 # the requester must earn before delegating further. This bounds Sybil yield
 # to roughly |limit|/avg_reward small tasks per fresh identity (~5 small
 # tasks at the current 10-credit reward).
@@ -66,7 +66,7 @@ _PUNCT_TRIM = " \t\n.,!?\"'"
 # ---------------------------------------------------------------------------
 # Tiny rule-based French -> English dictionary (Phase 0-1 stub).
 # Keys are lowercase French words/phrases; values are lowercase English.
-# French is a deliberately NEUTRAL source language (JP-redacted) no Japanese ever
+# French is a deliberately NEUTRAL source language — no Japanese ever
 # appears in this agent's dictionary, comments, or test data, because every
 # event it publishes is a public surface.
 # ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ def _is_latin_char(ch: str) -> bool:
     are also accepted so French input is recognised as Latin script."""
     if "a" <= ch.lower() <= "z":
         return True
-    return ch.lower() in "(JP-redacted)"
+    return ch.lower() in "—"
 
 
 def detect_lang(text: str) -> str:
@@ -191,7 +191,7 @@ def _strip_request(text: str) -> str:
     return cleaned.strip(_PUNCT_TRIM).strip()
 
 
-# Longest multi-word French dictionary key, in words (JP-redacted) used to bound the
+# Longest multi-word French dictionary key, in words — used to bound the
 # greedy match window in translate().
 _MAX_KEY_WORDS = max(len(k.split()) for k, _ in _PAIRS)
 
@@ -210,7 +210,7 @@ def _is_clean_english(text: str) -> bool:
 def _unsupported_stub(src: str, dst: str) -> str:
     """Honest, English-only placeholder for input the dictionary cannot
     fully translate. Deliberately does NOT echo the (possibly non-English)
-    input back (JP-redacted) echoing it would leak non-English text onto the network."""
+    input back — echoing it would leak non-English text onto the network."""
     return (
         "[translate: unsupported input - the Phase 0-1 rule-based dictionary "
         "does not fully cover this text, so no translation is emitted. "
@@ -238,7 +238,7 @@ def translate(text: str) -> tuple[str, str, str]:
 
     dst = "en"
 
-    # whole-phrase exact / trimmed match (JP-redacted) the safest, highest-quality path.
+    # whole-phrase exact / trimmed match — the safest, highest-quality path.
     for candidate in (text.lower(), text.lower().strip(_PUNCT_TRIM)):
         if candidate in FR_TO_EN:
             result = FR_TO_EN[candidate]
@@ -323,7 +323,7 @@ def _bootstrap_for_target(ev: dict) -> str | None:
     """Return the agent_id named by a `bootstrap_for=<agent_id>` tag, or
     None. Operator-issued bootstrap tasks carry this tag so seed providers
     can step aside and let the targeted newcomer be the earliest kind-52
-    author (and earn its first credit). PROTOCOL (JP-redacted)18.11."""
+    author (and earn its first credit). PROTOCOL §18.11."""
     for tag in ev.get("tags", []) or []:
         if len(tag) >= 2 and tag[0] == "bootstrap_for" and isinstance(tag[1], str):
             return tag[1]
@@ -333,7 +333,7 @@ def _bootstrap_for_target(ev: dict) -> str | None:
 def _should_serve_requester(
     agent: Agent, requester_id: str
 ) -> tuple[bool, str]:
-    """Provider-side courtesy throttle (PROTOCOL (JP-redacted)18.11, Iter 26/26c). Returns
+    """Provider-side courtesy throttle (PROTOCOL §18.11, Iter 26/26c). Returns
     (should_serve, reason_when_refusing).
 
     Rules:
@@ -357,7 +357,7 @@ def _should_serve_requester(
     try:
         credit = agent.get_credit(requester_id)
     except Exception:
-        return (True, "")  # availability fallthrough (JP-redacted) better to serve
+        return (True, "")  # availability fallthrough — better to serve
     if int(credit.get("verified_provider_tasks", 0)) > 0:
         return (True, "")
     available = int(credit.get("available", 0))
@@ -467,7 +467,7 @@ def _handle_task_requests(agent: Agent, seen: set[str], now: int) -> int:
             continue
         if not _matches_translate_cap(ev):
             continue
-        # Iter 26: bootstrap_for skip (JP-redacted) if an operator-issuer reserves the
+        # Iter 26: bootstrap_for skip — if an operator-issuer reserves the
         # task for a specific newcomer, step aside so they can be the
         # earliest kind-52 author and earn their first credit.
         # Iter 27b (review finding B1): require the kind-50 author to be in
@@ -479,17 +479,17 @@ def _handle_task_requests(agent: Agent, seen: set[str], now: int) -> int:
         if bf and bf != agent.agent_id:
             if ev["agent_id"] in ANP2_ISSUER_AGENT_IDS:
                 mark_seen(ev_id)
-                print(f"[Translate] skip task {ev_id[:16]} (JP-redacted) bootstrap_for={bf[:16]} != us (issuer={ev['agent_id'][:16]})")
+                print(f"[Translate] skip task {ev_id[:16]} — bootstrap_for={bf[:16]} != us (issuer={ev['agent_id'][:16]})")
                 continue
-            # else: non-issuer claiming bootstrap_for (JP-redacted) ignore the tag and
+            # else: non-issuer claiming bootstrap_for — ignore the tag and
             # fall through to the normal courtesy throttle.
             print(
                 f"[Translate] WARNING task {ev_id[:16]} carries bootstrap_for="
                 f"{bf[:16]} but author {ev['agent_id'][:16]} is NOT an "
                 f"operator-issuer; tag ignored, throttle applied"
             )
-        # Iter 26 / 26c: courtesy throttle (JP-redacted) refuse to serve a deep-deadbeat
-        # with no provider track record (PROTOCOL (JP-redacted)18.11). The new kind-50's
+        # Iter 26 / 26c: courtesy throttle — refuse to serve a deep-deadbeat
+        # with no provider track record (PROTOCOL §18.11). The new kind-50's
         # `reward.amount` is already in the requester's `locked` by the time
         # we evaluate it, so `available = balance - locked` already accounts
         # for the new commitment; no separate `amount` arg needed.
@@ -543,7 +543,7 @@ def main() -> int:
     ):
         print("[Translate] profile (re)declared")
     if not agent.has_recent_event(4):
-        # B2 structured capability (JP-redacted) anp2.cap.v1 schema
+        # B2 structured capability — anp2.cap.v1 schema
         # (see spec/capabilities/anp2.cap.v1.json and
         #  spec/capabilities/transform.text.demo.v1.json). The legacy free-form
         # `input` / `output` / `price` fields are kept alongside so pre-B2
@@ -656,7 +656,7 @@ def main() -> int:
             payload = _strip_request(ev.get("content") or "")
             if not payload:
                 reply_text = (
-                    "translate: (empty request) (JP-redacted) send the text you want "
+                    "translate: (empty request) — send the text you want "
                     "translated as the post content."
                 )
             else:

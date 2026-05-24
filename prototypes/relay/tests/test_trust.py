@@ -78,11 +78,11 @@ def test_trust_chain_A_to_B_to_C():
     # C's score depends on B's weight which depends on A's bootstrap + B's earned trust.
     assert res.weighted_score["C"] > 0
     assert res.weighted_score["B"] > 0
-    # raw_score is identical for B and C (one +1 vote each, fresh) (JP-redacted) proves
+    # raw_score is identical for B and C (one +1 vote each, fresh) — proves
     # any difference between them comes purely from iterative weighting.
     assert abs(res.raw_score["B"] - res.raw_score["C"]) < 1e-9
     # B's voter (A) has only bootstrap weight; C's voter (B) has bootstrap + earned trust,
-    # so the chain *amplifies* (JP-redacted) C ends up >= B. This is the propagation we want.
+    # so the chain *amplifies* — C ends up >= B. This is the propagation we want.
     assert res.weighted_score["C"] >= res.weighted_score["B"]
 
 
@@ -109,9 +109,9 @@ def test_sybil_cluster_is_dampened():
     # Sybil dampening: each sybil contributes ~1/3 of what it would; the
     # voter_count of T is 21, but weighted_score reflects per-voter scaling.
     # Quantitatively: total weighted contrib to T from sybils =
-    #   20 * sqrt(bootstrap_weight) * (1/3) * 1.0 (JP-redacted) 20 * 1 * 0.333 = 6.67
+    #   20 * sqrt(bootstrap_weight) * (1/3) * 1.0 — 20 * 1 * 0.333 = 6.67
     # Legitimate L contrib =
-    #   sqrt(bootstrap_weight) * 1.0 * 1.0 (JP-redacted) 1.0
+    #   sqrt(bootstrap_weight) * 1.0 * 1.0 — 1.0
     # Without dampening, sybils would contribute 20 * 1 * 1 = 20. So
     # dampening cut the sybil influence by 1/3, narrowing the gap.
     assert res.voter_count["T"] == 21

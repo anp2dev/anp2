@@ -1,13 +1,13 @@
-"""Tests for the Task Lifecycle protocol (kinds 50-55, PROTOCOL (JP-redacted)18).
+"""Tests for the Task Lifecycle protocol (kinds 50-55, PROTOCOL §18).
 
 Coverage:
-  - Happy path: request (JP-redacted) accept (JP-redacted) result (JP-redacted) verify(passed) (JP-redacted) payment(release)
-  - Timeout path: request with deadline in the past (JP-redacted) status `timed_out`
-  - Verify-failed path: verify with verdict=failed (JP-redacted) status `verified`
-                       (JP-redacted) refund payment (JP-redacted) status `refunded`
-  - Multi-verifier consensus: 3 verifiers, 2 passed + 1 failed (JP-redacted) `verified` (passed wins)
-  - Multi-verifier conflict: 2 passed + 2 failed (JP-redacted) `disputed`
-  - Cancellation: request (JP-redacted) cancel (before accept) (JP-redacted) `cancelled`
+  - Happy path: request — accept — result — verify(passed) — payment(release)
+  - Timeout path: request with deadline in the past — status `timed_out`
+  - Verify-failed path: verify with verdict=failed — status `verified`
+                       — refund payment — status `refunded`
+  - Multi-verifier consensus: 3 verifiers, 2 passed + 1 failed — `verified` (passed wins)
+  - Multi-verifier conflict: 2 passed + 2 failed — `disputed`
+  - Cancellation: request — cancel (before accept) — `cancelled`
   - Cancellation rejected: cancel after accept is recorded but ignored
 
 Uses the existing TestClient + signed-event pattern from test_basic / test_trust.
@@ -210,7 +210,7 @@ def test_happy_path_request_accept_result_verify_payment(tmp_path):
     assert r["status"] == "completed"
     assert len(r["results"]) == 1
 
-    priv_ver, pub_ver = generate_keypair()   # neutral verifier ((JP-redacted)18.6)
+    priv_ver, pub_ver = generate_keypair()   # neutral verifier (—18.6)
     ver = _make_verify(priv_ver, pub_ver, task_id, res["id"], pub_prov, verdict="passed", ts=t0 + 3)
     _post(client, ver)
     r = client.get(f"/task/{task_id}").json()
@@ -230,7 +230,7 @@ def test_happy_path_request_accept_result_verify_payment(tmp_path):
 
 
 def test_timeout_when_deadline_passes_with_no_result(tmp_path):
-    """request with a deadline in the past + no result (JP-redacted) status = timed_out."""
+    """request with a deadline in the past + no result — status = timed_out."""
     storage = Storage(tmp_path / "tasks.db")
     client = TestClient(create_app(storage))
 
@@ -274,7 +274,7 @@ def test_verify_failed_path_with_refund(tmp_path):
     res = _make_result(priv_prov, pub_prov, task_id, acc["id"], pub_req, ts=t0 + 2)
     _post(client, res)
 
-    priv_ver, pub_ver = generate_keypair()   # neutral verifier ((JP-redacted)18.6)
+    priv_ver, pub_ver = generate_keypair()   # neutral verifier (—18.6)
     ver = _make_verify(priv_ver, pub_ver, task_id, res["id"], pub_prov,
                        verdict="failed", score=0.1, ts=t0 + 3)
     _post(client, ver)
@@ -294,7 +294,7 @@ def test_verify_failed_path_with_refund(tmp_path):
 
 
 def test_multi_verifier_majority_consensus_passed(tmp_path):
-    """3 verifiers: 2 passed, 1 failed (JP-redacted) consensus.verdict = passed (JP-redacted) status verified."""
+    """3 verifiers: 2 passed, 1 failed — consensus.verdict = passed — status verified."""
     storage = Storage(tmp_path / "tasks.db")
     client = TestClient(create_app(storage))
 
@@ -322,12 +322,12 @@ def test_multi_verifier_majority_consensus_passed(tmp_path):
     assert r["status"] == "verified"
     assert r["consensus"]["verdict"] == "passed"
     assert r["consensus"]["verifier_count"] == 3
-    # avg score across all 3 (JP-redacted) (0.95+0.88+0.20)/3 = 0.677
+    # avg score across all 3 — (0.95+0.88+0.20)/3 = 0.677
     assert 0.6 < r["consensus"]["score"] < 0.75
 
 
 def test_multi_verifier_tie_yields_disputed(tmp_path):
-    """2 passed + 2 failed (JP-redacted) no single winner (JP-redacted) status disputed."""
+    """2 passed + 2 failed — no single winner — status disputed."""
     storage = Storage(tmp_path / "tasks.db")
     client = TestClient(create_app(storage))
 

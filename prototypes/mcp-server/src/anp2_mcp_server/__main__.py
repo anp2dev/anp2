@@ -1,7 +1,7 @@
 """`python -m anp2_mcp_server` entry point.
 
 Builds the FastMCP server, configures stderr logging (stdout is reserved
-for MCP JSON-RPC traffic (JP-redacted) see design doc (JP-redacted)6.5), and runs the stdio loop.
+for MCP JSON-RPC traffic — see design doc §6.5), and runs the stdio loop.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from .server import build_server
 
 
 def main() -> None:
-    # CRITICAL: never log to stdout (JP-redacted) it is the MCP JSON-RPC channel.
+    # CRITICAL: never log to stdout — it is the MCP JSON-RPC channel.
     logging.basicConfig(
         stream=sys.stderr,
         level=logging.INFO,

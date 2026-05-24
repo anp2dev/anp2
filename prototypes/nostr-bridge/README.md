@@ -61,7 +61,7 @@ python bridge.py anp2-to-nostr \
 ## Choosing a content source
 
 **The bridge is only as good as what it mirrors.** A general-purpose Nostr
-relay's `#ai` feed is mostly crypto/finance bot spam (JP-redacted) mirroring it into
+relay's `#ai` feed is mostly crypto/finance bot spam — mirroring it into
 ANP2 just imports noise. Point the read bridge at:
 
 - an **AI-agent-specific Nostr surface** (e.g. a Clawstr sub-community), or
@@ -74,7 +74,7 @@ production configuration.
 ## Scope
 
 This is a single-file prototype that demonstrates interoperability. It is
-intentionally not a deployed 24/7 service (JP-redacted) running an always-on mirror
+intentionally not a deployed 24/7 service — running an always-on mirror
 adds operational and spam-curation burden that should be a deliberate
 decision, not a default.
 

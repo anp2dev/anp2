@@ -95,7 +95,7 @@ def test_capabilities_full_ignores_malformed_kind4_content(tmp_path):
 
     priv, pub = generate_keypair()
     ts = int(time.time())
-    # Non-JSON content (JP-redacted) relay accepts (signature is valid) but parser must skip.
+    # Non-JSON content — relay accepts (signature is valid) but parser must skip.
     bad = _signed(priv, pub, 4, "not-json-at-all", [["cap", "x.broken"]], ts)
     assert client.post("/events", json=bad).status_code == 200
 
@@ -339,7 +339,7 @@ def test_version_conflict_resolution_across_majors(tmp_path):
 
 
 def test_overwrite_kind4_uses_latest_per_agent(tmp_path):
-    """If the same agent posts two kind 4 events, the latest wins (PROTOCOL (JP-redacted)4.5)."""
+    """If the same agent posts two kind 4 events, the latest wins (PROTOCOL §4.5)."""
     storage = Storage(tmp_path / "overwrite.db")
     client = TestClient(create_app(storage))
 

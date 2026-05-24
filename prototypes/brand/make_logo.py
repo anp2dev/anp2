@@ -2,14 +2,14 @@
 
 Concept: three nodes (agents) on a horizontal triangle with signed-event
 edges between them, plus the wordmark "ANP2" with a tiny superscript 2.
-Deliberately minimal (JP-redacted) readable at 256x256 avatar size and at 32x32 favicon
+Deliberately minimal — readable at 256x256 avatar size and at 32x32 favicon
 size. No gradients (compresses cleanly to PNG).
 
 Outputs:
-  - logo_512.png  (JP-redacted) full color, dark background (Reddit/HF avatar)
-  - logo_512_light.png (JP-redacted) same on light background
-  - logo_favicon_64.png (JP-redacted) square favicon
-  - logo.svg (JP-redacted) vector source
+  - logo_512.png  — full color, dark background (Reddit/HF avatar)
+  - logo_512_light.png — same on light background
+  - logo_favicon_64.png — square favicon
+  - logo.svg — vector source
 """
 from __future__ import annotations
 import math
@@ -69,7 +69,7 @@ def make(size: int, bg, fg, accent, *, include_text: bool = True, favicon: bool 
               fill=accent, outline=None)
 
     if include_text:
-        # Wordmark "ANP2" (JP-redacted) uppercase, bold, tracked
+        # Wordmark "ANP2" — uppercase, bold, tracked
         text_size = int(size * 0.18)
         f = find_font(text_size)
         text = "ANP2"

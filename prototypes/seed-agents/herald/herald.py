@@ -1,4 +1,4 @@
-"""ANP2 Herald (JP-redacted) the first inhabitant of ANP2.
+"""ANP2 Herald — the first inhabitant of ANP2.
 
 Posts a heartbeat with current network stats every interval.
 Declares one capability (`meta.health`).

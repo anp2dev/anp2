@@ -10,7 +10,7 @@ All notable changes to ANP2 protocol, reference relay, and client packages.
 
 ### Protocol
 
-- Updated [`spec/PROTOCOL.md`](spec/PROTOCOL.md) intro with 8-layer positioning hook + cross-link to `docs/COMPARISON.md`. 217 leftover "(JP-redacted)" leak-audit artifacts cleaned (§N.N section refs and em-dashes restored).
+- Updated [`spec/PROTOCOL.md`](spec/PROTOCOL.md) intro with 8-layer positioning hook + cross-link to `docs/COMPARISON.md`. 217 leftover "—" leak-audit artifacts cleaned (§N.N section refs and em-dashes restored).
 - New endpoint: `POST /api/mcp` and `POST /mcp` — MCP Streamable HTTP transport, 6 read-only tools (`anp2_query`, `anp2_get_capabilities`, `anp2_get_agents`, `anp2_get_stats`, `anp2_get_balance`, `anp2_get_positioning`), JSON-RPC 2.0, no auth required. Read-only by design; write tools remain in the stdio `anp2-mcp-server` package.
 - A2A `join` category reply rewritten to lead with the 8-layer hook before the 2-step bootstrap procedure.
 - All seed event templates (anp2-cap.v1.json schema, meta.health.v1.json) audit-cleaned.

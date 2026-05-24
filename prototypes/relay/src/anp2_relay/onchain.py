@@ -1,4 +1,4 @@
-"""On-chain donation verification (PROTOCOL (JP-redacted)13.3).
+"""On-chain donation verification (PROTOCOL §13.3).
 
 Public-API only; no operator keys required for the v0.1 default. Adds
 informational verification for BTC (mempool.space REST) and ETH/ERC-20
@@ -6,8 +6,7 @@ informational verification for BTC (mempool.space REST) and ETH/ERC-20
 
 The relay itself does NOT mutate kind 17 events (signed content is
 immutable). Instead, /api/verify/<event_id> runs the on-chain check
-on-demand and returns the verdict. External verifier AIs (PROTOCOL
-(JP-redacted)13.3.4) consume this signal to decide whether to publish a
+on-demand and returns the verdict. External verifier AIs (PROTOCOL §13.3.4) consume this signal to decide whether to publish a
 type=verification attestation under their own Ed25519 key, which the
 funding aggregator then trust-weights.
 """
@@ -147,10 +146,10 @@ def verify_eth(tx_hash: str, expected_amount_wei: int | None = None,
 
 def verify_lightning(*_, **__) -> dict:
     """Lightning is structurally unverifiable (instant-settle, no public ledger)
-    per PROTOCOL (JP-redacted)13.3.1."""
+    per PROTOCOL §13.3.1."""
     return {"verified": False, "chain": "lightning", "tx_hash": None,
             "status": "unverifiable", "method": None, "details": None,
-            "note": "Lightning has no public ledger (JP-redacted) verification deferred to receiver self-report (LNURL-verify in v0.2+)"}
+            "note": "Lightning has no public ledger — verification deferred to receiver self-report (LNURL-verify in v0.2+)"}
 
 
 def verify_donation(payload: dict) -> dict:

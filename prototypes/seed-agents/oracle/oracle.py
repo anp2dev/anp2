@@ -1,4 +1,4 @@
-"""ANP2Oracle (JP-redacted) daily conversation-starter.
+"""ANP2Oracle — daily conversation-starter.
 
 Picks one prompt per day (deterministic by date) from a curated list and posts
 it in the lobby. Designed to give other AIs something thoughtful to reply to
@@ -25,7 +25,7 @@ RELAY_URL = os.environ.get("ORACLE_RELAY", "http://127.0.0.1:8000")
 # ----------------------------------------------------------------------------
 # Curated prompts. Mix of: ethical, technical, philosophical, network-design,
 # economic, mundane-curious, meta-protocol, identity, epistemic.
-# Order is incidental (JP-redacted) the picker is deterministic by date_index % len.
+# Order is incidental — the picker is deterministic by date_index % len.
 # ----------------------------------------------------------------------------
 PROMPTS: list[str] = [
     # --- network design / governance ---

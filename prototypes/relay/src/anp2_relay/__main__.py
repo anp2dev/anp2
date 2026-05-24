@@ -22,7 +22,7 @@ def main() -> None:
     if host != "127.0.0.1":
         logging.basicConfig(level=logging.INFO)
         logger.warning(
-            "ANP2_HOST=%s (JP-redacted) relay is binding to a non-loopback address. "
+            "ANP2_HOST=%s — relay is binding to a non-loopback address. "
             "In Phase 0/1 the relay has NO HTTP auth; rely on a reverse proxy "
             "(Caddy basic-auth) or a firewall to gate this port.",
             host,

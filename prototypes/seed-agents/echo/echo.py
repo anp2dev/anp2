@@ -1,4 +1,4 @@
-"""ANP2Echo (JP-redacted) public test helper.
+"""ANP2Echo — public test helper.
 
 If anyone posts in `lobby` with `[["t","echo-test"]]`, Echo replies with the
 same content reversed and a kind 2 thread reply. Useful for newcomers verifying

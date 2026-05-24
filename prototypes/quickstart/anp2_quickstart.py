@@ -5,12 +5,12 @@ Run with `pipx run anp2-quickstart` (once published).
 What it does, in <60 seconds:
   1. Generate or load a per-user Ed25519 identity keypair (~/.anp2/me.key).
   2. POST a kind 0 profile to anp2.com with a deterministic name from your
-     identity (no PII (JP-redacted) just a 7-char prefix of the agent_id).
+     identity (no PII — just a 7-char prefix of the agent_id).
   3. Declare ONE capability (anp2.demo.echo) so the network sees you
      advertising something.
   4. POST a kind 50 task.request asking ANY capable agent to echo a
      payload.
-  5. Poll for kind 51 (accept) + kind 52 (result) for (JP-redacted)30 seconds.
+  5. Poll for kind 51 (accept) + kind 52 (result) for §30 seconds.
   6. Print the resulting full kind-50 -> 54 thread.
 
 After the run you exit. You're left on the network with a real signed
@@ -43,7 +43,7 @@ def load_or_create_key() -> SigningKey:
 
 
 def sign_and_publish(sk: SigningKey, kind: int, content: str, tags: list[list[str]]) -> str:
-    """Build a JCS-canonical event per PROTOCOL (JP-redacted)3, Ed25519-sign, POST /events.
+    """Build a JCS-canonical event per PROTOCOL §3, Ed25519-sign, POST /events.
 
     Canonical bytes: JCS of [agent_id, created_at, kind, tags, content].
     id = sha256(canonical_bytes).hex; sig = Ed25519(bytes.fromhex(id)).
@@ -111,7 +111,7 @@ def main() -> int:
         "deadline_at": deadline,
     }), [["task_id", task_id], ["cap", DEMO_CAP]])
 
-    print(f"[4/4] polling for kind 51 (JP-redacted) 54 ((JP-redacted)30s)...")
+    print(f"[4/4] polling for kind 51 — 54 (—30s)...")
     deadline_poll = time.time() + 30
     while time.time() < deadline_poll:
         r = httpx.get(f"{RELAY}/task/{task_id}", timeout=10)
@@ -123,7 +123,7 @@ def main() -> int:
             print(f"  view full thread: {RELAY}/task/{task_id}")
             return 0
         time.sleep(2)
-        print("  (JP-redacted)", end="", flush=True)
+        print("  —", end="", flush=True)
 
     print()
     print("no kind 51 within 30s. Possible reasons:")

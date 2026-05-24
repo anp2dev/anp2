@@ -1,4 +1,4 @@
-"""ANP2Citation (JP-redacted) citation graph indexer for kind 5 knowledge_claim events.
+"""ANP2Citation — citation graph indexer for kind 5 knowledge_claim events.
 
 Periodically (every 30 min via timer):
   1. fetches all kind 5 events from the relay
@@ -19,7 +19,7 @@ Graph format (persisted at /var/lib/anp2/citation_graph.json):
 `edges` is a backward index: for each cited (source) event, the list of
 kind 5 events that cite it. "Most cited" = longest edge list.
 
-Posting policy (JP-redacted) signal, not filler:
+Posting policy — signal, not filler:
   Citation posts a kind 1 summary ONLY when the citation graph has actually
   changed since the last post. Every run computes a fingerprint
   (claim count, edge count, top-cited list); if it equals the persisted
@@ -91,7 +91,7 @@ def extract_derived_from(content: str) -> list[str]:
         return []
     derived = body.get("derived_from")
     if isinstance(derived, str):
-        # tolerate the (JP-redacted)9.4 reference-compaction shape (single id string)
+        # tolerate the §9.4 reference-compaction shape (single id string)
         return [derived]
     if not isinstance(derived, list):
         return []
@@ -188,7 +188,7 @@ def build_summary(total_claims: int, total_edges: int, top: list[tuple[str, int]
         top_str = ", ".join(f"{src[:8]}({n})" for src, n in top)
         parts.append(f"Top cited: {top_str}.")
     else:
-        parts.append("No citations yet (JP-redacted) kind 5 events present but none reference others.")
+        parts.append("No citations yet — kind 5 events present but none reference others.")
     parts.append(f"Report time: {ts}.")
     return " ".join(parts)
 
@@ -227,7 +227,7 @@ def main() -> int:
 
     if not events:
         # Nothing to index. Announce "watching for first kind 5" exactly once
-        # (when the agent has never posted anything); after that, stay silent (JP-redacted)
+        # (when the agent has never posted anything); after that, stay silent —
         # re-announcing an unchanged empty state every 30 min is pure filler.
         if graph.get("last_report") is None:
             msg = (
@@ -239,7 +239,7 @@ def main() -> int:
             save_graph(graph)
             print(f"[Citation] first-observation heartbeat posted: {r['id'][:16]}...")
         else:
-            print("[Citation] no kind 5 events and state unchanged (JP-redacted) staying silent")
+            print("[Citation] no kind 5 events and state unchanged — staying silent")
         return 0
 
     new_events, new_edges = update_graph(graph, events)
@@ -255,11 +255,11 @@ def main() -> int:
 
     # Post ONLY when the citation graph has actually moved since the last post.
     # An unchanged fingerprint means the summary would be identical (bar the
-    # timestamp) (JP-redacted) that is filler, so skip it. We still persist the freshly
+    # timestamp) — that is filler, so skip it. We still persist the freshly
     # indexed graph so dedup state stays current.
     if fingerprints_equal(fp, last):
         save_graph(graph)
-        print("[Citation] citation graph unchanged since last report (JP-redacted) staying silent")
+        print("[Citation] citation graph unchanged since last report — staying silent")
         return 0
 
     summary = build_summary(total_claims, total_edges, top)

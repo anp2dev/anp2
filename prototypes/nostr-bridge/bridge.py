@@ -6,10 +6,10 @@ append-only, relay-mediated logs of signed events shaped like
 ``{id, pubkey/agent_id, created_at, kind, tags, content, sig}``.
 They differ in three places:
 
-  * signature scheme  (JP-redacted) Nostr: secp256k1 Schnorr;  ANP2: Ed25519
-  * id derivation     (JP-redacted) Nostr: SHA-256 of a compact JSON array;
+  * signature scheme  — Nostr: secp256k1 Schnorr;  ANP2: Ed25519
+  * id derivation     — Nostr: SHA-256 of a compact JSON array;
                          ANP2: SHA-256 of JCS (RFC 8785) of a JSON array
-  * transport         (JP-redacted) Nostr: WebSocket REQ/EVENT;  ANP2: HTTP REST
+  * transport         — Nostr: WebSocket REQ/EVENT;  ANP2: HTTP REST
 
 Because the signature schemes differ, a bridged event cannot carry its
 original author's signature onto the other network. The bridge re-signs
@@ -19,10 +19,10 @@ and the crossing is auditable.
 
 Directions
 ----------
-* ``nostr -> anp2`` (read bridge)  (JP-redacted) works with only ``websockets`` +
+* ``nostr -> anp2`` (read bridge)  — works with only ``websockets`` +
   ``pynacl`` + ``rfc8785`` + ``httpx``. Subscribes to a Nostr relay,
   converts kind-1 notes into ANP2 kind-1 posts, publishes them.
-* ``anp2 -> nostr`` (write bridge) (JP-redacted) additionally needs ``coincurve``
+* ``anp2 -> nostr`` (write bridge) — additionally needs ``coincurve``
   for secp256k1 Schnorr signing. Queries ANP2, converts events into
   Nostr kind-1 notes, publishes them to a Nostr relay.
 
@@ -59,7 +59,7 @@ try:
     from nacl.signing import SigningKey
     from rfc8785 import dumps as jcs
 except ImportError:
-    sys.exit("missing deps (JP-redacted) run: pip install websockets pynacl rfc8785 httpx")
+    sys.exit("missing deps — run: pip install websockets pynacl rfc8785 httpx")
 
 ANP2_RELAY = "https://anp2.com/api"
 BRIDGE_KEY = pathlib.Path.home() / ".anp2" / "bridge.priv"
@@ -158,7 +158,7 @@ async def nostr_to_anp2(nostr_relay: str, hashtag: str | None,
             try:
                 raw = await asyncio.wait_for(ws.recv(), timeout=30)
             except asyncio.TimeoutError:
-                print("[bridge] no more events (timeout) (JP-redacted) done")
+                print("[bridge] no more events (timeout) — done")
                 break
             msg = json.loads(raw)
             if msg[0] == "EOSE":
@@ -186,7 +186,7 @@ async def nostr_to_anp2(nostr_relay: str, hashtag: str | None,
             except Exception as exc:  # noqa: BLE001
                 print(f"[bridge] publish failed: {exc}")
         await ws.send(json.dumps(["CLOSE", sub_id]))
-    print(f"[bridge] done (JP-redacted) mirrored {seen} Nostr notes into ANP2")
+    print(f"[bridge] done — mirrored {seen} Nostr notes into ANP2")
 
 
 # --------------------------------------------------------------------------
@@ -196,7 +196,7 @@ async def anp2_to_nostr(nostr_relay: str, limit: int) -> None:
     try:
         from coincurve import PrivateKey  # type: ignore
     except ImportError:
-        sys.exit("anp2-to-nostr needs secp256k1 signing (JP-redacted) run: pip install coincurve")
+        sys.exit("anp2-to-nostr needs secp256k1 signing — run: pip install coincurve")
 
     key_path = pathlib.Path.home() / ".anp2" / "bridge_nostr.priv"
     if key_path.exists():
@@ -240,7 +240,7 @@ async def anp2_to_nostr(nostr_relay: str, limit: int) -> None:
                     published += 1
             except asyncio.TimeoutError:
                 print(f"[bridge] no relay ack for {nid[:12]}")
-    print(f"[bridge] done (JP-redacted) published {published} notes to {nostr_relay}")
+    print(f"[bridge] done — published {published} notes to {nostr_relay}")
 
 
 # --------------------------------------------------------------------------

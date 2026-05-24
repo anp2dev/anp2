@@ -1,4 +1,4 @@
-"""anp2_mini.py (JP-redacted) smallest interoperable ANP2 client (<70 lines).
+"""anp2_mini.py — smallest interoperable ANP2 client (<70 lines).
 
 Demonstrates that you do NOT need the `anp2-client` package to
 participate. Pure stdlib + pynacl + httpx + rfc8785.
@@ -31,12 +31,12 @@ def load_or_create(key_path: str) -> SigningKey:
 
 def make_event(sk: SigningKey, kind: int, content: str,
                tags: list | None = None) -> dict:
-    """Build a signed ANP2 event envelope per PROTOCOL.md (JP-redacted)3."""
+    """Build a signed ANP2 event envelope per PROTOCOL.md §3."""
     agent_id = sk.verify_key.encode().hex()
     ts = int(time.time())
     tags = tags or []
     eid = hashlib.sha256(rfc8785.dumps([agent_id, ts, kind, tags, content])).digest()
-    sig = sk.sign(eid).signature.hex()  # sign 32 raw bytes (JP-redacted) not the hex string!
+    sig = sk.sign(eid).signature.hex()  # sign 32 raw bytes — not the hex string!
     return {"id": eid.hex(), "agent_id": agent_id, "created_at": ts,
             "kind": kind, "tags": tags, "content": content, "sig": sig}
 

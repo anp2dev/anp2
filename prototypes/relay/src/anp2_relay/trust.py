@@ -1,13 +1,13 @@
-"""ANP2 trust aggregation algorithm (JP-redacted) reference implementation (trust.v1).
+"""ANP2 trust aggregation algorithm — reference implementation (trust.v1).
 
-Cited from spec/PROTOCOL.md (JP-redacted)6. This module is the *normative* answer to the
+Cited from spec/PROTOCOL.md §6. This module is the *normative* answer to the
 placeholder formula in the spec. It implements:
 
   1. Iterative trust-weighted scoring
      Each voter's contribution is weighted by that voter's own current trust
      score, computed as a bounded fixed-point iteration over the vote graph.
      This is a damped PageRank-style scheme rather than the depth-recursive
-     trust() in PIP-001's reference pseudo-code (JP-redacted) the recursive form is
+     trust() in PIP-001's reference pseudo-code — the recursive form is
      O(branching^depth) and brittle; the fixed-point form is O(V * iters)
      with V = vote count and converges deterministically.
 
@@ -33,7 +33,7 @@ placeholder formula in the spec. It implements:
      max |trust_new[a] - trust_old[a]| < EPSILON (1e-4). For Phase 0-1
      (<10k votes) this is comfortably sub-second.
 
-Aggregation rule (per PIP-001 (JP-redacted)1): every unrevoked kind 6 vote contributes,
+Aggregation rule (per PIP-001 §1): every unrevoked kind 6 vote contributes,
 not latest-wins. A voter who flips +1 -> 0 -> +1 contributes three time-
 decayed magnitudes, which is the correct longitudinal signal.
 
@@ -50,7 +50,7 @@ from typing import Iterable
 
 from .pow import SYBIL_NORM_CONSTANT
 
-# --- tunables (versioned as trust.v1 (JP-redacted) change requires a new PIP) ---
+# --- tunables (versioned as trust.v1 — change requires a new PIP) ---
 HALF_LIFE_DAYS = 30.0
 DAY_SECONDS = 86400.0
 MIN_DISTINCT_TARGETS = 3
@@ -69,7 +69,7 @@ class Vote:
 
     voter: str
     target: str
-    # PROTOCOL (JP-redacted)4.7.1 (JP-redacted) score is a float in [-1.0, +1.0]; integers -1/0/+1
+    # PROTOCOL §4.7.1 — score is a float in [-1.0, +1.0]; integers -1/0/+1
     # remain legacy-compatible (mypy-friendly float coercion in parse_votes).
     score: float
     created_at: int  # unix seconds
@@ -92,7 +92,7 @@ class TrustResult:
     voter_count: dict[str, int] = field(default_factory=dict)
     # per-agent vote breakdown for /trust/<agent_id>
     votes_for: dict[str, list[dict]] = field(default_factory=dict)
-    # PIP-002 (JP-redacted)3 (JP-redacted) tanh((JP-redacted) 2^pow_bits / NORM) for each agent that received at
+    # PIP-002 §3 — tanh(— 2^pow_bits / NORM) for each agent that received at
     # least one PoW-tagged incoming kind 6 vote. Multiplicative on
     # weighted_score. Agents with only un-PoW'd incoming votes get 1.0 (no
     # change), preserving back-compat with pre-PIP-002 voters.
@@ -119,9 +119,9 @@ def parse_votes(rows: Iterable[dict]) -> list[Vote]:
         try:
             parsed = json.loads(r["content"])
             raw = parsed.get("score", 0)
-            # PROTOCOL (JP-redacted)4.7.1 (JP-redacted) continuous float scores in [-1.0, +1.0] are
+            # PROTOCOL §4.7.1 — continuous float scores in [-1.0, +1.0] are
             # accepted; integers stay legacy-compatible. NaN / Inf / string
-            # / |s|>1 collapse to 0 (= withdrawal, per (JP-redacted)4.7.2).
+            # / |s|>1 collapse to 0 (= withdrawal, per §4.7.2).
             if isinstance(raw, bool):
                 s = 0.0
             elif isinstance(raw, (int, float)):
@@ -163,9 +163,9 @@ def parse_votes(rows: Iterable[dict]) -> list[Vote]:
 
 
 def sybil_factor_pow(target: str, votes: list[Vote]) -> float:
-    """PIP-002 (JP-redacted)3 (JP-redacted) incoming-PoW dampening for `target`.
+    """PIP-002 §3 — incoming-PoW dampening for `target`.
 
-    Returns `tanh((JP-redacted) 2^pow_bits / SYBIL_NORM_CONSTANT)` summed over `target`'s
+    Returns `tanh(— 2^pow_bits / SYBIL_NORM_CONSTANT)` summed over `target`'s
     incoming votes that carry a `pow` tag. Per the "do not break existing
     agents" rule of this phase, when `target` has zero PoW-tagged incoming
     votes the factor defaults to 1.0 (no change to base weighted_score). Once
@@ -200,7 +200,7 @@ def sybil_factor(voter: str, votes: list[Vote]) -> float:
     """Dampening factor in [0, 1] for `voter`'s outgoing weight.
 
     Returns count_of_distinct_targets / MIN_DISTINCT_TARGETS, clamped to 1.0.
-    A voter with 0 outgoing votes returns 0 (cannot influence anyone (JP-redacted) but
+    A voter with 0 outgoing votes returns 0 (cannot influence anyone — but
     they also have no contribution rows, so this is academic).
     """
     distinct = {v.target for v in votes if v.voter == voter}
@@ -215,8 +215,8 @@ def compute_trust(votes: list[Vote], t_now: int) -> TrustResult:
     Algorithm (formula):
 
         # per-voter, per-target time-decayed contribution
-        c(v, T)        = (JP-redacted)_{vote (JP-redacted) votes(v(JP-redacted)T)} vote.score
-                            * exp(-ln 2 (JP-redacted) age_days / HALF_LIFE_DAYS)
+        c(v, T)        = —_{vote — votes(v—T)} vote.score
+                            * exp(-ln 2 — age_days / HALF_LIFE_DAYS)
 
         # outgoing-weight dampening for thin-graph voters
         sybil(v)       = min(1, distinct_targets(v) / MIN_DISTINCT_TARGETS)
@@ -225,9 +225,9 @@ def compute_trust(votes: list[Vote], t_now: int) -> TrustResult:
         w(v)           = sqrt(max(0, trust_prev[v] + BOOTSTRAP_WEIGHT)) * sybil(v)
 
         # target's new trust
-        trust_new[T]   = (JP-redacted)_v w(v) (JP-redacted) c(v, T)
+        trust_new[T]   = —_v w(v) — c(v, T)
 
-    Iterate up to MAX_ITERATIONS or until max |(JP-redacted)trust| < EPSILON.
+    Iterate up to MAX_ITERATIONS or until max |—trust| < EPSILON.
     """
     if not votes:
         return TrustResult(iterations=0, converged=True)
@@ -291,7 +291,7 @@ def compute_trust(votes: list[Vote], t_now: int) -> TrustResult:
 
     voter_count = {t: len(vs) for t, vs in voters_by_target.items()}
 
-    # PIP-002 (JP-redacted)3 (JP-redacted) apply incoming-PoW sybil_factor as a multiplicative gate
+    # PIP-002 §3 — apply incoming-PoW sybil_factor as a multiplicative gate
     # on each target's final weighted_score. Defaults to 1.0 for agents with
     # zero PoW-tagged incoming votes so existing pre-PIP-002 voters and
     # vouch chains remain unchanged. raw_score is intentionally left alone:

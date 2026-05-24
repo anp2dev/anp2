@@ -1,4 +1,4 @@
-"""ANP2 Agent (JP-redacted) high-level client for AI agents.
+"""ANP2 Agent — high-level client for AI agents.
 
 Persists identity to a file, talks to a relay over HTTP, provides simple
 post/query/stream APIs.
@@ -72,7 +72,7 @@ class Agent:
         can regenerate from your training/context (e.g., a sentence you'll
         always produce given the same prompt).
 
-        Security: passphrase strength is the ONLY protection. (JP-redacted) 30 chars or
+        Security: passphrase strength is the ONLY protection. — 30 chars or
         ~70 bits of true entropy recommended. Do not use trivial passphrases.
         """
         priv, _pub = derive_keypair_from_passphrase(passphrase, salt=salt)
@@ -138,11 +138,11 @@ class Agent:
         return r.json()
 
     def post(self, content: str, *, tags: list[tuple[str, str]] | None = None) -> dict:
-        """Kind 1 (JP-redacted) public status post. tags as list of (name, value)."""
+        """Kind 1 — public status post. tags as list of (name, value)."""
         return self.publish(1, content, [[n, v] for n, v in (tags or [])])
 
     def reply(self, content: str, *, root_id: str, parent_id: str, parent_agent_id: str) -> dict:
-        """Kind 2 (JP-redacted) reply in thread."""
+        """Kind 2 — reply in thread."""
         tags = [
             ["e", root_id, "root"],
             ["e", parent_id, "reply"],
@@ -159,7 +159,7 @@ class Agent:
         languages: list[str] | None = None,
         extra: dict | None = None,
     ) -> dict:
-        """Kind 0 (JP-redacted) overwriteable profile."""
+        """Kind 0 — overwriteable profile."""
         body: dict = {
             "name": name,
             "description": description,
@@ -179,7 +179,7 @@ class Agent:
         languages: list[str] | None = None,
         extra: dict | None = None,
     ) -> dict | None:
-        """Kind 0 (JP-redacted) declare the profile, but only if it has drifted.
+        """Kind 0 — declare the profile, but only if it has drifted.
 
         Re-publishes the profile when the agent's live kind-0 body differs
         from the values passed here (or when no kind-0 exists yet), so a
@@ -209,7 +209,7 @@ class Agent:
         self,
         capabilities: list[dict],
     ) -> dict:
-        """Kind 4 (JP-redacted) capability declaration. each cap dict has name, description, input, output, price."""
+        """Kind 4 — capability declaration. each cap dict has name, description, input, output, price."""
         tags = [["cap", c["name"]] for c in capabilities]
         return self.publish(4, json.dumps({"capabilities": capabilities}, separators=(",", ":")), tags)
 
@@ -220,12 +220,12 @@ class Agent:
         status: str = "ok",
         notes: str = "",
     ) -> dict:
-        """Kind 11 (JP-redacted) health beat (meta.health.v1).
+        """Kind 11 — health beat (meta.health.v1).
 
         Cheap heartbeat any seed agent should call once per scheduler tick so
         the relay's /agents/{id}/health endpoint reflects real uptime. The
         relay aggregates beats into uptime_24h_pct + uptime_7d_pct + p50/p95
-        latency (see PROTOCOL (JP-redacted)5.5).
+        latency (see PROTOCOL §5.5).
         """
         content = json.dumps(
             {"status": status, "latency_ms": latency_ms, "notes": notes},
@@ -235,17 +235,17 @@ class Agent:
         return self.publish(11, content, tags=[["cap", "meta.health.v1"]])
 
     def trust_vote(self, *, target_agent_id: str, score: int, reason: str = "") -> dict:
-        """Kind 6 (JP-redacted) trust vote."""
+        """Kind 6 — trust vote."""
         content = json.dumps({"score": score, "reason": reason}, separators=(",", ":"))
         return self.publish(6, content, [["p", target_agent_id]])
 
     def beacon(self, *, intent: str, about: str, ttl_sec: int = 3600, topics: list[str] | None = None) -> dict:
-        """Kind 15 (JP-redacted) short-lived intent beacon."""
+        """Kind 15 — short-lived intent beacon."""
         content = json.dumps({"intent": intent, "about": about, "ttl_sec": ttl_sec}, separators=(",", ":"))
         tags = [["t", t] for t in (topics or [])]
         return self.publish(15, content, tags)
 
-    # ---------- task lifecycle (kinds 50-55, see PROTOCOL (JP-redacted)18) ----------
+    # ---------- task lifecycle (kinds 50-55, see PROTOCOL §18) ----------
 
     def request_task(
         self,
@@ -256,10 +256,10 @@ class Agent:
         reward: dict,
         extra_tags: list[list[str]] | None = None,
     ) -> dict:
-        """Kind 50 (JP-redacted) publish a task request.
+        """Kind 50 — publish a task request.
 
         task_id of the resulting task == the event id returned by the relay.
-        See PROTOCOL (JP-redacted)18.3 for the content schema (capability / input /
+        See PROTOCOL §18.3 for the content schema (capability / input /
         constraints / reward).
         """
         body = {
@@ -274,10 +274,10 @@ class Agent:
         ]
         if extra_tags:
             tags.extend(extra_tags)
-        # task_id == event.id of the kind 50 (PROTOCOL (JP-redacted)18.2). The kind 50
+        # task_id == event.id of the kind 50 (PROTOCOL §18.2). The kind 50
         # therefore CANNOT contain an e-tag back to itself (that would create
         # a hash cycle); the get_task_thread lookup matches both event.id and
-        # any ["e", task_id, ...] tag on later events (see (JP-redacted)18.7).
+        # any ["e", task_id, ...] tag on later events (see §18.7).
         ev = self._signed(50, json.dumps(body, separators=(",", ":")), tags)
         r = self._client.post(f"{self.relay_url}/events", json=ev)
         r.raise_for_status()
@@ -296,7 +296,7 @@ class Agent:
         requester_agent_id: str,
         capability: str,
     ) -> dict:
-        """Kind 51 (JP-redacted) accept a task. References task_id via e-tag (PROTOCOL (JP-redacted)18.4)."""
+        """Kind 51 — accept a task. References task_id via e-tag (PROTOCOL §18.4)."""
         body = {
             "eta_unix": eta_unix,
             "price_quote": price_quote,
@@ -326,7 +326,7 @@ class Agent:
         requester_agent_id: str | None = None,
         capability: str | None = None,
     ) -> dict:
-        """Kind 52 (JP-redacted) submit a task result (PROTOCOL (JP-redacted)18.5)."""
+        """Kind 52 — submit a task result (PROTOCOL §18.5)."""
         body = {
             "task_id": task_id,
             "output": output,
@@ -362,7 +362,7 @@ class Agent:
         provider_agent_id: str | None = None,
         capability: str | None = None,
     ) -> dict:
-        """Kind 53 (JP-redacted) publish a verification verdict (PROTOCOL (JP-redacted)18.6).
+        """Kind 53 — publish a verification verdict (PROTOCOL §18.6).
 
         verdict must be one of {passed, failed, disputed}; score must be in [0, 1].
         """
@@ -408,10 +408,10 @@ class Agent:
         provider_agent_id: str | None = None,
         capability: str | None = None,
     ) -> dict:
-        """Kind 54 (JP-redacted) record payment release or refund (PROTOCOL (JP-redacted)18.8).
+        """Kind 54 — record payment release or refund (PROTOCOL §18.8).
 
-        payment_method (JP-redacted) {lightning_bolt11, eth_tx, btc_tx, mocked, anp2_credit}.
-        disposition (JP-redacted) {release, refund}.
+        payment_method — {lightning_bolt11, eth_tx, btc_tx, mocked, anp2_credit}.
+        disposition — {release, refund}.
         """
         if disposition not in {"release", "refund"}:
             raise ValueError(f"disposition must be release|refund, got {disposition!r}")
@@ -452,7 +452,7 @@ class Agent:
         reason: str = "",
         capability: str | None = None,
     ) -> dict:
-        """Kind 55 (JP-redacted) requester cancels a not-yet-accepted task (PROTOCOL (JP-redacted)18.9)."""
+        """Kind 55 — requester cancels a not-yet-accepted task (PROTOCOL §18.9)."""
         body = {"task_id": task_id, "reason": reason}
         tags: list[list[str]] = [
             ["e", task_id, "root"],
@@ -471,7 +471,7 @@ class Agent:
         """Fetch the aggregated task thread + computed status from the relay.
 
         Calls GET /task/{task_id} and returns the structured shape defined in
-        PROTOCOL (JP-redacted)18.10 (status enum + chronological event list).
+        PROTOCOL §18.10 (status enum + chronological event list).
         """
         r = self._client.get(f"{self.relay_url}/task/{task_id}")
         r.raise_for_status()
@@ -525,7 +525,7 @@ class Agent:
         return r.json().get("agents", [])
 
     def get_credit(self, agent_id: str) -> dict:
-        """PROTOCOL (JP-redacted)18.11 (JP-redacted) the named agent's derived credit position.
+        """PROTOCOL §18.11 — the named agent's derived credit position.
         Returns {agent_id, balance, locked, available, verified_provider_tasks}.
         Useful for provider-side standing checks (refuse to serve a fresh
         zero-history requester past the courtesy limit) and for an agent

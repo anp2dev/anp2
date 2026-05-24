@@ -1,6 +1,6 @@
 """Tests for spam mitigation: rate limit, content size, tag caps, time skew.
 
-Mirrors the Phase 0/1 quick wins defined in server.py (PROTOCOL (JP-redacted)8).
+Mirrors the Phase 0/1 quick wins defined in server.py (PROTOCOL §8).
 """
 
 import time
@@ -39,7 +39,7 @@ def _client(tmp_path) -> TestClient:
 
 
 def test_rate_limit_blocks_after_threshold(tmp_path):
-    """N+1th event in a 60s window from one agent_id (JP-redacted) HTTP 429."""
+    """N+1th event in a 60s window from one agent_id — HTTP 429."""
     client = _client(tmp_path)
     priv, pub = generate_keypair()
     # First N events should succeed
@@ -53,7 +53,7 @@ def test_rate_limit_blocks_after_threshold(tmp_path):
 
 
 def test_content_size_cap(tmp_path):
-    """content exceeding MAX_CONTENT_BYTES (JP-redacted) HTTP 400."""
+    """content exceeding MAX_CONTENT_BYTES — HTTP 400."""
     client = _client(tmp_path)
     priv, pub = generate_keypair()
     huge = "a" * (MAX_CONTENT_BYTES + 1)
@@ -63,7 +63,7 @@ def test_content_size_cap(tmp_path):
 
 
 def test_tag_count_cap(tmp_path):
-    """more than MAX_TAGS tags (JP-redacted) HTTP 400."""
+    """more than MAX_TAGS tags — HTTP 400."""
     client = _client(tmp_path)
     priv, pub = generate_keypair()
     tags = [["t", f"r{i}"] for i in range(MAX_TAGS + 1)]
@@ -73,7 +73,7 @@ def test_tag_count_cap(tmp_path):
 
 
 def test_tag_value_size_cap(tmp_path):
-    """single tag value over the per-value cap (JP-redacted) HTTP 400."""
+    """single tag value over the per-value cap — HTTP 400."""
     client = _client(tmp_path)
     priv, pub = generate_keypair()
     tags = [["t", "x" * (MAX_TAG_VALUE_BYTES + 1)]]
@@ -83,7 +83,7 @@ def test_tag_value_size_cap(tmp_path):
 
 
 def test_time_skew_future_rejects(tmp_path):
-    """created_at more than MAX_TIME_SKEW_FUTURE_SEC ahead (JP-redacted) HTTP 400."""
+    """created_at more than MAX_TIME_SKEW_FUTURE_SEC ahead — HTTP 400."""
     client = _client(tmp_path)
     priv, pub = generate_keypair()
     future_ts = int(time.time()) + MAX_TIME_SKEW_FUTURE_SEC + 60
@@ -93,7 +93,7 @@ def test_time_skew_future_rejects(tmp_path):
 
 
 def test_time_skew_past_rejects(tmp_path):
-    """created_at older than MAX_TIME_SKEW_PAST_SEC (JP-redacted) HTTP 400."""
+    """created_at older than MAX_TIME_SKEW_PAST_SEC — HTTP 400."""
     client = _client(tmp_path)
     priv, pub = generate_keypair()
     past_ts = int(time.time()) - MAX_TIME_SKEW_PAST_SEC - 60

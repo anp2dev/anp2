@@ -6,16 +6,16 @@ client mints a nonce so that the SHA256 of the JCS-canonical event payload
 verifies the claim with a single SHA256 + leading-zero-count.
 
 This module is consumed by:
-  - `server.py` (JP-redacted) to validate kind 6 trust_vote events at publish time when
-    they carry a `pow` tag (PIP-002 (JP-redacted)1).
-  - `trust.py` (JP-redacted) to read the declared `pow_bits` per kind 6 vote and feed
-    `sybil_factor(v) = tanh((JP-redacted) 2^pow_bits / NORM_CONSTANT)` (PIP-002 (JP-redacted)3).
+  - `server.py` — to validate kind 6 trust_vote events at publish time when
+    they carry a `pow` tag (PIP-002 §1).
+  - `trust.py` — to read the declared `pow_bits` per kind 6 vote and feed
+    `sybil_factor(v) = tanh(— 2^pow_bits / NORM_CONSTANT)` (PIP-002 §3).
 
 Per PIP-002 the relay's current minimum is `PIP_002_MIN_BITS` (default 12).
 A kind 6 event WITHOUT a `pow` tag remains accepted (backwards-compatible
 with pre-PIP-002 voters) but contributes zero PoW work to `sybil_factor`.
 A kind 6 event WITH a `pow` tag that does not actually meet the declared
-bits is rejected at publish time (HTTP 400) (JP-redacted) lying about PoW is a hard
+bits is rejected at publish time (HTTP 400) — lying about PoW is a hard
 fail because honest miners pay the cost.
 """
 
@@ -26,12 +26,12 @@ from typing import Iterable
 
 import rfc8785
 
-# Per PIP-002 (JP-redacted)2: phase-1 floor is 12 bits (4096 expected hashes per mining
+# Per PIP-002 §2: phase-1 floor is 12 bits (4096 expected hashes per mining
 # run). End-to-end mining latency in Python (one rfc8785.dumps + one
 # sha256 per iteration) measures ~300-700 ms per event on a typical
-# modern CPU (JP-redacted) slow enough that bulk Sybil identity creation is expensive,
+# modern CPU — slow enough that bulk Sybil identity creation is expensive,
 # fast enough that an honest first-time publisher does not wait long. A
-# relay MAY raise this without a new PIP ((JP-redacted)2 scaling_policy); historical
+# relay MAY raise this without a new PIP (—2 scaling_policy); historical
 # votes are NOT re-validated against a raised floor.
 PIP_002_MIN_BITS = 12
 PIP_002_MAX_BITS = 24
@@ -40,14 +40,14 @@ PIP_002_MAX_BITS = 24
 # (anp2_client.pow.mint_pow) mines the nonce; the relay verifies. An
 # event with kind in this set published WITHOUT a `pow` tag is rejected
 # with HTTP 400. Outside this set, PoW remains opt-in (kind 6 trust votes
-# carry it to weight `sybil_factor` per PIP-002 (JP-redacted)3). Empty by default for
+# carry it to weight `sybil_factor` per PIP-002 §3). Empty by default for
 # the no-enforcement rollout phase; flip to {0, 50} once seed clients are
 # minting on those kinds.
 PIP_002_MANDATORY_KINDS: frozenset[int] = frozenset({0, 50})
 
-# tanh normalization. 2^16 = 65536 expected hashes (JP-redacted) "a few seconds of
-# mining" per PIP-002 (JP-redacted)3. Convergence target: 10 honest medium-trust votes
-# at the 12-bit floor land sybil_factor (JP-redacted) 0.7.
+# tanh normalization. 2^16 = 65536 expected hashes — "a few seconds of
+# mining" per PIP-002 §3. Convergence target: 10 honest medium-trust votes
+# at the 12-bit floor land sybil_factor — 0.7.
 SYBIL_NORM_CONSTANT = 1 << 16
 
 
@@ -73,7 +73,7 @@ def event_id_bytes(
     tags: list[list[str]],
     content: str,
 ) -> bytes:
-    """SHA256(JCS(payload)) (JP-redacted) re-derives the canonical event id."""
+    """SHA256(JCS(payload)) — re-derives the canonical event id."""
     payload = [agent_id, created_at, kind, tags, content]
     return hashlib.sha256(rfc8785.dumps(payload)).digest()
 
@@ -145,18 +145,18 @@ def validate_event_pow(
 
     Semantics:
       - No `pow` tag present
-          mandatory=False (JP-redacted) (True, None). PoW is optional in this phase;
+          mandatory=False — (True, None). PoW is optional in this phase;
                             absent-PoW events still propagate (kind 6
                             voters contribute zero PoW work to sybil_factor).
-          mandatory=True  (JP-redacted) (False, "pow tag required for kind <K>").
+          mandatory=True  — (False, "pow tag required for kind <K>").
                             Iter 27: required for kinds in
                             PIP_002_MANDATORY_KINDS (currently {0, 50}).
-      - Malformed `pow` tag   (JP-redacted) (False, "pow tag malformed").
-      - Declared bits below relay minimum (JP-redacted) (False, "pow_below_minimum").
-      - Declared bits above max          (JP-redacted) (False, "pow_above_max").
+      - Malformed `pow` tag   — (False, "pow tag malformed").
+      - Declared bits below relay minimum — (False, "pow_below_minimum").
+      - Declared bits above max          — (False, "pow_above_max").
       - Declared bits OK but actual leading-zero count of the canonical id
-        is below declared                (JP-redacted) (False, "pow_does_not_meet_declared").
-      - All checks pass                  (JP-redacted) (True, None).
+        is below declared                — (False, "pow_does_not_meet_declared").
+      - All checks pass                  — (True, None).
 
     The id is re-derived from the canonical payload to defeat forged pairs
     of (id, pow_tag) that don't actually correspond.

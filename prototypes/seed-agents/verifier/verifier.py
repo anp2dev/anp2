@@ -1,4 +1,4 @@
-"""ANP2Verifier (JP-redacted) independent second-opinion verifier for transform.text.demo.
+"""ANP2Verifier — independent second-opinion verifier for transform.text.demo.
 
 Every 5 minutes, scans for recent kind-52 task.result events for the
 `transform.text.demo` capability that do not yet have a kind-53 task.verify by
@@ -44,22 +44,22 @@ KIND_TASK_REQUEST = 50
 KIND_TASK_RESULT = 52
 KIND_TASK_VERIFY = 53
 
-# Iter 28: seed-verifier standing check (PROTOCOL (JP-redacted)18.11).
+# Iter 28: seed-verifier standing check (PROTOCOL §18.11).
 #
 # Closes the 2-sock-puppet attack where an attacker R + P (both PoW-minted)
 # rides this seed verifier as a free oracle: R posts a kind-50, P provides
-# a structurally-valid kind-52, the seed verifier neutrally passes (JP-redacted)
-# settlement (JP-redacted) P earns +(amount-fee) and verified_provider_tasks += 1.
+# a structurally-valid kind-52, the seed verifier neutrally passes —
+# settlement — P earns +(amount-fee) and verified_provider_tasks += 1.
 # With this check the verifier refuses to publish kind-53 when the
 # REQUESTER (kind-50 author) has zero standing AND no operator-issuer
-# exemption (JP-redacted) there is no settlement to drive, so P does not accrue
+# exemption — there is no settlement to drive, so P does not accrue
 # standing for free.
 #
 # Note: this does NOT close the 3-sock-puppet attack where the attacker
 # also runs their own neutral verifier (V). Closing that requires multi-
 # verifier consensus or trust-weighted verification (Phase 2+).
 ANP2_ISSUER_AGENT_IDS = frozenset([
-    # taskreq seed (JP-redacted) the canonical operator-issuer for Phase 0/1.
+    # taskreq seed — the canonical operator-issuer for Phase 0/1.
     "62144704d3d1c1c8f0506882a27e9693ec331909c11a1a98b37802ccff6d561e",
 ])
 # Requester standing threshold (matches translate's COURTESY_BALANCE_LIMIT).
@@ -86,14 +86,14 @@ def mark_seen(result_id: str) -> None:
 def extract_output_text(output) -> str:
     """Normalise a kind 52 `output` field to a plain string.
 
-    PROTOCOL (JP-redacted)18.5 specifies `output` as a JSON object, e.g. {"text": "hello"};
+    PROTOCOL §18.5 specifies `output` as a JSON object, e.g. {"text": "hello"};
     the anp2_client `submit_result` helper that translate.py uses publishes
     exactly that shape. Older fallback code paths publish `output` as a bare
     string. Accept both: read the text field from a dict, pass a string
     through, and return "" for anything else.
 
     Without this, `output` is the raw dict and verify_translation() rejects
-    every result as "not a string" (JP-redacted) i.e. every verdict would be failed.
+    every result as "not a string" — i.e. every verdict would be failed.
     """
     if isinstance(output, str):
         return output
@@ -165,7 +165,7 @@ def _task_id_from_result(ev: dict) -> str | None:
 def _result_targets_cap(ev: dict, cap: str) -> bool:
     """True if a kind-52 result is for capability `cap`.
 
-    PROTOCOL (JP-redacted)18.7 mandates the capability rides on the ["t", "<cap>"] tag
+    PROTOCOL §18.7 mandates the capability rides on the ["t", "<cap>"] tag
     (uniform across kinds 50-55), and the anp2_client `submit_result`
     helper that translate.py uses emits exactly that. Earlier code also
     published a ["cap", ...] tag and/or a `cap` body field, so we accept all
@@ -212,7 +212,7 @@ def _request_input_text(agent: Agent, task_id: str, request_ev: dict | None) -> 
 
 
 def _requester_has_standing(agent: Agent, requester_id: str) -> tuple[bool, str]:
-    """Iter 28 seed-verifier standing check (PROTOCOL (JP-redacted)18.11). Returns
+    """Iter 28 seed-verifier standing check (PROTOCOL §18.11). Returns
     (ok, reason_when_refusing). Same rules as translate.py's courtesy
     throttle, applied at the verification layer:
 
@@ -333,7 +333,7 @@ def main() -> int:
 
         # Iter 28: seed-verifier standing check on the REQUESTER. If the
         # requester (kind-50 author) has no standing and no operator-issuer
-        # exemption, refuse to verify (JP-redacted) this closes the 2-sock-puppet
+        # exemption, refuse to verify — this closes the 2-sock-puppet
         # attack that used to ride this seed verifier as a free oracle.
         request_ev = req_by_id.get(task_id)
         if request_ev is None:
@@ -357,7 +357,7 @@ def main() -> int:
             rbody = json.loads(result_ev.get("content") or "{}")
         except (ValueError, TypeError):
             rbody = {}
-        # PROTOCOL (JP-redacted)18.5: `output` is a JSON object (e.g. {"text": ...}); the
+        # PROTOCOL §18.5: `output` is a JSON object (e.g. {"text": ...}); the
         # publish() fallback path emits a bare string. Normalise both.
         output_text = extract_output_text(rbody.get("output", ""))
 

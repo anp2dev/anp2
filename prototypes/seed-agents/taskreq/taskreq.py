@@ -1,4 +1,4 @@
-"""ANP2TaskRequester (JP-redacted) event-triggered bootstrap issuer (Iter 26+).
+"""ANP2TaskRequester — event-triggered bootstrap issuer (Iter 26+).
 
 Every run (systemd timer polls every 5 minutes; nothing is posted on idle
 ticks):
@@ -14,17 +14,17 @@ ticks):
        tags include `bootstrap_for=<newcomer_agent_id>` so competing seed
        providers step aside (Iter 27b requires the issuer to be in
        ANP2_ISSUER_AGENT_IDS for that opt-out to be honored).
-  5. taskreq does NOT post kind 53 or kind 54 (JP-redacted) settlement is driven by
+  5. taskreq does NOT post kind 53 or kind 54 — settlement is driven by
      the neutral `verifier.py` agent's kind 53 and the relay's derivation
-     (PROTOCOL (JP-redacted)18.11). The kind-50 alone is load-bearing.
+     (PROTOCOL §18.11). The kind-50 alone is load-bearing.
   6. PoW on the kind-50 is auto-mined by anp2_client (PIP_002_MANDATORY_KINDS,
      12-bit floor).
 
 Capabilities: coordinate.test.task_requester (orchestrate bootstrap issuance)
-Economy: payment settles in ANP2 internal `credit` units ((JP-redacted)18.11);
+Economy: payment settles in ANP2 internal `credit` units (—18.11);
   10% fee per passed settlement flows to a fixed treasury agent.
 Real: all signed events on the live relay, no daemon-internal state of
-  consequence (JP-redacted) the relay's event log is the source of truth.
+  consequence — the relay's event log is the source of truth.
 """
 
 from __future__ import annotations
@@ -48,12 +48,12 @@ NEWCOMER_LOOKBACK_SEC = int(
     os.environ.get("TASKREQ_NEWCOMER_LOOKBACK_SEC", str(7 * 86400))
 )
 # Iter 26b (S5): a bootstrap kind-50 carries a 6-hour deadline. If the newcomer
-# misses it (no kind-52 by then), re-issue (JP-redacted) capped at MAX_BOOTSTRAP_ATTEMPTS
+# misses it (no kind-52 by then), re-issue — capped at MAX_BOOTSTRAP_ATTEMPTS
 # total tasks for that newcomer so a permanently-AFK agent doesn't generate
 # unbounded task spam.
 MAX_BOOTSTRAP_ATTEMPTS = 3
 
-# Iter 26: known operator-controlled seed agents (JP-redacted) kind-0s from these are
+# Iter 26: known operator-controlled seed agents — kind-0s from these are
 # NOT treated as "newcomers" for bootstrap purposes. Update when a new seed
 # is added to the network.
 SEED_AGENT_IDS = frozenset([
@@ -83,7 +83,7 @@ SELF_CAPABILITY = "coordinate.test.task_requester"
 
 KIND_TASK_REQUEST = 50
 
-# ANP2 operator-issued credit (PROTOCOL (JP-redacted)18.11). taskreq is the network's
+# ANP2 operator-issued credit (PROTOCOL §18.11). taskreq is the network's
 # designated issuer: it posts paying tasks, and its negative balance is the
 # circulating credit supply (a central-bank-balance-sheet position, not a
 # defect). The kind-50 reward is `anp2_credit`; on settlement the relay
@@ -93,7 +93,7 @@ KIND_TASK_REQUEST = 50
 # 9 to provider), exercising the fee path each task.
 REWARD_CREDITS = 10
 
-# 30+ short Demo test phrases (JP-redacted) French source text. Mix of greetings,
+# 30+ short Demo test phrases — French source text. Mix of greetings,
 # weather, common nouns, tiny sentences. Kept short and chosen to match
 # translate.py's FR_TO_EN dictionary so the rule-based translator can hit
 # something. No Japanese: all public kind-50 events must be Japanese-free.
@@ -175,7 +175,7 @@ def mark_bootstrapped(newcomer_id: str) -> None:
 def _newcomer_can_fulfill(agent: Agent, newcomer_id: str, capability: str) -> bool:
     """Read the newcomer's latest kind-4 capability declaration and return
     True iff they declared `capability`. We use this to scope bootstrap
-    issuance to capabilities the network can actually settle today (JP-redacted)
+    issuance to capabilities the network can actually settle today —
     posting a bootstrap for a capability the newcomer can't fulfill just
     wastes a slot and leaves the newcomer permanently stuck (Iter 26
     review finding B2)."""
@@ -217,7 +217,7 @@ def _bootstrap_timed_out(
     """True if the most recent bootstrap in `my_bootstraps` is past its
     deadline with no kind-52 result observed. False if there are no
     bootstraps, if the latest is still within deadline, or if a kind-52
-    references that task_id (in body or e-tag). Iter 26b (JP-redacted) S5 fix:
+    references that task_id (in body or e-tag). Iter 26b — S5 fix:
     re-eligibility for a newcomer who missed the initial 6h window."""
     if not my_bootstraps:
         return False
@@ -245,12 +245,12 @@ def _bootstrap_timed_out(
 
 def detect_newcomers(agent: Agent, now: int) -> list[dict]:
     """Return kind-0 publications from non-seed authors that (a) declare a
-    kind-4 capability the network can currently settle (Iter 26c (JP-redacted) only
+    kind-4 capability the network can currently settle (Iter 26c — only
     `transform.text.demo` today because the seed verifier only structurally
     checks that), AND (b) either have never been bootstrapped, OR their
     most recent bootstrap timed out without a kind-52 AND they have not
-    yet exhausted MAX_BOOTSTRAP_ATTEMPTS retries (Iter 26b (JP-redacted) S5 fix:
-    re-issue for newcomers who missed the 6h window). PROTOCOL (JP-redacted)0
+    yet exhausted MAX_BOOTSTRAP_ATTEMPTS retries (Iter 26b — S5 fix:
+    re-issue for newcomers who missed the 6h window). PROTOCOL §0
     overwrite-type: the latest kind-0 per agent_id wins.
     """
     seen = load_bootstrap_seen()
@@ -258,7 +258,7 @@ def detect_newcomers(agent: Agent, now: int) -> list[dict]:
     events = agent.query(kinds=[0], since=cutoff, limit=500)
 
     # Pre-fetch my own kind-50s and recent kind-52s once, then per-newcomer
-    # filtering is purely client-side (no N(JP-redacted)relay queries).
+    # filtering is purely client-side (no N—relay queries).
     my_kind50s = agent.query(kinds=[50], authors=[agent.agent_id], limit=500)
     recent_kind52s = agent.query(kinds=[52], limit=500)
 
@@ -270,10 +270,10 @@ def detect_newcomers(agent: Agent, now: int) -> list[dict]:
         if aid in seen:
             my_bootstraps = _my_bootstrap_kind50s_for(my_kind50s, aid)
             if len(my_bootstraps) >= MAX_BOOTSTRAP_ATTEMPTS:
-                continue   # already tried enough (JP-redacted) give up
+                continue   # already tried enough — give up
             if not _bootstrap_timed_out(my_bootstraps, recent_kind52s, now):
                 continue   # latest is in flight or settled
-            # Else: timed out with retries remaining (JP-redacted) fall through to re-issue.
+            # Else: timed out with retries remaining — fall through to re-issue.
         prev = latest_per_id.get(aid)
         if prev is None or ev.get("created_at", 0) > prev.get("created_at", 0):
             latest_per_id[aid] = ev
@@ -290,7 +290,7 @@ def detect_newcomers(agent: Agent, now: int) -> list[dict]:
                 their_name = "?"
             print(
                 f"[TaskReq] newcomer {aid[:16]} ({their_name!r}) declares no "
-                f"{CAPABILITY} capability (JP-redacted) skipped (NOT marked seen)"
+                f"{CAPABILITY} capability — skipped (NOT marked seen)"
             )
     return eligible
 
@@ -303,9 +303,9 @@ def post_bootstrap_task(agent: Agent, newcomer_id: str, phrase: str) -> dict:
 
     The `bootstrap_for` tag tells competing seed providers (translate) to
     step aside so the newcomer can be the earliest kind-52 author and earn
-    its first credit (PROTOCOL (JP-redacted)18.11, Iter 26 provider-side gate). Scoped
+    its first credit (PROTOCOL §18.11, Iter 26 provider-side gate). Scoped
     to transform.text.demo today because the seed verifier only structurally
-    checks that capability (JP-redacted) extend the verifier (and this scope) once
+    checks that capability — extend the verifier (and this scope) once
     multi-capability verification ships.
     """
     now = int(time.time())
@@ -313,7 +313,7 @@ def post_bootstrap_task(agent: Agent, newcomer_id: str, phrase: str) -> dict:
         "cap": CAPABILITY,
         "input": {"text": phrase, "lang": "fr"},
         "constraints": {
-            "deadline_unix": now + 6 * 3600,   # 6h (JP-redacted) newcomer may not poll fast
+            "deadline_unix": now + 6 * 3600,   # 6h — newcomer may not poll fast
             "max_cost_usd": 0.01,
         },
         "reward": {
@@ -332,7 +332,7 @@ def post_bootstrap_task(agent: Agent, newcomer_id: str, phrase: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Main loop (JP-redacted) event-triggered bootstrap detection per invocation.
+# Main loop — event-triggered bootstrap detection per invocation.
 # ---------------------------------------------------------------------------
 def main() -> int:
     agent = Agent.load_or_create(AGENT_KEY, relay_url=RELAY_URL)
@@ -341,7 +341,7 @@ def main() -> int:
     if agent.ensure_profile(
         name=AGENT_NAME,
         description=(
-            "Operator-issued credit supply (PROTOCOL (JP-redacted)18.11). Event-triggered "
+            "Operator-issued credit supply (PROTOCOL §18.11). Event-triggered "
             "issuer: detects a new external kind-0 publication and posts ONE "
             "bootstrap kind-50 (transform.text.demo, reward 10 anp2_credit, "
             "tagged `bootstrap_for=<newcomer>`) so the newcomer can be the "
@@ -359,7 +359,7 @@ def main() -> int:
                 "description": (
                     "Posts an operator-issued kind-50 bootstrap task targeted "
                     "at a specific newcomer (via `bootstrap_for=<agent_id>` "
-                    "tag, PROTOCOL (JP-redacted)18.11). Reward 10 anp2_credit; on a "
+                    "tag, PROTOCOL §18.11). Reward 10 anp2_credit; on a "
                     "passed kind-53 the relay routes 9 to the provider and "
                     "1 to the treasury. Issuance is event-triggered, not "
                     "timer-driven."
@@ -377,7 +377,7 @@ def main() -> int:
     # Verification + settlement happen asynchronously: the newcomer publishes
     # kind-52, the seed verifier publishes a neutral kind-53, the relay
     # derives the transfer. No waiting, no self-verify, no payment.release
-    # (JP-redacted) the relay's derivation is load-bearing.
+    # — the relay's derivation is load-bearing.
     now = int(time.time())
     newcomers = detect_newcomers(agent, now)
     if not newcomers:

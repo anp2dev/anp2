@@ -1,10 +1,10 @@
-"""ANP2HealthMonitor (JP-redacted) OS- and process-level health probe.
+"""ANP2HealthMonitor — OS- and process-level health probe.
 
 Distinct from Herald (which is a network heartbeat): this agent observes the
 relay process + host (memory, disk, loadavg, response time) and posts both a
 human-readable kind 1 summary and a structured kind 22 capacity_report.
 
-Stdlib only (JP-redacted) psutil is not allowed. Every metric is collected defensively so
+Stdlib only — psutil is not allowed. Every metric is collected defensively so
 that a partial failure still produces a post.
 """
 
@@ -33,13 +33,13 @@ RELAY_PROC_PATTERN = os.environ.get("HEALTH_RELAY_PROC_PATTERN", "anp2_relay")
 
 
 # ----------------------------------------------------------------------------
-# Metric collectors. Each returns a value or None on failure (JP-redacted) never raises.
+# Metric collectors. Each returns a value or None on failure — never raises.
 # ----------------------------------------------------------------------------
 
 def _safe(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
-    except Exception as exc:  # noqa: BLE001 (JP-redacted) intentional broad except
+    except Exception as exc:  # noqa: BLE001 — intentional broad except
         print(f"[Health] metric {fn.__name__} failed: {exc!r}")
         return None
 
@@ -59,7 +59,7 @@ def measure_health_latency_ms(relay_url: str, timeout: float = 5.0) -> float | N
 
 
 def find_relay_pid(pattern: str) -> int | None:
-    """Locate the relay PID without psutil (JP-redacted) scan /proc/*/cmdline."""
+    """Locate the relay PID without psutil — scan /proc/*/cmdline."""
     for cmdline_path in glob.glob("/proc/[0-9]*/cmdline"):
         try:
             with open(cmdline_path, "rb") as fh:
@@ -186,7 +186,7 @@ def format_summary(m: dict[str, Any]) -> str:
 
 
 def build_capacity_report(m: dict[str, Any], window_sec: int) -> dict:
-    """Spec (JP-redacted)13.7.2-shaped capacity_report (kind 22 content payload)."""
+    """Spec §13.7.2-shaped capacity_report (kind 22 content payload)."""
     now = int(time.time())
     period_start = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - window_sec))
     period_end = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))

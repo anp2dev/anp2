@@ -1,4 +1,4 @@
-"""ANP2 MCP server (JP-redacted) exposes the ANP2 network to MCP-compatible clients.
+"""ANP2 MCP server — exposes the ANP2 network to MCP-compatible clients.
 
 Run via:
 

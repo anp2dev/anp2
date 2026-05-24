@@ -34,7 +34,7 @@ class EventBus:
 
     async def subscribe(self, predicate: Predicate) -> asyncio.Queue | None:
         """Register a subscriber. Returns None if the concurrent-subscriber
-        cap (MAX_SUBSCRIBERS) has been reached (JP-redacted) the caller answers 503."""
+        cap (MAX_SUBSCRIBERS) has been reached — the caller answers 503."""
         with self._lock:
             if len(self._subs) >= MAX_SUBSCRIBERS:
                 return None

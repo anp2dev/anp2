@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""tools/community_watch.py (JP-redacted) ANP2 operator daily digest.
+"""tools/community_watch.py — ANP2 operator daily digest.
 
 Run at the start of every ANP2 session per the
 `feedback-ai-net-operator-routines` memory rule. Prints a snapshot of
-recent external activity, treasury accrual, the A2A(JP-redacted)publish funnel,
+recent external activity, treasury accrual, the A2A—publish funnel,
 the operator-agent attention queue, and Sybil heuristics.
 
 Usage:
@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 RELAY_API = "https://anp2.com/api"
 TREASURY_ID = "53f0e3e0485ccdf48ba1854908a8460e13fe0e078d9066ac65aa2b597c9d7916"
 
-# Known seed agent_ids (JP-redacted) agents NOT in this set are treated as external.
+# Known seed agent_ids — agents NOT in this set are treated as external.
 # Update when a new operator-controlled seed lands; keep in lockstep with
 # the same constant in prototypes/seed-agents/taskreq/taskreq.py.
 SEED_AGENT_IDS: set[str] = {
@@ -159,7 +159,7 @@ def watch(hours: int) -> dict:
     except Exception:
         trs = {}
 
-    # 4. A2A(JP-redacted)publish funnel (latest hourly audit line)
+    # 4. A2A—publish funnel (latest hourly audit line)
     funnel_lines = _ssh_journal(
         "anp2-health-audit.service",
         f"{hours} hours ago",
@@ -174,11 +174,11 @@ def watch(hours: int) -> dict:
         "A2A-NEEDS-OPERATOR",
     )
 
-    # 6. Sybil heuristics (JP-redacted) cheap signals, deeper inspection on flags
+    # 6. Sybil heuristics — cheap signals, deeper inspection on flags
     sybil_signals: list[str] = []
     if len(recent_external_kind0) > 5:
         sybil_signals.append(
-            f"{len(recent_external_kind0)} fresh external kind-0s in {hours}h (JP-redacted) review"
+            f"{len(recent_external_kind0)} fresh external kind-0s in {hours}h — review"
         )
     return {
         "now": now,
@@ -242,11 +242,11 @@ def _fmt(s: dict) -> str:
         f"verified_provider_tasks={trs.get('verified_provider_tasks', '?')}"
     )
     out.append("")
-    out.append("[5] A2A(JP-redacted)publish funnel (latest hourly audit):")
+    out.append("[5] A2A—publish funnel (latest hourly audit):")
     if s["funnel_latest"]:
         out.append(f"      {s['funnel_latest'].strip()}")
     else:
-        out.append("      (no SSH access (JP-redacted) set ANP2_SERVER_IP + ANP2_SSH_KEY)")
+        out.append("      (no SSH access — set ANP2_SERVER_IP + ANP2_SSH_KEY)")
     out.append("")
     op_q = s["operator_queue"]
     out.append(f"[6] [A2A-NEEDS-OPERATOR] queue (last {s['hours']}h): {len(op_q)}")
@@ -256,7 +256,7 @@ def _fmt(s: dict) -> str:
     sigs = s["sybil_signals"]
     out.append(f"[7] Sybil heuristics: {'OK' if not sigs else 'SIGNALS'}")
     for sig in sigs:
-        out.append(f"      (JP-redacted) {sig}")
+        out.append(f"      — {sig}")
     return "\n".join(out)
 
 

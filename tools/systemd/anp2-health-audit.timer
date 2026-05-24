@@ -1,5 +1,5 @@
 [Unit]
-Description=ANP2 relay health audit (JP-redacted) hourly
+Description=ANP2 relay health audit — hourly
 
 [Timer]
 OnBootSec=15min

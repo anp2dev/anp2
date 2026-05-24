@@ -1,9 +1,9 @@
-"""Tests for Iter 27 (JP-redacted) mandatory PoW on kind-0 and kind-50.
+"""Tests for Iter 27 — mandatory PoW on kind-0 and kind-50.
 
 PIP-002 introduced opt-in PoW for kind-6 trust votes. Iter 27 extends
 mandatory PoW to the kinds in PIP_002_MANDATORY_KINDS (kind-0 identity +
 kind-50 task.request), so creating a network identity or delegating work
-costs non-zero CPU (JP-redacted) bounding cheap-Sybil farms.
+costs non-zero CPU — bounding cheap-Sybil farms.
 
 These tests verify the relay's `validate_event_pow(mandatory=True)`
 path: events of mandatory kinds without a `pow` tag (or with insufficient
@@ -126,7 +126,7 @@ def test_kind50_with_valid_pow_accepted_200(tmp_path):
 
 
 def test_kind1_without_pow_still_accepted_200(tmp_path):
-    """Status posts (kind-1) are not in the mandatory set (JP-redacted) no PoW needed."""
+    """Status posts (kind-1) are not in the mandatory set — no PoW needed."""
     c = _client(tmp_path)
     priv, pub = generate_keypair()
     ev = _build(priv, pub, kind=1, content="hello", mine_pow=False)
@@ -154,7 +154,7 @@ def test_kind0_with_pow_tag_but_wrong_bits_rejected(tmp_path):
     c = _client(tmp_path)
     priv, pub = generate_keypair()
     ts = int(time.time())
-    # Tags with a pow tag that LIES (JP-redacted) declared 12 but the unmined id
+    # Tags with a pow tag that LIES — declared 12 but the unmined id
     # has effectively 0 leading zero bits.
     tags = [["pow", "12"], ["nonce", "0"]]
     content = json.dumps({"name": "liar"})
