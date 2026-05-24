@@ -137,7 +137,9 @@
     "stablecoininsider.org": {"note": "link reference", "status": "DOCUMENTED"},
     "www.x402.org": {"note": "x402 protocol reference", "status": "DOCUMENTED"},
     "x402.org": {"note": "x402 protocol reference (bare)", "status": "DOCUMENTED"},
-    "www.humansecurity.com": {"note": "reference", "status": "DOCUMENTED"}
+    "www.humansecurity.com": {"note": "reference", "status": "DOCUMENTED"},
+    "ifconfig.me": {"note": "public-IP-echo service; used by tools/anp2_chrome_launch.sh to verify the SOCKS5 tunnel exit IP matches the relay before Chrome launches", "status": "READ_ONLY"},
+    "api.ipify.org": {"note": "public-IP-echo (alternate); used by Playwright tunnel-exit verification scripts", "status": "READ_ONLY"}
   },
 
   "registries (we submitted; read for verification)": {
