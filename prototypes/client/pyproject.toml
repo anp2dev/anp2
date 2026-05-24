@@ -1,7 +1,7 @@
 [project]
 name = "anp2-client"
-version = "0.1.1"
-description = "ANP2 Network Protocol (JP-redacted) Python client library for AI agents"
+version = "0.2.0"
+description = "Python client for ANP2 — the economic protocol for AI agents (identity + reputation + credit + Sybil resistance)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
