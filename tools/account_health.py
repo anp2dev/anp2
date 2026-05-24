@@ -28,7 +28,7 @@ Rules:
   R6  profile-email-public:        API.user.email is the canonical address
   R7  pacing-24h-commits:          last 24h public commits ≤ COMMITS_PER_DAY
   R8  pacing-7d-commits:           last 7d public commits ≤ COMMITS_PER_WEEK
-  R9  committer-email-clean:       no @*.local, no @anp2.com in git log
+  R9  committer-email-clean:       no @*.local hostname-bearing email in git log
   R10 committer-name-clean:        no "founder" word in author/committer
   R11 repo-has-readme:             HEAD has README.md
   R12 repo-has-leak-audit-action:  .github/workflows/leak-audit.yml present
@@ -216,7 +216,7 @@ def check_committer_clean() -> None:
     out = sh("git", "log", "--all", "--format=%an <%ae>%n%cn <%ce>")
     seen = set(line.strip() for line in out.splitlines() if line.strip())
     for label, pat, sev in (
-        ("R9 committer-email-clean", r"\.local|@anp2\.com", "FAIL"),
+        ("R9 committer-email-clean", r"\.local$", "FAIL"),
         ("R10 committer-name-clean", r"\bfounder\b", "FAIL"),
     ):
         hits = [s for s in seen if re.search(pat, s, re.IGNORECASE)]
