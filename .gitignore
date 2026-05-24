@@ -78,3 +78,8 @@ tools/operator_fallback_*.sh
 *.jpeg
 *.playwright-screenshot.png
 node_modules/
+
+# Track the TypeScript SDK build artifacts so the package is publishable
+# without operator needing Node/tsc locally.
+!prototypes/anp2-client-js/dist/
+!prototypes/anp2-client-js/dist/**
