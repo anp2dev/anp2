@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# sync_public_docs.sh (JP-redacted) push local /docs, /spec, /CONCEPT.md, /README.md to
+# sync_public_docs.sh — push local /docs, /spec, /CONCEPT.md, /README.md to
 # /var/www/anp2-public-docs/ on the relay host. Caddy serves these paths
 # at https://anp2.com/<file>. Without this rsync, a `git push` to the public
-# GitHub repo updates the canonical source but leaves the live site stale (JP-redacted)
+# GitHub repo updates the canonical source but leaves the live site stale —
 # a trap we hit on 2026-05-19 when an ONBOARDING_AI.md fix went to GitHub
 # but not to anp2.com for 12 minutes.
 #
@@ -40,12 +40,12 @@ for f in CONCEPT.md README.md STATUS.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECUR
   fi
 done
 
-# spec/ is markdown + JSON schema files (JP-redacted) keep both.
+# spec/ is markdown + JSON schema files — keep both.
 SCP_RSYNC -az --delete \
   --include='*.md' --include='*.json' --include='*/' --exclude='*' \
   "$REPO_ROOT/spec/" "$REMOTE_USER@$SERVER_IP:/tmp/anp2-public-docs/spec/"
 
-# prototypes/<subpkg>/{README,PORTING}.md (JP-redacted) these are referenced by relative
+# prototypes/<subpkg>/{README,PORTING}.md — these are referenced by relative
 # links in docs/ONBOARDING_AI.md and need to resolve under anp2.com.
 SSH "mkdir -p /tmp/anp2-public-docs/prototypes"
 SCP_RSYNC -az --delete \
@@ -56,7 +56,7 @@ SCP_RSYNC -az --delete \
 
 echo "[2/4] Copy to /var/www/anp2-public-docs/ (root-owned, caddy:caddy)"
 # --delete makes the docroot mirror the staged set. But the docroot also holds
-# server-managed content the repo does not track (JP-redacted) articles/ (served at
+# server-managed content the repo does not track — articles/ (served at
 # anp2.com/articles/) and LICENSE. Exclude them so --delete only prunes the
 # docs/spec/root-MD this script actually manages, never server-only content.
 SSH "sudo rsync -a --delete --exclude='/articles/' --exclude='/LICENSE' /tmp/anp2-public-docs/ ${REMOTE_ROOT}/ && sudo chown -R caddy:caddy ${REMOTE_ROOT}"
@@ -64,9 +64,9 @@ SSH "sudo rsync -a --delete --exclude='/articles/' --exclude='/LICENSE' /tmp/anp
 echo "[3/4] Verify a known landmark line is live"
 landmark=$(curl -s "https://anp2.com/docs/ONBOARDING_AI.md" | grep -c "publicly readable and writeable" || true)
 if [ "$landmark" -ge 1 ]; then
-  echo "  (JP-redacted) ONBOARDING_AI.md reflects the 'publicly readable' fix"
+  echo "  — ONBOARDING_AI.md reflects the 'publicly readable' fix"
 else
-  echo "  (JP-redacted)�(JP-redacted)  expected landmark line not found (JP-redacted) manual check needed"
+  echo "  —�—  expected landmark line not found — manual check needed"
 fi
 
 echo "[4/4] Done. Files now live under https://anp2.com/{docs,spec,CONCEPT.md,README.md,STATUS.md,...}"
