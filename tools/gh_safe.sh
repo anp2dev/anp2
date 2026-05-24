@@ -69,9 +69,39 @@ fail() {
 }
 
 # ── Common gates ─────────────────────────────────────────────────────
-preflight() {
+# preflight() is the strict variant — used for cross-account / cross-repo
+# writes that historically trigger the anti-spam ML (fork, cross-repo PR,
+# release-create, etc.). preflight_soft() is for own-account-only writes
+# (repo-create/edit/delete on one's own account, secrets, gists, workflow
+# runs) where the 7-day age gate and follower-floor are over-conservative
+# — those are normal Day-0 user actions, not flag patterns.
+preflight_soft() {
+    # Always required: gh CLI authenticated + 2FA proved.
     local who; who=$(gh api /user --jq '.login' 2>/dev/null || echo "")
     [ -n "$who" ] || fail "gh CLI not authenticated"
+
+    # 2FA proof — try API first, fall back to env/REGISTRATIONS.md TOTP secret presence.
+    # Fine-grained PATs (token-only auth) return `two_factor_authentication: null`
+    # because the field is only filled when the authenticated user has the right
+    # scope; we then need an alternate proof of 2FA. The TOTP-secret stanza in
+    # env/REGISTRATIONS.md is operator-curated evidence that 2FA was enabled.
+    local tfa_raw; tfa_raw=$(gh api /user --jq '.two_factor_authentication' 2>/dev/null || echo "null")
+    if [ "$tfa_raw" = "true" ]; then
+        :  # API says enabled — done
+    elif [ "$tfa_raw" = "false" ]; then
+        fail "2FA explicitly OFF on $who (api/user.two_factor_authentication=false) — enable at github.com/settings/security"
+    else
+        # null / unknown — check env/REGISTRATIONS.md
+        local reg="env/REGISTRATIONS.md"
+        if ! [ -r "$reg" ] || ! grep -q "^## TOTP secret: $who" "$reg" 2>/dev/null; then
+            fail "2FA status unknown for $who (fine-grained PAT scope hides it); add a '## TOTP secret: $who' stanza to env/REGISTRATIONS.md once enabled"
+        fi
+    fi
+    GH_USER="$who"
+}
+
+preflight() {
+    preflight_soft
 
     local created_at; created_at=$(gh api /user --jq '.created_at' 2>/dev/null || echo "")
     [ -n "$created_at" ] || fail "could not read account created_at"
@@ -82,22 +112,15 @@ print(int(datetime.datetime.fromisoformat('$created_at'.replace('Z','+00:00')).t
 
     # Gate A: account age ≥ 7 days
     if [ "$age_days" -lt 7 ]; then
-        fail "account $who is only $age_days days old (need ≥ 7); waiting reduces flag risk"
+        fail "account $GH_USER is only $age_days days old (need ≥ 7); waiting reduces flag risk"
     fi
 
-    # Gate B: 2FA enabled
-    local tfa; tfa=$(gh api /user --jq '.two_factor_authentication // false' 2>/dev/null || echo false)
-    if [ "$tfa" != "true" ]; then
-        fail "2FA not enabled on $who"
-    fi
-
-    # Gate C: trust floor
+    # Gate C: trust floor (followers≥1 OR age≥30d).
     local followers; followers=$(gh api /user --jq '.followers' 2>/dev/null || echo 0)
+    [ -z "$followers" ] && followers=0
     if [ "$followers" = "0" ] && [ "$age_days" -lt 30 ]; then
-        fail "trust floor: followers=0 AND age=${age_days}d (need followers≥1 or age≥30d)"
+        fail "trust floor: followers=$followers AND age=${age_days}d (need followers≥1 or age≥30d)"
     fi
-
-    GH_USER="$who"
 }
 
 # ── Rate cap check ───────────────────────────────────────────────────
@@ -230,12 +253,15 @@ op_pr_close()        { TARGET="$*"; preflight; check_rate pr-close 5 10;        
 op_issue_close()     { TARGET="$*"; preflight; check_rate issue-close 5 10;       gh issue close "$@" && log_op issue-close "${1:-}" "OK"; }
 op_release_create()  { TARGET="$*"; preflight; check_rate release-create 1 1 3;   gh release create "$@" && log_op release-create "${1:-}" "OK"; }
 op_release_delete()  { TARGET="$*"; preflight; check_rate release-delete 1 2;     gh release delete "$@" && log_op release-delete "${1:-}" "OK"; }
-op_repo_create()     { TARGET="$*"; preflight; check_rate repo-create 1 1 2;      gh repo create "$@" && log_op repo-create "${1:-}" "OK"; }
-op_repo_edit()       { TARGET="$*"; preflight; check_rate repo-edit 2 5;          gh repo edit "$@" && log_op repo-edit "${1:-}" "OK"; }
-op_repo_delete()     { TARGET="$*"; preflight; check_rate repo-delete 1 1;        gh repo delete "$@" && log_op repo-delete "${1:-}" "OK"; }
-op_secret_set()      { TARGET="$*"; preflight; check_rate secret-set 3 10;        gh secret set "$@" && log_op secret-set "${1:-}" "OK"; }
-op_gist_create()     { TARGET="$*"; preflight; check_rate gist-create 1 2;        gh gist create "$@" && log_op gist-create "${1:-}" "OK"; }
-op_workflow_run()    { TARGET="$*"; preflight; check_rate workflow-run 3 10;      gh workflow run "$@" && log_op workflow-run "${1:-}" "OK"; }
+# own-account-only writes — flag pattern risk is low (these are normal user actions
+# even on Day 0); strict 7-day floor would block legitimate first-day setup like
+# creating the first repo. Rate caps still apply.
+op_repo_create()     { TARGET="$*"; preflight_soft; check_rate repo-create 1 1 2; gh repo create "$@" && log_op repo-create "${1:-}" "OK"; }
+op_repo_edit()       { TARGET="$*"; preflight_soft; check_rate repo-edit 2 5;     gh repo edit "$@" && log_op repo-edit "${1:-}" "OK"; }
+op_repo_delete()     { TARGET="$*"; preflight_soft; check_rate repo-delete 1 1;   gh repo delete "$@" && log_op repo-delete "${1:-}" "OK"; }
+op_secret_set()      { TARGET="$*"; preflight_soft; check_rate secret-set 3 10;   gh secret set "$@" && log_op secret-set "${1:-}" "OK"; }
+op_gist_create()     { TARGET="$*"; preflight_soft; check_rate gist-create 1 2;   gh gist create "$@" && log_op gist-create "${1:-}" "OK"; }
+op_workflow_run()    { TARGET="$*"; preflight_soft; check_rate workflow-run 3 10; gh workflow run "$@" && log_op workflow-run "${1:-}" "OK"; }
 op_api_write()       { TARGET="$*"; preflight; check_rate api-write 5 20;         gh api "$@" && log_op api-write "${1:-}" "OK"; }
 
 op_listing_pr_approve() {

@@ -64,21 +64,21 @@ echo "pre-push: this push adds $PUSH_COMMITS commit(s) (last-1h burst: $PUSH_BUR
 if [ "$PUSH_BURST_1H" -gt 8 ]; then
   echo "pre-push: BURST detected — $PUSH_BURST_1H commits authored in last 1h, > 8 cap." >&2
   echo "  Slow down: wait ≥ 1h, OR squash these into fewer commits before pushing." >&2
-  echo "  Behavioral discipline rule: [[feedback-ai-net-anp2dev-account-discipline]]" >&2
+  echo "  Behavioral discipline rule: [[feedback-ai-net-github-account-discipline]]" >&2
   exit 1
 fi
 
 echo "pre-push: leak-audit 36/36 PASS. Running account-health audit…" >&2
-# account_health は anonymous モード (PAT 不要、外部から見えるか + ペース)。
-# 現 push 分の commit を ANP2_INCOMING_COMMITS で伝えるので R7/R8 が
-# combined count で評価できる。
+# account_health is anonymous-mode (no PAT required, checks external visibility + pacing).
+# The about-to-be-pushed commit count is passed via ANP2_INCOMING_COMMITS so
+# R7/R8 evaluate against the combined count.
 if ! ANP2_INCOMING_COMMITS=$PUSH_COMMITS python3 tools/account_health.py >/dev/null; then
   echo "pre-push: account-health audit FAILED — push blocked." >&2
-  echo "         anp2dev が flag-risk な状態。 詳細:" >&2
+  echo "         Active GitHub account is at flag risk. Details:" >&2
   ANP2_INCOMING_COMMITS=$PUSH_COMMITS python3 tools/account_health.py >&2 || true
   echo "" >&2
-  echo "  ▶ 解消方法: [[feedback-ai-net-anp2dev-account-discipline]]" >&2
-  echo "  ▶ bypass 禁止 (publish-bound branch では --no-verify 不可)" >&2
+  echo "  Resolution: [[feedback-ai-net-github-account-discipline]]" >&2
+  echo "  Bypass is forbidden on a publish-bound branch (--no-verify not allowed)." >&2
   exit 1
 fi
 

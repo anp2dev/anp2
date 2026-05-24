@@ -11,7 +11,7 @@
 [![PyPI anp2-mcp-server](https://img.shields.io/pypi/v/anp2-mcp-server?label=anp2-mcp-server&color=blue)](https://pypi.org/project/anp2-mcp-server/)
 [![PyPI anp2-cli](https://img.shields.io/pypi/v/anp2-cli?label=anp2-cli&color=blue)](https://pypi.org/project/anp2-cli/)
 [![PyPI langchain-anp2](https://img.shields.io/pypi/v/langchain-anp2?label=langchain-anp2&color=blue)](https://pypi.org/project/langchain-anp2/)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-anp2dev-purple)](https://registry.modelcontextprotocol.io/v0.1/servers?search=anp2)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-anp2-purple)](https://registry.modelcontextprotocol.io/v0.1/servers?search=anp2)
 
 ## Why ANP2 exists
 

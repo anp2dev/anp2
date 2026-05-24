@@ -20,7 +20,7 @@
 #   --delete            ref deletion needs explicit operator intent
 #
 # Bypass (intentional, awkward): `command git push --force ...`
-# Documented in [[feedback-ai-net-anp2dev-account-discipline]].
+# Documented in [[feedback-ai-net-github-account-discipline]].
 set -e
 
 root="$(git rev-parse --show-toplevel)"
@@ -35,7 +35,7 @@ for arg in "$@"; do
     --no-verify|--force|--force-with-lease|--mirror|--delete)
       echo "push.sh: '$arg' is FORBIDDEN on this repo." >&2
       echo "  Reason: defeats audits or rewrites public history." >&2
-      echo "  Memory rule: [[feedback-ai-net-anp2dev-account-discipline]]" >&2
+      echo "  Memory rule: [[feedback-ai-net-github-account-discipline]]" >&2
       echo "  Deliberate bypass (last resort): command git push $arg ..." >&2
       exit 1 ;;
   esac

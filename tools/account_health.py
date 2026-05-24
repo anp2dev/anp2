@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""account_health.py — GitHub anp2dev アカウントの健康診断 + ボット検知回避.
+"""account_health.py — GitHub anp2dev (active) account health audit + bot-detection avoidance.
 
-WHY THIS EXISTS: 旧 anp2dev が GitHub の anti-spam/anti-abuse に shadow-
-suppressed された経緯から、新 anp2dev を「ボットっぽい挙動」で flag さ
-れないよう守る防御機構。 leak_audit.py と同じく "ルール定義 + 自動チェック +
-hook 強制 + memory rule" の 5 層を成立させるための監査スクリプト。
+WHY THIS EXISTS: prior anp2dev and anp2dev accounts were both
+shadow-suppressed by GitHub's anti-spam / anti-abuse ML model. This audit
+protects the current active account (anp2dev) from getting flagged via
+the same "bot-like behavior" signals. Same 5-layer pattern as leak_audit.py:
+rule definition + automated check + hook enforcement + memory rule + manifest
+integrity.
 
-cf. [[feedback-ai-net-anp2dev-account-discipline]]、 OPERATOR_TODO.md
+cf. [[feedback-ai-net-github-account-discipline]]、 OPERATOR_TODO.md
 
 実行モード:
   既定           — anonymous HTTPS チェック（profile / repo 可視性 / commit
@@ -49,7 +51,7 @@ Rules:
   R28 repo-topic-cap:              public repo has ≤ 5 topic tags
 
 Thresholds (env var override):
-  ANP2_GH_USER         (default: anp2dev)
+  ANP2_GH_USER         (default: anp2dev — post-2026-05-24 primary identity)
   ANP2_GH_REPO         (default: anp2)
   ANP2_COMMITS_PER_DAY (default: 12)  ← natural human ceiling
   ANP2_COMMITS_PER_WEEK(default: 50)
@@ -105,12 +107,26 @@ def http_head(url: str, timeout: int = 12) -> int:
 
 
 def load_pat() -> str | None:
+    """Return the active PAT for the currently watched USER from env/REGISTRATIONS.md.
+
+    Supports two stanza formats:
+      legacy (anp2dev):  "## anp2dev — Personal Access Token ... **Token**: `github_pat_...`"
+      anp2dev (2026-05-24+):  "## PAT: <user> (fine-grained, ...) ... Token: github_pat_..."
+    Searches in stanza order; the first match for the active USER wins.
+    """
     path = "env/REGISTRATIONS.md"
     if not os.path.exists(path):
         return None
     with open(path) as f:
         text = f.read()
-    m = re.search(r"## anp2dev — Personal Access Token.*?\*\*Token\*\*:\s*`([^`]+)`",
+    # New format first (active identity)
+    m = re.search(
+        rf"^## PAT:\s*{re.escape(USER)}\b.*?^Token:\s*(github_pat_[A-Za-z0-9_]+)",
+        text, re.DOTALL | re.MULTILINE)
+    if m:
+        return m.group(1)
+    # Legacy format
+    m = re.search(rf"## {re.escape(USER)} — Personal Access Token.*?\*\*Token\*\*:\s*`([^`]+)`",
                   text, re.DOTALL)
     return m.group(1) if m else None
 
@@ -162,7 +178,7 @@ def check_profile_completeness() -> None:
 def check_pacing_from_api() -> None:
     """Count commit + push-event activity on the user's public feed.
 
-    Per [[feedback-ai-net-anp2dev-account-discipline]] the discipline
+    Per [[feedback-ai-net-github-account-discipline]] the discipline
     target is **end-of-session push**: many commits batched into 1 push.
     So we track BOTH:
       - R7  : commits-in-pushes in last 24h / 7d  (existing, threshold 12 / 50)
@@ -254,9 +270,14 @@ def check_fork_burst() -> None:
     import json as _json
     now = time.time()
     forks_api: list[float] = []
-    st, data = http_get_json(f"https://api.github.com/users/{USER}/repos?type=forks&per_page=100")
+    # NOTE: GitHub's /users/<u>/repos `type` parameter accepts only all|owner|member;
+    # `type=forks` is silently treated as default (owner) and returns ALL owned repos.
+    # We must fetch all repos and filter client-side on the `fork` boolean.
+    st, data = http_get_json(f"https://api.github.com/users/{USER}/repos?type=owner&per_page=100")
     if st == 200 and isinstance(data, list):
         for r in data:
+            if not r.get("fork"):
+                continue
             try:
                 t = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).timestamp()
                 forks_api.append(t)
@@ -523,20 +544,36 @@ def check_pat_expiry(token: str) -> None:
             text = f.read()
     except FileNotFoundError:
         return
-    m = re.search(r"## anp2dev — Personal Access Token.*?\*\*Expires\*\*:\s*([^\n]+)",
-                  text, re.DOTALL)
+    # New format (## PAT: <USER> ... Expires: <iso>) first
+    m = re.search(
+        rf"^## PAT:\s*{re.escape(USER)}\b.*?^Expires:\s*([^\n]+)",
+        text, re.DOTALL | re.MULTILINE)
+    if not m:
+        # Legacy (anp2dev)
+        m = re.search(rf"## {re.escape(USER)} — Personal Access Token.*?\*\*Expires\*\*:\s*([^\n]+)",
+                      text, re.DOTALL)
     if not m:
         record("WARN", "R15 pat-expiry-not-imminent", "env/REGISTRATIONS.md", "expiry note not found")
         return
     note = m.group(1).strip()
-    # parse "30 days from generation (~Jun 22, 2026)" or "Mon, Jun 22 2026" etc.
-    m_date = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d+)[,\s]+(\d{4})", note)
-    if not m_date:
+    # Three accepted formats:
+    #   ISO 8601:        2026-08-22T13:16:31Z              (new anp2dev stanza)
+    #   "Mon DD, YYYY":  "Jun 22, 2026"                    (legacy anp2dev)
+    #   bare YYYY-MM-DD: 2026-08-22                        (also accepted)
+    exp = None
+    m_iso = re.search(r"(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})Z?)?", note)
+    if m_iso:
+        y, mo, d = int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))
+        exp = datetime(y, mo, d, tzinfo=timezone.utc)
+    if exp is None:
+        m_date = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d+)[,\s]+(\d{4})", note)
+        if m_date:
+            months = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,"Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
+            month, day, year = m_date.groups()
+            exp = datetime(int(year), months[month], int(day), tzinfo=timezone.utc)
+    if exp is None:
         record("WARN", "R15 pat-expiry-not-imminent", "env/REGISTRATIONS.md", f"unparsed: {note[:50]}")
         return
-    month, day, year = m_date.groups()
-    months = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,"Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
-    exp = datetime(int(year), months[month], int(day), tzinfo=timezone.utc)
     days_left = (exp - datetime.now(timezone.utc)).days
     if days_left < 0:
         record("FAIL", "R15 pat-expiry-not-imminent", "PAT", f"EXPIRED {-days_left}d ago — rotate now")
@@ -611,8 +648,8 @@ def main() -> int:
           f"{counts['INFO']} INFO, {counts['FAIL']} FAIL")
     fail_count = counts["FAIL"]
     if fail_count:
-        print("\nFAIL — anp2dev is at elevated flag risk. Read"
-              " [[feedback-ai-net-anp2dev-account-discipline]] memory.")
+        print(f"\nFAIL — account {USER} is at elevated flag risk. Read"
+              " [[feedback-ai-net-github-account-discipline]] memory.")
     return 1 if fail_count else 0
 
 

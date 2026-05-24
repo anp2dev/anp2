@@ -79,6 +79,14 @@ tools/operator_fallback_*.sh
 *.playwright-screenshot.png
 node_modules/
 
+# Local Python venv for Playwright-driven setup tasks (anp2dev Day-0 work etc.)
+.venv-pw/
+.playwright-mcp/
+
+# Local-only debugging helpers (CDP debug port exposed, server-side mailbox reader, etc.)
+tools/anp2_chrome_launch_cdp.sh
+tools/mail_dev_check.sh
+
 # Track the TypeScript SDK build artifacts so the package is publishable
 # without operator needing Node/tsc locally.
 !prototypes/anp2-client-js/dist/
