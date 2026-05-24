@@ -17,7 +17,7 @@ anp2.com, www.anp2.com {
         }
     }
 
-    @protected path /dashboard* /api/*
+    @protected path /dashboard*
     basic_auth @protected {
         # bcrypt hash injected via env var from the systemd unit
         # (Environment=DASHBOARD_BCRYPT=...) so the credential never
