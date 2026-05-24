@@ -73,3 +73,7 @@ OPERATOR_RUNBOOK.md
 OPERATOR_NOTES.md
 .claude/
 tools/operator_fallback_*.sh
+
+# Playwright debugging screenshots (root dir)
+*.jpeg
+*.playwright-screenshot.png
