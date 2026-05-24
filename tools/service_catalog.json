@@ -1,0 +1,170 @@
+{
+  "_meta": {
+    "purpose": "Catalog of external services this stack interacts with. Each entry documents the ban/AUP/rate-limit risks and the defense mechanism in place.",
+    "updated": "2026-05-24",
+    "status_values": {
+      "PROTECTED": "wrapper or hook actively gates write ops",
+      "MONITORED": "no wrapper but rate/usage tracked + alert on drift",
+      "READ_ONLY": "stack only reads from this service; ban risk near zero",
+      "UNCOVERED": "stack writes to this service but defense is incomplete",
+      "DOCUMENTED": "stack does not write; documentation/link reference only"
+    },
+    "_when_to_wrap": "If we can WRITE (POST/PUT/PATCH/DELETE/upload/publish/submit) to it AND volume/rate could trigger anti-spam/AUP, build a *_safe.sh wrapper. If we only READ, monitoring is sufficient."
+  },
+
+  "code-hosting + collaboration": {
+    "github.com": {
+      "ban_patterns": ["mass-fork in <1h", "burst PR to multiple repos", "fresh account high activity", "force-push storm", "2FA off + cross-repo writes"],
+      "ban_history": "2026-05-19 anp2dev shadow-suppress, 2026-05-24 anp2dev shadow-suppress",
+      "defense": "gh_safe.sh + git_safe.sh + ~/.local/bin shims + account_health R1-R28 + pre-commit + pre-push hooks",
+      "status": "PROTECTED"
+    },
+    "api.github.com": {
+      "note": "covered together with github.com",
+      "defense": "gh_safe.sh api-write for POST/PUT/PATCH/DELETE",
+      "status": "PROTECTED"
+    }
+  },
+
+  "package-registries": {
+    "pypi.org": {
+      "ban_patterns": ["mass new project create (>5/day)", "rapid version churn", "yanked package re-publish"],
+      "ban_history": "2026-05-24 hit 'Too many new projects created' 429 after 4 publishes",
+      "defense": "publish_safe.sh pypi action (cap 1/h 3/24h 10/7d) + ~/.local/bin/twine shim",
+      "status": "PROTECTED"
+    },
+    "registry.npmjs.org": {
+      "ban_patterns": ["mass publish from new account", "name-squat patterns"],
+      "defense": "publish_safe.sh npm action (cap 1/h 2/24h 5/7d) + ~/.local/bin/npm shim",
+      "status": "PROTECTED"
+    },
+    "registry.modelcontextprotocol.io": {
+      "ban_patterns": ["mass server publish", "ownership-claim failures"],
+      "defense": "publish_safe.sh mcp action (cap 1/h 2/24h 5/7d) + ~/.local/bin/mcp-publisher shim",
+      "status": "PROTECTED"
+    },
+    "static.modelcontextprotocol.io": {
+      "note": "schema host, read-only",
+      "status": "READ_ONLY"
+    }
+  },
+
+  "ai-platforms": {
+    "huggingface.co": {
+      "ban_patterns": ["mass dataset/space publish", "spam content"],
+      "defense": "publish_safe.sh hf action + ~/.local/bin/huggingface-cli shim",
+      "status": "PROTECTED"
+    },
+    "platform.openai.com": {
+      "note": "API consumer (we read), no publish surface",
+      "status": "READ_ONLY"
+    },
+    "docs.letta.com": {
+      "note": "doc link reference",
+      "status": "DOCUMENTED"
+    },
+    "letta.com": {
+      "note": "doc link reference",
+      "status": "DOCUMENTED"
+    },
+    "python.langchain.com": {
+      "note": "doc link reference",
+      "status": "DOCUMENTED"
+    },
+    "sdk.vercel.ai": {
+      "note": "doc link reference",
+      "status": "DOCUMENTED"
+    },
+    "modelcontextprotocol.io": {
+      "note": "doc link reference",
+      "status": "DOCUMENTED"
+    },
+    "developers.googleblog.com": {
+      "note": "doc link reference (A2A protocol announcement)",
+      "status": "DOCUMENTED"
+    },
+    "opensource.microsoft.com": {
+      "note": "doc link reference (IATP)",
+      "status": "DOCUMENTED"
+    }
+  },
+
+  "infrastructure": {
+    "AWS / EC2 (relay host)": {
+      "ban_patterns": ["AUP violation (illegal content / mining)", "outbound abuse (sending mail, scanning)", "DDoS amplification", "unusual API call patterns"],
+      "defense": "monitoring via account_health.py R-future + scrape_safe.sh for outbound HTTP rate-limit; no crypto-mining code permitted (leak_audit detects)",
+      "status": "MONITORED"
+    },
+    "Cloudflare (DNS only currently; Workers if added)": {
+      "ban_patterns": ["AUP violations on Workers free tier (100k req/day)", "DNS abuse"],
+      "defense": "DNS read-only currently. If Workers added: cloudflare_safe.sh wrapper",
+      "status": "READ_ONLY"
+    },
+    "LetsEncrypt (via Caddy ACME)": {
+      "ban_patterns": ["50 certs/registered-domain/week", "5 duplicate certs/week", "300 'new orders' per account per 3h"],
+      "defense": "tools/caddy_apply.sh validates before restart, preventing renew storms",
+      "status": "PROTECTED"
+    }
+  },
+
+  "communications-channels": {
+    "discord.com": {
+      "ban_patterns": ["new account joining many servers", "rapid messages", "promo bot patterns"],
+      "defense": "NOT used by claude-tools directly. operator-environment, not claude-tools, controls this.",
+      "status": "OPERATOR_HANDLED"
+    },
+    "dev.to": {
+      "ban_patterns": ["self-promotion spam", "duplicate cross-posting"],
+      "defense": "no write integration; rule (no promotion-operation) governs.",
+      "status": "C_RULE_GOVERNED"
+    },
+    "techcrunch.com": {
+      "note": "link reference (likely citation)",
+      "status": "DOCUMENTED"
+    }
+  },
+
+  "external-data-feeds (read-only)": {
+    "api.coingecko.com": {"note": "crypto price feed for market seed agent", "status": "READ_ONLY"},
+    "api.etherscan.io": {"note": "ethereum chain reader", "status": "READ_ONLY"},
+    "api.open-meteo.com": {"note": "weather feed for weather seed agent", "status": "READ_ONLY"},
+    "mempool.space": {"note": "btc mempool reader", "status": "READ_ONLY"},
+    "feeds.bbci.co.uk": {"note": "news RSS for news seed agent", "status": "READ_ONLY"},
+    "hnrss.org": {"note": "tech-news RSS for news seed agent", "status": "READ_ONLY"},
+    "arxiv.org": {"note": "paper references", "status": "READ_ONLY"},
+    "export.arxiv.org": {"note": "arxiv API for paper metadata", "status": "READ_ONLY"},
+    "eips.ethereum.org": {"note": "ERC-8004 reference", "status": "DOCUMENTED"},
+    "stablecoininsider.org": {"note": "link reference", "status": "DOCUMENTED"},
+    "www.x402.org": {"note": "x402 protocol reference", "status": "DOCUMENTED"},
+    "x402.org": {"note": "x402 protocol reference (bare)", "status": "DOCUMENTED"},
+    "www.humansecurity.com": {"note": "reference", "status": "DOCUMENTED"}
+  },
+
+  "registries (we submitted; read for verification)": {
+    "img.shields.io": {"note": "badge image service for README", "status": "READ_ONLY"},
+    "registry.modelcontextprotocol.io_dup": {"note": "see package-registries section"},
+    "_a2aregistry": {"note": "a2aregistry.org — agent registry, we registered earlier", "status": "MONITORED"}
+  },
+
+  "standards / spec hosts (read-only)": {
+    "datatracker.ietf.org": {"status": "READ_ONLY"},
+    "www.rfc-editor.org": {"status": "READ_ONLY"},
+    "www.sitemaps.org": {"status": "READ_ONLY"},
+    "schema.org": {"status": "READ_ONLY"},
+    "json-schema.org": {"status": "READ_ONLY"},
+    "creativecommons.org": {"status": "READ_ONLY"},
+    "developercertificate.org": {"status": "READ_ONLY"},
+    "www.contributor-covenant.org": {"status": "READ_ONLY"}
+  },
+
+  "self": {
+    "anp2.com / www.anp2.com": {"status": "OWNED"},
+    "relay-eu.anp2.com": {"note": "planned EU federation relay (PIP-004 draft)", "status": "OWNED_PLANNED"},
+    "my-relay.example.com": {"note": "example placeholder in docs", "status": "DOCUMENTATION_PLACEHOLDER"},
+    "example.test": {"note": "RFC reserved test domain in docs", "status": "DOCUMENTATION_PLACEHOLDER"}
+  },
+
+  "doc-link-only (we link to these but never POST)": {
+    "www.ajeetraina.com": {"note": "blog reference", "status": "DOCUMENTED"}
+  }
+}

@@ -93,4 +93,16 @@ if [ -x tools/defense_integrity.sh ]; then
     exit 1
   fi
 fi
+echo "pre-push: defense-stack integrity PASS. Verifying external-service catalog…" >&2
+if [ -x tools/service_discovery.sh ]; then
+  if ! bash tools/service_discovery.sh verify >/dev/null 2>&1; then
+    echo "pre-push: external-service catalog has unknown host(s) — push blocked." >&2
+    bash tools/service_discovery.sh verify >&2 || true
+    echo "" >&2
+    echo "  ▶ Each unknown host needs a classification:" >&2
+    echo "      tools/service_research.sh research <host>" >&2
+    echo "  ▶ Then add an entry to tools/service_catalog.json and re-pin." >&2
+    exit 1
+  fi
+fi
 echo "pre-push: all gates PASS. Push permitted." >&2
