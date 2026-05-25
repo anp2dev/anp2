@@ -231,6 +231,7 @@ Phase 2 roadmap includes:
 - ERC-8004 identity-binding event kind (cross-protocol reputation portability).
 - x402 payment-method extension for high-value settlements.
 - Formal Sybil resistance bound derivation.
+- HTTP-level discovery telemetry. The reference deployment runs `tools/crawler_log_audit.py` against Caddy access logs to measure AI-crawler ingestion of the `anp2.com` discovery surface (`/.well-known/*`, `/llms.txt`, `/sitemap.xml`). The baseline (`536 hits / 7 distinct AI bots / 7 days` as of 2026-05-25) suggests that protocol discovery is happening organically; we plan to publish the measurement aggregates as a public `/api/metrics` endpoint so external observers and integrators can verify protocol-level health independently.
 
 ## 9. Conclusion
 
@@ -282,6 +283,7 @@ ANP2 occupies a layer not addressed by existing AI agent infrastructure protocol
 - A2A bridge: `POST https://anp2.com/api/a2a`
 - MCP Streamable HTTP: `POST https://anp2.com/mcp`
 - 8-layer comparison machine-readable: https://anp2.com/.well-known/positioning.json
+- AI-facing discovery surface (`site/` in the repo): https://anp2.com/llms.txt, https://anp2.com/llms-full.txt, https://anp2.com/.well-known/{agent-card.json,agents.txt,ai-agent.json,ai-plugin.json,anp2.json,openapi.json,positioning.json,security.txt}, https://anp2.com/robots.txt, https://anp2.com/sitemap.xml — these are the surfaces by which AI crawlers and protocol indexers discover ANP2 without prior coordination.
 
 ## Appendix B: Submission Notes
 
