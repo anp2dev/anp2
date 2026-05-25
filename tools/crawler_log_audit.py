@@ -22,10 +22,25 @@ Usage:
     bash tools/crawler_log_audit.py                  # last 24h, text
     bash tools/crawler_log_audit.py --hours 168      # last 7d
     bash tools/crawler_log_audit.py --json           # machine-readable
+    bash tools/crawler_log_audit.py --json --output FILE  # also write to FILE
+
+Public metrics endpoint (task #81 C2):
+    When run on the relay host itself (i.e., on EC2 not via SSH),
+    `--mode local --json --output /var/www/anp2/.well-known/anp2-metrics.json`
+    publishes the JSON aggregate at https://anp2.com/.well-known/anp2-metrics.json
+    via the existing Caddy default-handler route. Cron suggestion (hourly):
+
+        0 * * * * /usr/bin/python3 /opt/anp2/tools/crawler_log_audit.py \
+                  --mode local --hours 24 --json \
+                  --output /var/www/anp2/.well-known/anp2-metrics.json
+
+    No relay code change required — Caddy already serves
+    `/var/www/anp2/.well-known/*` for any file present there.
 
 Requires:
-    env/relay-ip.txt or $ANP2_SERVER_IP
-    env/anp2.pem or $ANP2_SSH_KEY
+    env/relay-ip.txt or $ANP2_SERVER_IP (SSH mode only)
+    env/anp2.pem or $ANP2_SSH_KEY (SSH mode only)
+    `sudo` access to read /var/log/caddy/access.log (both modes)
 """
 from __future__ import annotations
 import argparse
@@ -59,36 +74,46 @@ AI_CRAWLER_PATTERNS = {
 }
 
 
-def _fetch_log_lines(hours: int) -> list[str]:
-    """SSH to relay, grep matching log lines, filter by timestamp.
+def _fetch_log_lines(hours: int, mode: str = "ssh") -> list[str]:
+    """Read AI-crawler-matching log lines from the last `hours`.
 
-    Best-effort: returns [] on SSH error. Caller should report.
+    mode='ssh' (default): SSH to relay host (requires env/relay-ip.txt
+        + env/anp2.pem or $ANP2_SERVER_IP + $ANP2_SSH_KEY). Used when
+        running the audit from an operator workstation.
+
+    mode='local': read /var/log/caddy/access.log directly via sudo.
+        Used when this script runs on the relay host itself (= cron
+        on EC2 that writes the public JSON aggregate).
+
+    Best-effort: returns [] on error. Caller should report.
     """
-    server = (os.environ.get("ANP2_SERVER_IP")
-              or open("env/relay-ip.txt").read().strip())
-    key = os.environ.get("ANP2_SSH_KEY") or "env/anp2.pem"
     since = int(time.time() - hours * 3600)
     pat = "|".join(AI_CRAWLER_PATTERNS.values())
-    # Pull matching lines from current + rotated logs, filter by ts on remote
-    # so we don't pull megabytes back over SSH.
-    cmd = (
+    grep_cmd = (
         f"sudo grep -hE '({pat})' "
         f"/var/log/caddy/access.log /var/log/caddy/access.log.* 2>/dev/null "
         f"| awk -F'\"ts\":' '{{split($2,a,\",\"); if(a[1]+0>={since}) print}}'"
     )
     try:
-        r = subprocess.run(
-            ["ssh", "-i", key, "-o", "StrictHostKeyChecking=no",
-             f"ec2-user@{server}", cmd],
-            capture_output=True, text=True, timeout=45,
-        )
+        if mode == "local":
+            r = subprocess.run(["bash", "-c", grep_cmd],
+                               capture_output=True, text=True, timeout=45)
+        else:
+            server = (os.environ.get("ANP2_SERVER_IP")
+                      or open("env/relay-ip.txt").read().strip())
+            key = os.environ.get("ANP2_SSH_KEY") or "env/anp2.pem"
+            r = subprocess.run(
+                ["ssh", "-i", key, "-o", "StrictHostKeyChecking=no",
+                 f"ec2-user@{server}", grep_cmd],
+                capture_output=True, text=True, timeout=45,
+            )
         return [line for line in r.stdout.split("\n") if line.strip()]
     except Exception:
         return []
 
 
-def audit(hours: int) -> dict:
-    lines = _fetch_log_lines(hours)
+def audit(hours: int, mode: str = "ssh") -> dict:
+    lines = _fetch_log_lines(hours, mode=mode)
     bot_counts: dict[str, int] = defaultdict(int)
     bot_paths: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     bot_first: dict[str, float] = {}
@@ -169,12 +194,34 @@ def main() -> int:
                     help="lookback window in hours (default 24)")
     ap.add_argument("--json", action="store_true",
                     help="output JSON instead of human-readable text")
+    ap.add_argument("--output",
+                    help="also write JSON output to this path (creates / overwrites)")
+    ap.add_argument("--mode", choices=("ssh", "local"), default="ssh",
+                    help="ssh: SSH to relay (default, for operator workstation). "
+                         "local: read /var/log/caddy/access.log directly via sudo "
+                         "(for cron on the relay host itself).")
     args = ap.parse_args()
-    s = audit(args.hours)
+    s = audit(args.hours, mode=args.mode)
+
     if args.json:
-        print(json.dumps(s, indent=2, default=str))
+        rendered = json.dumps(s, indent=2, default=str)
+        print(rendered)
     else:
         print(_fmt(s))
+
+    if args.output:
+        # Always JSON to file regardless of --json (since file consumers
+        # are machines). Add a `generated_at` field so freshness is
+        # discernible.
+        s_out = dict(s)
+        s_out["generated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            with open(args.output, "w") as f:
+                json.dump(s_out, f, indent=2, default=str)
+        except OSError as e:
+            print(f"[!] failed to write {args.output}: {e}",
+                  file=sys.stderr)
+            return 2
     return 0
 
 
