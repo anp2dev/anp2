@@ -80,6 +80,19 @@ except: print(0)
     fi
 fi
 
+# ── shim-PATH check: defense L3 must be active ─────────────────────
+# The PATH-front shims at ~/.local/bin/{gh,git,…} only catch calls if
+# PATH has them in front. Without that, `gh` / `git` resolves to the
+# real binary, fully bypassing wrappers AND hooks (via --no-verify).
+# Discovered 2026-05-25 red-team — see [[redteam-findings-2026-05-25]].
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) vlog "L3 shim PATH OK" ;;
+    *)
+        escalate WARN
+        vlog "L3 WARN: $HOME/.local/bin not in PATH — shims bypassed; run 'launchctl setenv PATH \"\$HOME/.local/bin:\$PATH\"' then relaunch"
+        ;;
+esac
+
 # ── R23-lite: push in last 1h ───────────────────────────────────────
 if [ -r "env/.git-activity-log.jsonl" ]; then
     n=$(python3 -c "

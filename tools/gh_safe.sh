@@ -178,8 +178,17 @@ is_listing_pr_target() {
     local target=$1
     # Lowercase + check for indicator words
     local lc; lc=$(echo "$target" | tr '[:upper:]' '[:lower:]')
+    # Expanded 2026-05-25 (red-team finding L1.1): the original regex
+    # missed real-world listing-repo names like `curated-tools`,
+    # `agent-board`, `tool-index`, `mcp-servers-collection`,
+    # `ai-agent-gallery`, etc. Keep the existing wide nets and add
+    # synonyms commonly used by listing maintainers.
     case "$lc" in
         *awesome*|*registry*|*catalog*|*directory*|*-list*|*list-*)
+            return 0 ;;
+        *curated*|*-index*|*index-*|*-gallery*|*gallery-*|*collection*)
+            return 0 ;;
+        *-board*|*board-*|*hub-*|*-hub*|*landscape*|*resources*|*links*)
             return 0 ;;
     esac
     return 1

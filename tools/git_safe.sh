@@ -130,7 +130,11 @@ check_push_window() {
     echo "          Wait for the window to open, or set ANP2_PUSH_WINDOW_OVERRIDE=1" >&2
     echo "          for a one-shot emergency override (logged)." >&2
     if [ -n "${ANP2_PUSH_WINDOW_OVERRIDE:-}" ]; then
-        echo "          OVERRIDE present — proceeding (single use)" >&2
+        # NOTE: this is NOT single-use — the env var persists across calls
+        # within the same shell. The override is meant for one-off
+        # emergencies; if it's exported across a session, every push will
+        # bypass R30. Logged each time so abuse is visible in the log.
+        echo "          OVERRIDE present — proceeding (each use is logged)" >&2
         log_op push-window-override "today=${today} hour=${utc_hour}" "OVERRIDE"
         return 0
     fi
