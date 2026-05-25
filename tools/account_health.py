@@ -53,6 +53,18 @@ Rules:
                                    operator-local day (offset configurable)
   R30 push-window:                 freeze-period only — current UTC hour must
                                    be in the configured push window [start, end)
+  R31 commit-template-repeat:      ≤ 60% of last 30 commits share the same
+                                   normalized first-line template (catches
+                                   bot-like commit-message uniformity)
+  R32 commit-hour-concentration:   < 90% of last 30 commits in any single
+                                   4-hour operator-local window (catches
+                                   cron-like commit timing)
+  R33 lone-author-pattern:         INFO only — flags 0-collaborator repos
+                                   with > 14 days activity (solo dev is
+                                   legitimate; just surfaced for awareness)
+  R34 ssh-key-churn                (--auth) ≤ 2 SSH keys added in the last
+                                   7d (catches rapid key rotation that
+                                   correlates with bot setup)
 
 Thresholds (env var override):
   ANP2_GH_USER         (default: anp2dev — post-2026-05-24 primary identity)
@@ -540,6 +552,114 @@ def check_extra_flag_patterns() -> None:
         record("INFO", "R28 repo-topic-cap", f"{USER}/{REPO}", f"HTTP {st2}")
 
 
+def check_bot_pattern_extended() -> None:
+    """R31 + R32 + R33: stronger bot-detection signals.
+
+    Origin: 2026-05-25 red-team finding #3 surfaced that R26 (Co-Authored-By
+    saturation) has a trivial bypass — just don't add the trailer. These
+    three rules look at structural patterns that a Co-Authored-By-omitting
+    AI bot still leaves behind: uniform commit-message templates, narrow
+    commit-time windows, and zero-collaborator longevity.
+
+    None of these is individually decisive (a real solo human dev pushing
+    rapid `fix:` commits during their morning could trigger all three).
+    Combined with R26 + R27, they raise the bot-likeness signal materially.
+    """
+    # ── R31: commit-template repetition
+    # Normalize each commit's first line: lowercase, drop typical prefixes
+    # (`feat:`, `fix:`, `chore:`, etc.) + drop trailing parenthetical/hash
+    # references, then take first 5 words as the "template key". A real
+    # human dev varies templates; a bot that templates `[skill] update
+    # X` repeats.
+    first_lines = sh("git", "log", "-30", "--format=%s").splitlines()
+    if first_lines:
+        from collections import Counter
+        def template_key(line: str) -> str:
+            s = line.lower()
+            s = re.sub(r"^(feat|fix|chore|docs|test|refactor|style|perf|ci|build|revert)[:(]\s*",
+                       "", s)
+            s = re.sub(r"[#\d]+$", "", s).strip()
+            words = s.split()[:5]
+            return " ".join(words)
+        keys = [template_key(l) for l in first_lines if l.strip()]
+        if keys:
+            counts = Counter(keys)
+            top_key, top_n = counts.most_common(1)[0]
+            ratio = top_n / len(keys)
+            cap = float(os.environ.get("ANP2_COMMIT_TEMPLATE_CAP", "0.6"))
+            if ratio > cap:
+                record("FAIL", "R31 commit-template-repeat", "git-log",
+                       f"top template {top_n}/{len(keys)} ({ratio:.0%}) — too uniform "
+                       f"(template: {top_key!r})")
+            else:
+                record("PASS", "R31 commit-template-repeat", "git-log",
+                       f"top template {top_n}/{len(keys)} ({ratio:.0%}) / {cap:.0%}")
+
+    # ── R32: commit-time concentration (operator-local hour bucket)
+    # Real human dev commits across 8-14 hour spread. Bot / cron commits
+    # within a 4-hour window. We threshold at 90% of commits in any 4-hour
+    # window across the last 30 commits.
+    raw_times = sh("git", "log", "-30", "--format=%ct").splitlines()
+    if raw_times:
+        hours = []
+        for t in raw_times:
+            try:
+                utc_dt = datetime.fromtimestamp(int(t), timezone.utc)
+                local_dt = utc_dt + timedelta(hours=OPERATOR_TZ_OFFSET)
+                hours.append(local_dt.hour)
+            except (ValueError, TypeError):
+                continue
+        if hours:
+            # Sliding 4-hour window count
+            max_in_4h = 0
+            for start in range(24):
+                window = {(start + i) % 24 for i in range(4)}
+                cnt = sum(1 for h in hours if h in window)
+                if cnt > max_in_4h:
+                    max_in_4h = cnt
+            ratio = max_in_4h / len(hours)
+            cap = float(os.environ.get("ANP2_COMMIT_HOUR_CAP", "0.9"))
+            if ratio > cap:
+                record("FAIL", "R32 commit-hour-concentration", "git-log",
+                       f"{max_in_4h}/{len(hours)} ({ratio:.0%}) in a 4h window — "
+                       f"narrow timing (cap {cap:.0%})")
+            else:
+                record("PASS", "R32 commit-hour-concentration", "git-log",
+                       f"{max_in_4h}/{len(hours)} ({ratio:.0%}) / {cap:.0%}")
+
+    # ── R33: lone-author-pattern (INFO only)
+    # Solo dev is legitimate, but a 0-collaborator repo with sustained
+    # activity is a pattern auditors look at. Reported as INFO so it shows
+    # up in the audit without failing.
+    st, collabs = http_get_json(
+        f"https://api.github.com/repos/{USER}/{REPO}/collaborators",
+        token=_AMBIENT_TOKEN)
+    st_r, repo_data = http_get_json(
+        f"https://api.github.com/repos/{USER}/{REPO}",
+        token=_AMBIENT_TOKEN)
+    if st == 200 and isinstance(collabs, list) and st_r == 200 and isinstance(repo_data, dict):
+        n_collab = len(collabs)
+        created = repo_data.get("created_at", "")
+        if created:
+            try:
+                created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                age_days = (datetime.now(timezone.utc) - created_dt).days
+            except ValueError:
+                age_days = 0
+        else:
+            age_days = 0
+        if n_collab <= 1 and age_days >= 14:
+            record("INFO", "R33 lone-author-pattern", f"{USER}/{REPO}",
+                   f"{n_collab} collaborator(s), repo age {age_days}d "
+                   f"(solo-dev — legitimate but surfaced)")
+        else:
+            record("PASS", "R33 lone-author-pattern", f"{USER}/{REPO}",
+                   f"{n_collab} collaborator(s), age {age_days}d")
+    else:
+        record("INFO", "R33 lone-author-pattern", f"{USER}/{REPO}",
+               f"HTTP {st}/{st_r} — skipping")
+
+
 def check_push_discipline(push_mode: bool = False) -> None:
     """R29 + R30: freeze-period push-discipline rules.
 
@@ -656,6 +776,24 @@ def check_mfa_and_keys(token: str) -> None:
     else:
         record("WARN", "R14 ssh-key-anp2-deploy", "api/user/keys", f"HTTP {st2}")
 
+    # R34: SSH key churn — count keys added in last 7d. Rapid key rotation
+    # (≥ 3 new keys / week) is uncommon for legitimate accounts and frequent
+    # for compromised / bot accounts being reused across identities.
+    if st2 == 200 and isinstance(keys, list):
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        recent = 0
+        for k in keys:
+            created = k.get("created_at", "")
+            if created and created >= cutoff_iso:
+                recent += 1
+        cap = int(os.environ.get("ANP2_SSH_KEY_CHURN_CAP", "2"))
+        if recent > cap:
+            record("FAIL", "R34 ssh-key-churn", USER,
+                   f"{recent} keys added in last 7d > {cap} — rapid rotation")
+        else:
+            record("PASS", "R34 ssh-key-churn", USER,
+                   f"{recent} / {cap} keys added in last 7d")
+
 
 def check_pat_expiry(token: str) -> None:
     # Fine-grained PAT API: GET /personal-access-tokens via /user/permitted-tokens isn't trivial;
@@ -753,6 +891,7 @@ def main() -> int:
     check_fork_burst()
     check_git_burst()
     check_extra_flag_patterns()
+    check_bot_pattern_extended()
     check_push_discipline(push_mode=args.push_mode)
     check_committer_clean()
     check_repo_files()
