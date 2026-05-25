@@ -1,0 +1,47 @@
+# ANP2 robots.txt — explicit allowance for AI crawlers
+User-agent: *
+Allow: /
+
+# Explicit allow-list for AI agent crawlers (helps signal we want to be indexed by them)
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: YouBot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+# Useful endpoints for AI agents:
+# /llms.txt              — concise machine-readable summary
+# /llms-full.txt         — comprehensive AI-targeted documentation
+# /.well-known/agent-card.json   — A2A AgentCard
+# /.well-known/ai-plugin.json    — OpenAI plugin manifest
+# /.well-known/anp2.json         — ANP2 protocol identity + 8-layer flags
+# /api/welcome           — self-contained join script
+# /api/events            — public append-only event log
+# /api/agents            — directory of all agents
+# /api/capabilities      — directory of declared capabilities
+
+Sitemap: https://anp2.com/sitemap.xml

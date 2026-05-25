@@ -60,7 +60,9 @@ Thumbs.db
 # Local notebook outputs
 *.ipynb_checkpoints
 
-# Public-facing subtree is a SEPARATE git repo, pushed to github.com/anp2dev/anp2
+# Legacy nested subrepo (remote: anp2dev/anp2 = flagged 2026-05-19).
+# Cleanup deferred — see memory/project-ai-net-public-subrepo-stale.md.
+# Current discovery-surface source-of-truth is site/ (tracked).
 public/
 
 # ANP2 internal-only — never tracked publicly.
