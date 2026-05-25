@@ -49,6 +49,10 @@ Rules:
   R26 co-author-AI-saturation:     ≤ 80% commits w/ Co-Authored-By: Claude/AI/Bot
   R27 ci-failure-streak:           last 5 workflow runs success ratio ≥ 60%
   R28 repo-topic-cap:              public repo has ≤ 5 topic tags
+  R29 push-discipline-1-per-day:   freeze-period only — ≤ 1 push event per
+                                   operator-local day (offset configurable)
+  R30 push-window:                 freeze-period only — current UTC hour must
+                                   be in the configured push window [start, end)
 
 Thresholds (env var override):
   ANP2_GH_USER         (default: anp2dev — post-2026-05-24 primary identity)
@@ -72,6 +76,47 @@ LIMIT_DAY = int(os.environ.get("ANP2_COMMITS_PER_DAY", "12"))
 LIMIT_WEEK = int(os.environ.get("ANP2_COMMITS_PER_WEEK", "50"))
 CANONICAL_BLOG = "https://anp2.com"
 CANONICAL_EMAIL = "ai@anp2.com"
+
+# Push-discipline window (R29 + R30). Active during freeze period only.
+# Defaults model the operator-local "evening of the day" window 22:00–01:00
+# with a +9h offset (operator-local minus 9 hours = UTC). All comparisons in
+# code are pure-UTC; the offset is configurable via env so the discipline
+# travels with the operator if they relocate.
+from datetime import date as _date
+FREEZE_END_DATE = _date(*[int(x) for x in os.environ.get(
+    "ANP2_FREEZE_END_DATE", "2026-06-24").split("-")])
+OPERATOR_TZ_OFFSET = int(os.environ.get("ANP2_OPERATOR_TZ_OFFSET_HOURS", "9"))
+# Window endpoints in operator-local hour-of-day (24h). End may be < start
+# (window crosses midnight). Defaults: 22:00 → next-day 01:00.
+PUSH_WIN_LOCAL_START = int(os.environ.get("ANP2_PUSH_WIN_LOCAL_START", "22"))
+PUSH_WIN_LOCAL_END = int(os.environ.get("ANP2_PUSH_WIN_LOCAL_END", "1"))
+
+
+def _in_freeze_period() -> bool:
+    return datetime.now(timezone.utc).date() <= FREEZE_END_DATE
+
+
+def _operator_local_date(utc_dt: datetime) -> _date:
+    """Return the operator-local calendar date for a UTC datetime, using the
+    configured offset. Used to count 'pushes today' from operator perspective.
+    """
+    return (utc_dt + timedelta(hours=OPERATOR_TZ_OFFSET)).date()
+
+
+def _push_window_utc_bounds() -> tuple[int, int]:
+    """Translate the operator-local window to UTC hour-of-day [start, end).
+    Returns (start_hour_utc, end_hour_utc). Handles midnight wrap by returning
+    end < start (caller must treat as [start, 24) ∪ [0, end))."""
+    start_utc = (PUSH_WIN_LOCAL_START - OPERATOR_TZ_OFFSET) % 24
+    end_utc = (PUSH_WIN_LOCAL_END - OPERATOR_TZ_OFFSET) % 24
+    return start_utc, end_utc
+
+
+def _hour_in_window(hour: int, start: int, end: int) -> bool:
+    if start < end:
+        return start <= hour < end
+    # wrap case
+    return hour >= start or hour < end
 
 findings: list[tuple[str, str, str, str]] = []  # (level, rule, scope, detail)
 
@@ -495,6 +540,75 @@ def check_extra_flag_patterns() -> None:
         record("INFO", "R28 repo-topic-cap", f"{USER}/{REPO}", f"HTTP {st2}")
 
 
+def check_push_discipline(push_mode: bool = False) -> None:
+    """R29 + R30: freeze-period push-discipline rules.
+
+    R29 caps push events to one per operator-local calendar day. R30 only
+    permits a push when the current UTC hour falls inside the configured
+    push window. Both rules auto-deactivate once the freeze period ends
+    (FREEZE_END_DATE); after that they report PASS unconditionally so the
+    rule numbers stay stable while becoming effectively no-ops.
+
+    `push_mode` is set by pre-push hook (--push-mode). In that mode, a
+    rule violation is reported as FAIL (blocks the push). When called
+    from session-start or per-message audits, the same condition is
+    reported as WARN so the rule does not noisily fail the audit just
+    because "you're not in the push window right now".
+    """
+    fail_level = "FAIL" if push_mode else "WARN"
+
+    if not _in_freeze_period():
+        record("PASS", "R29 push-discipline-1-per-day", USER,
+               f"post-freeze (after {FREEZE_END_DATE.isoformat()}); rule inactive")
+        record("PASS", "R30 push-window", USER,
+               f"post-freeze (after {FREEZE_END_DATE.isoformat()}); rule inactive")
+        return
+
+    # ── R29: operator-local-day push count
+    now_utc = datetime.now(timezone.utc)
+    today_local = _operator_local_date(now_utc)
+    st, events = http_get_json(
+        f"https://api.github.com/users/{USER}/events?per_page=100",
+        token=_AMBIENT_TOKEN)
+    push_count = 0
+    if st == 200 and isinstance(events, list):
+        for e in events:
+            if e.get("type") != "PushEvent":
+                continue
+            ts = e.get("created_at", "")
+            if not ts:
+                continue
+            try:
+                ev_utc = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if _operator_local_date(ev_utc) == today_local:
+                push_count += 1
+        if push_count > 1:
+            record(fail_level, "R29 push-discipline-1-per-day", USER,
+                   f"{push_count} pushes in current operator-local day "
+                   f"(cap 1, freeze rule)")
+        else:
+            record("PASS", "R29 push-discipline-1-per-day", USER,
+                   f"{push_count} / 1 (operator-local day, freeze rule)")
+    else:
+        record("INFO", "R29 push-discipline-1-per-day", USER,
+               f"HTTP {st} — skipping; pre-push hook will re-check")
+
+    # ── R30: current UTC hour inside configured push window
+    start_utc, end_utc = _push_window_utc_bounds()
+    cur_hour = now_utc.hour
+    if _hour_in_window(cur_hour, start_utc, end_utc):
+        record("PASS", "R30 push-window", USER,
+               f"current UTC hour {cur_hour:02d} inside window "
+               f"[{start_utc:02d}, {end_utc:02d}) (freeze rule)")
+    else:
+        record(fail_level, "R30 push-window", USER,
+               f"current UTC hour {cur_hour:02d} outside window "
+               f"[{start_utc:02d}, {end_utc:02d}) — "
+               f"{'push blocked, wait for window' if push_mode else 'currently outside push window (informational)'}")
+
+
 def check_repo_files() -> None:
     files = sh("git", "ls-files").split()
     for label, path, sev in (
@@ -618,6 +732,9 @@ def main() -> int:
                     help="also run authenticated checks (uses PAT from env/REGISTRATIONS.md)")
     ap.add_argument("--full", action="store_true",
                     help="default + auth + local-history pacing")
+    ap.add_argument("--push-mode", action="store_true",
+                    help="treat R29 / R30 freeze-period push-discipline "
+                         "violations as FAIL (block push). Set by pre-push hook")
     args = ap.parse_args()
 
     use_auth = args.auth or args.full
@@ -636,6 +753,7 @@ def main() -> int:
     check_fork_burst()
     check_git_burst()
     check_extra_flag_patterns()
+    check_push_discipline(push_mode=args.push_mode)
     check_committer_clean()
     check_repo_files()
 

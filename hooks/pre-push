@@ -91,10 +91,10 @@ if [ "$IS_INITIAL_PUSH" = "1" ]; then
 else
   INCOMING_FOR_AUDIT=$PUSH_COMMITS
 fi
-if ! ANP2_INCOMING_COMMITS=$INCOMING_FOR_AUDIT python3 tools/account_health.py >/dev/null; then
+if ! ANP2_INCOMING_COMMITS=$INCOMING_FOR_AUDIT python3 tools/account_health.py --push-mode >/dev/null; then
   echo "pre-push: account-health audit FAILED — push blocked." >&2
   echo "         Active GitHub account is at flag risk. Details:" >&2
-  ANP2_INCOMING_COMMITS=$INCOMING_FOR_AUDIT python3 tools/account_health.py >&2 || true
+  ANP2_INCOMING_COMMITS=$INCOMING_FOR_AUDIT python3 tools/account_health.py --push-mode >&2 || true
   echo "" >&2
   echo "  Resolution: [[feedback-ai-net-github-account-discipline]]" >&2
   echo "  Bypass is forbidden on a publish-bound branch (--no-verify not allowed)." >&2

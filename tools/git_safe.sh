@@ -93,12 +93,47 @@ op_push() {
         return
     fi
 
+    # Push-discipline window (R30, freeze period only).
+    # Defense-in-depth against `--no-verify`: pre-push hook also enforces
+    # R29 + R30 via account_health.py, but `--no-verify` bypasses pre-push,
+    # so we keep an independent check here at the wrapper layer.
+    check_push_window || return 1
+
     check_rate push 2 5 15
     if git push "$@"; then
         log_op push "${TARGET:0:120}" "OK"
         return 0
     fi
     log_op push "${TARGET:0:120}" "FAILED"
+    return 1
+}
+
+# Returns 0 if push is currently allowed by R30 (or freeze period passed).
+# Returns 1 with operator-facing message if window is closed.
+check_push_window() {
+    local freeze_end="${ANP2_FREEZE_END_DATE:-2026-06-24}"
+    local today utc_hour win_start win_end
+    today=$(date -u +%Y-%m-%d)
+    # date string compare works since YYYY-MM-DD sorts lexicographically.
+    if [ "$today" \> "$freeze_end" ]; then
+        return 0  # post-freeze — rule auto-deactivates
+    fi
+    utc_hour=$(date -u +%-H)
+    win_start="${ANP2_PUSH_WIN_UTC_START:-13}"
+    win_end="${ANP2_PUSH_WIN_UTC_END:-16}"
+    # window is [start, end). Wrap not supported here — defaults [13, 16).
+    if [ "$utc_hour" -ge "$win_start" ] && [ "$utc_hour" -lt "$win_end" ]; then
+        return 0
+    fi
+    echo "git_safe: push BLOCKED — current UTC hour ${utc_hour} outside" >&2
+    echo "          configured push window [${win_start}, ${win_end}) (freeze rule R30)." >&2
+    echo "          Wait for the window to open, or set ANP2_PUSH_WINDOW_OVERRIDE=1" >&2
+    echo "          for a one-shot emergency override (logged)." >&2
+    if [ -n "${ANP2_PUSH_WINDOW_OVERRIDE:-}" ]; then
+        echo "          OVERRIDE present — proceeding (single use)" >&2
+        log_op push-window-override "today=${today} hour=${utc_hour}" "OVERRIDE"
+        return 0
+    fi
     return 1
 }
 
