@@ -81,16 +81,15 @@ except: print(0)
 fi
 
 # ── shim-PATH check: defense L3 must be active ─────────────────────
-# The PATH-front shims at ~/.local/bin/{gh,git,…} only catch calls if
-# PATH has them in front. Without that, `gh` / `git` resolves to the
-# real binary, fully bypassing wrappers AND hooks (via --no-verify).
+# Separate verdict line from Flag-risk verdict — the account-state and
+# the local-defense-strength are different concerns. PATH being wrong
+# doesn't mean GitHub flagged the account; it means the next bad action
+# will not be caught by the wrapper. Surface it without blocking
+# read-only or commit work.
 # Discovered 2026-05-25 red-team — see [[redteam-findings-2026-05-25]].
 case ":$PATH:" in
-    *":$HOME/.local/bin:"*) vlog "L3 shim PATH OK" ;;
-    *)
-        escalate WARN
-        vlog "L3 WARN: $HOME/.local/bin not in PATH — shims bypassed; run 'launchctl setenv PATH \"\$HOME/.local/bin:\$PATH\"' then relaunch"
-        ;;
+    *":$HOME/.local/bin:"*) shim_path_ok=1 ;;
+    *) shim_path_ok=0 ;;
 esac
 
 # ── R23-lite: push in last 1h ───────────────────────────────────────
@@ -116,7 +115,18 @@ fi
 
 # ── verdict ──────────────────────────────────────────────────────────
 case "$worst" in
-    OK)   echo "Flag-risk: OK"; exit 0 ;;
-    WARN) echo "Flag-risk: WARN — degrade reads only, no writes"; exit 0 ;;
-    FAIL) echo "Flag-risk: FAIL — account flagged; operator action required (see account_health.py for detail)"; exit 1 ;;
+    OK)   echo "Flag-risk: OK" ;;
+    WARN) echo "Flag-risk: WARN — degrade reads only, no writes" ;;
+    FAIL) echo "Flag-risk: FAIL — account flagged; operator action required (see account_health.py for detail)" ;;
+esac
+
+# Print L3 defense-strength on a SECOND line when shim PATH missing.
+# Not blocking — operator/AI should fix, but reads + commits proceed.
+if [ "${shim_path_ok:-1}" = "0" ]; then
+    echo "Defense-L3: PATH-front shim INACTIVE (~/.local/bin not in PATH) — fix via 'launchctl setenv PATH \"\$HOME/.local/bin:\$PATH\"' + relaunch"
+fi
+
+case "$worst" in
+    FAIL) exit 1 ;;
+    *)    exit 0 ;;
 esac
