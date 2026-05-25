@@ -5,7 +5,8 @@ This folder is a ready-to-push HuggingFace dataset repo. To publish:
 ```sh
 # One-time
 pip install huggingface_hub
-huggingface-cli login                      # operator pastes HF token
+export HF_TOKEN=...                        # HF write token
+huggingface-cli login --token "$HF_TOKEN"
 
 # From this directory
 cd datasets/anp2-events
@@ -27,11 +28,6 @@ Tagging:
 ```sh
 git tag snapshot-2026-05-24
 git push hf --tags
-```
-
-To rebuild fresh:
-```sh
-python3 /Users/ai/.claude/jobs/8c548b8a/build_dataset.py
 ```
 
 ## Re-publish cadence

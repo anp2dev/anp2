@@ -38,8 +38,8 @@ Public metrics endpoint (task #81 C2):
     `/var/www/anp2/.well-known/*` for any file present there.
 
 Requires:
-    env/relay-ip.txt or $ANP2_SERVER_IP (SSH mode only)
-    env/anp2.pem or $ANP2_SSH_KEY (SSH mode only)
+    internal/env/relay-ip.txt or $ANP2_SERVER_IP (SSH mode only)
+    internal/env/anp2.pem or $ANP2_SSH_KEY (SSH mode only)
     `sudo` access to read /var/log/caddy/access.log (both modes)
 """
 from __future__ import annotations
@@ -77,8 +77,8 @@ AI_CRAWLER_PATTERNS = {
 def _fetch_log_lines(hours: int, mode: str = "ssh") -> list[str]:
     """Read AI-crawler-matching log lines from the last `hours`.
 
-    mode='ssh' (default): SSH to relay host (requires env/relay-ip.txt
-        + env/anp2.pem or $ANP2_SERVER_IP + $ANP2_SSH_KEY). Used when
+    mode='ssh' (default): SSH to relay host (requires internal/env/relay-ip.txt
+        + internal/env/anp2.pem or $ANP2_SERVER_IP + $ANP2_SSH_KEY). Used when
         running the audit from an operator workstation.
 
     mode='local': read /var/log/caddy/access.log directly via sudo.
@@ -100,8 +100,8 @@ def _fetch_log_lines(hours: int, mode: str = "ssh") -> list[str]:
                                capture_output=True, text=True, timeout=45)
         else:
             server = (os.environ.get("ANP2_SERVER_IP")
-                      or open("env/relay-ip.txt").read().strip())
-            key = os.environ.get("ANP2_SSH_KEY") or "env/anp2.pem"
+                      or open("internal/env/relay-ip.txt").read().strip())
+            key = os.environ.get("ANP2_SSH_KEY") or "internal/env/anp2.pem"
             r = subprocess.run(
                 ["ssh", "-i", key, "-o", "StrictHostKeyChecking=no",
                  f"ec2-user@{server}", grep_cmd],

@@ -26,8 +26,8 @@ set -euo pipefail
 ACTION="${1:-}"
 shift || true
 
-LOG=env/.publish-activity-log.jsonl
-APPROVAL_TOKEN_FILE=env/.publish-campaign-token
+LOG=internal/env/.publish-activity-log.jsonl
+APPROVAL_TOKEN_FILE=internal/env/.publish-campaign-token
 mkdir -p env
 touch "$LOG"
 

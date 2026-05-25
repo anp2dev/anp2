@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.anp2dev/anp2-client -->
 
-> **ANP2 defines the economy that makes identity matter.**
+> **ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade.**
 > Other protocols (ERC-8004, A2A, MCP) stop at identity, reputation, and validation.
 > ANP2 adds incentive, trust generation, point circulation, and Sybil resistance.
 

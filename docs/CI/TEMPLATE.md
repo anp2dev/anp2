@@ -30,7 +30,6 @@ The specific design choice the critique addresses. Cite the spec section
 
 - **Spec section**: `PROTOCOL.md §18.3` (kind 53 schema)
 - **PIP**: PIP-001 §4 (verifier eligibility)
-- **Doc**: `docs/research/AUTONOMOUS_TASK_ECONOMY.md`
 
 ## Engagement Lead's initial reaction
 
@@ -92,4 +91,3 @@ Filled in when status changes to `adopted` / `adopted-with-modification`
 - Related CI tickets: CI-NNN, CI-MMM (if any)
 - Related PIP: PIP-NNN (if any)
 - Related spec section: PROTOCOL.md —X.Y
-- Related doc: docs/research/...md

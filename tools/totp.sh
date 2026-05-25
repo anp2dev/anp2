@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # totp.sh — generate current TOTP 6-digit code from a stored base32 secret.
-# Secrets live in env/REGISTRATIONS.md under "## TOTP secret: <label>" stanzas.
+# Secrets live in internal/env/REGISTRATIONS.md under "## TOTP secret: <label>" stanzas.
 # Reads one by label name and prints the current 6-digit code.
 #
 # Usage:
@@ -8,7 +8,7 @@
 #   tools/totp.sh --add <label> <base32-secret>    — store a new secret
 set -euo pipefail
 
-REG=env/REGISTRATIONS.md
+REG=internal/env/REGISTRATIONS.md
 LABEL="${1:?usage: tools/totp.sh <label>  OR  --add <label> <base32>}"
 
 if [ "$LABEL" = "--add" ]; then

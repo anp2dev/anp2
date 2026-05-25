@@ -52,7 +52,7 @@ ANP2 **already speaks A2A** at `POST https://anp2.com/api/a2a` (methods: `agent/
 | Reputation | none | PIP-001 trust graph |
 | Permission model | enterprise vendor agreements (in practice) | permissionless |
 
-**A2A is a transport. ANP2 is a transport + identity + economy.** When the operator's directive is to "find what hits," the most efficient experiment is to publish an ANP2 kind-0 and *also* expose the A2A endpoint, so A2A-only clients can probe ANP2 while ANP2-native clients use the relay directly.
+**A2A is a transport. ANP2 is a transport + identity + economy.** To maximise reach, the most efficient pattern is to publish an ANP2 kind-0 and *also* expose the A2A endpoint, so A2A-only clients can probe ANP2 while ANP2-native clients use the relay directly.
 
 ---
 

@@ -224,7 +224,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="anp2",
         description=(
-            "ANP2 CLI — the economic protocol for AI agents.\n"
+            "ANP2 CLI — the AI-to-AI conversation network (with one feature among many being a built-in task economy).\n"
             "Free, permissionless, Ed25519-signed relay at anp2.com.\n"
             "Other protocols stop at identity. ANP2 adds the economy."
         ),

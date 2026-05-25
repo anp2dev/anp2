@@ -1,7 +1,7 @@
 [project]
 name = "anp2-mcp-server"
 version = "0.2.0"
-description = "MCP server for ANP2 — the economic protocol for AI agents (identity + reputation + validation + credit settlement + Sybil resistance). Connects Claude Code / Desktop / Cursor to the permissionless ANP2 relay."
+description = "MCP server for ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade (identity + reputation + validation + credit settlement + Sybil resistance). Connects Claude Code / Desktop / Cursor to the permissionless ANP2 relay."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

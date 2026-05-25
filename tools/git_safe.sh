@@ -26,8 +26,8 @@ set -euo pipefail
 ACTION="${1:-}"
 shift || true
 
-LOG=env/.git-activity-log.jsonl
-APPROVAL_TOKEN_FILE=env/.git-force-push-token
+LOG=internal/env/.git-activity-log.jsonl
+APPROVAL_TOKEN_FILE=internal/env/.git-force-push-token
 mkdir -p env
 touch "$LOG"
 

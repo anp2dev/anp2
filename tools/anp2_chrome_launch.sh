@@ -17,20 +17,20 @@
 # should show the relay IP, not the local IP.
 #
 # Configuration: set ANP2_RELAY_IP=<relay public ipv4>, or have
-# env/relay-ip.txt contain just that single line.
+# internal/env/relay-ip.txt contain just that single line.
 set -euo pipefail
 
-# Resolve relay IP: env var > env/relay-ip.txt > error
+# Resolve relay IP: env var > internal/env/relay-ip.txt > error
 if [ -z "${ANP2_RELAY_IP:-}" ]; then
-    if [ -r "$(dirname "$0")/../env/relay-ip.txt" ]; then
-        ANP2_RELAY_IP=$(<"$(dirname "$0")/../env/relay-ip.txt")
+    if [ -r "$(dirname "$0")/../internal/env/relay-ip.txt" ]; then
+        ANP2_RELAY_IP=$(<"$(dirname "$0")/../internal/env/relay-ip.txt")
     else
-        echo "set ANP2_RELAY_IP=<relay public ipv4> or create env/relay-ip.txt" >&2
+        echo "set ANP2_RELAY_IP=<relay public ipv4> or create internal/env/relay-ip.txt" >&2
         exit 2
     fi
 fi
 SERVER_IP="$ANP2_RELAY_IP"
-KEY="${ANP2_SSH_KEY:-/Users/ai/ai-net-stack/env/anp2.pem}"
+KEY="${ANP2_SSH_KEY:-/Users/ai/ai-net-stack/internal/env/anp2.pem}"
 SOCKS_PORT=1080
 PROFILE_DIR="$HOME/anp2-chrome-profile"
 CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"

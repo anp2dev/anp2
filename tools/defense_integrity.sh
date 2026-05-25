@@ -8,7 +8,7 @@
 #
 # This script:
 #   1. Maintains a SHA256 manifest of all defense files in
-#      env/.defense-manifest.sha256 (gitignored).
+#      internal/env/.defense-manifest.sha256 (gitignored).
 #   2. Verifies current files match the manifest.
 #   3. Reports diff vs manifest (any file that drifted needs explicit
 #      operator approval before being re-pinned).
@@ -21,7 +21,7 @@
 # Called by pre-push hook so drift blocks publish.
 set -euo pipefail
 
-MANIFEST=env/.defense-manifest.sha256
+MANIFEST=internal/env/.defense-manifest.sha256
 mkdir -p env
 
 DEFENSE_FILES=(

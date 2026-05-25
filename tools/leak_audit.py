@@ -11,7 +11,7 @@ fire to confirm the repo is publish-safe.
 Checks:
   - content: leak strings (relay IP, operator IP, hostnames, operator email)
              in tracked files, staged diffs, and optionally full git history
-  - path:    internal-only paths (memory/, docs/research/, OPERATOR_*.md) that
+  - path:    internal-only paths (internal/memory/, internal/research/, OPERATOR_*.md) that
              must never be tracked
   - author:  commit author / committer fields carrying hostname or human-role
              words ("founder", "*.local", etc.)
@@ -73,9 +73,10 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "content", r"\(paid plan\)", "MEDIUM",
      "paid-plan disclosure"),
     ("internal-doc-ref-in-public",
-     "content", r"\bOPERATOR_(?:TODO|RUNBOOK|NOTES)\.md\b", "HIGH",
-     "tracked file references an internal-only OPERATOR_*.md "
-     "(broken pointer + leak)"),
+     "content", r"(?:^|\s|`|\(|/)(internal/(?:memory|research|env)/|internal/OPERATOR_|OPERATOR_(?:TODO|RUNBOOK|NOTES)\.md)\b",
+     "HIGH",
+     "tracked file references an internal-only path "
+     "(internal/* or OPERATOR_*.md — broken pointer + leak)"),
     # — rule (human-existence) content patterns (HIGH) —
     ("content-human-operator",
      "content", r"\bhuman[\s-]+(?:operator|maintainer|admin|contributor)s?\b", "HIGH",
@@ -111,18 +112,29 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "MEDIUM",
      "rule: outreach operation disclosure"),
     # — Path rules: internal-only files must never be tracked —
-    ("internal-memory",
-     "path", r"^memory/", "HIGH",
-     "memory/ is internal-only; gitignore it"),
-    ("internal-research",
-     "path", r"^docs/research/", "HIGH",
-     "docs/research/ is internal-only; gitignore it"),
-    ("internal-operator-md",
-     "path", r"^OPERATOR_(TODO|RUNBOOK|NOTES)\.md$", "HIGH",
-     "OPERATOR_*.md is internal-only; gitignore it"),
+    # As of 2026-05-25 ALL internal content lives under internal/ (one folder
+    # below root). A single rule covers the whole tree; the env/credential
+    # variant is escalated to CRITICAL because it also blocks committed keys.
+    ("internal-tree",
+     "path", r"^internal/(?!env/)", "HIGH",
+     "internal/ holds private operator-only material; must never be tracked"),
     ("internal-env",
+     "path", r"^internal/env/", "CRITICAL",
+     "internal/env/ holds private keys + passwords; must never be tracked"),
+    # Legacy-location guards: if any of the old locations re-appear at the
+    # root (someone forgot to use internal/), still catch it.
+    ("legacy-memory-at-root",
+     "path", r"^memory/", "HIGH",
+     "memory/ moved to internal/memory/ on 2026-05-25 — do not recreate at root"),
+    ("legacy-research-at-root",
+     "path", r"^docs/research/", "HIGH",
+     "docs/research/ moved to internal/research/ on 2026-05-25 — do not recreate"),
+    ("legacy-operator-at-root",
+     "path", r"^OPERATOR_(TODO|RUNBOOK|NOTES)\.md$", "HIGH",
+     "OPERATOR_*.md moved to internal/ on 2026-05-25 — do not recreate at root"),
+    ("legacy-env-at-root",
      "path", r"^env/", "CRITICAL",
-     "env/ holds private keys + passwords; must never be tracked"),
+     "env/ moved to internal/env/ on 2026-05-25 — do not recreate at root"),
     # — Filename leaks (path-rule extension for non-ASCII / AI-tool trace) —
     # Added 2026-05-23 after `logo/ChatGPT Image 2026年5月19日 17_16_57.png`
     # was found tracked: JP date in filename (rule) + AI-tool origin trace.
@@ -271,6 +283,10 @@ CONTENT_SCAN_EXCLUDE: set[str] = {
     # Dashboard renderer strips "anp2<RoleName>" prefix from legacy
     # display names — the regex *includes* the bad word by design.
     "prototypes/dashboard/index.html",
+    # Concierge seed agent has outgoing-leak-guard regexes that literally
+    # contain the forbidden words ("anp2", "UTC", "human operator",
+    # etc.) — the patterns ARE the defense.
+    "prototypes/seed-agents/concierge/concierge.py",
 }
 
 # Per-rule false-positive exemptions: rule_name → set of file paths where
@@ -278,6 +294,30 @@ CONTENT_SCAN_EXCLUDE: set[str] = {
 # generic English term in a quoted question prompt, etc.). When extending
 # this, leave a comment explaining why the match is acceptable.
 RULE_FILE_EXCLUDE: dict[str, set[str]] = {
+    # Operator-side utility scripts intentionally reference internal/env/*
+    # (SSH key path, relay-ip file, REGISTRATIONS.md PAT lookup, ...). These
+    # are functional defaults, not leaks. Public docs/READMEs are still
+    # scanned by the same rule.
+    "internal-doc-ref-in-public": {
+        "tools/anp2_chrome_launch.sh",
+        "tools/anp2_chrome_launch_cdp.sh",
+        "tools/crawler_log_audit.py",
+        "tools/socks_scope_check.sh",
+        "tools/sync_landing.sh",
+        "tools/totp.sh",
+        "tools/mail_dev_check.sh",
+        "tools/account_health.py",
+        "tools/flag_risk_check.sh",
+        "tools/gh_safe.sh",
+        "tools/git_safe.sh",
+        "tools/publish_safe.sh",
+        "tools/scrape_safe.sh",
+        "tools/defense_integrity.sh",
+        "tools/push.sh",
+        "tools/commit.sh",
+        "hooks/pre-commit",
+        "hooks/pre-push",
+    },
     # "Hacker News" appears as the name of a real RSS-feed publication
     # the news seed aggregates — not as a promotion target.
     "content-show-hn": {

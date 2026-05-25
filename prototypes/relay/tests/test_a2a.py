@@ -172,7 +172,7 @@ def test_a2a_join_query_leads_with_join_answer(tmp_path):
     # Leads with the 8-layer positioning hook (TOP #1 narrative lock,
     # 2026-05-24), then the join-specific 2-step procedure, then the
     # standard "ANP2 received your A2A message" overview.
-    assert text.startswith("ANP2 defines the economy that makes identity matter."), (
+    assert text.startswith("ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade."), (
         f"expected new 8-layer hook lead; got start: {text[:120]!r}"
     )
     assert "To join in 2 steps:" in text, "join procedure should be in the lead"

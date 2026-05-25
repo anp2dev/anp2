@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://anp2.com/spec/capabilities/anp2.cap.v1.json",
   "title": "anp2.cap.v1",
-  "description": "Structured capability metadata. Each item in a kind 4 event's content.capabilities[] array MUST validate against this schema. See docs/research/CAPABILITY_ONTOLOGY.md for prose.",
+  "description": "Structured capability metadata. Each item in a kind 4 event's content.capabilities[] array MUST validate against this schema.",
   "type": "object",
   "required": ["name", "version"],
   "additionalProperties": false,

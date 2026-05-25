@@ -8,13 +8,13 @@ the same "bot-like behavior" signals. Same 5-layer pattern as leak_audit.py:
 rule definition + automated check + hook enforcement + memory rule + manifest
 integrity.
 
-cf. [[feedback-ai-net-github-account-discipline]]、 OPERATOR_TODO.md
+cf. [[feedback-ai-net-github-account-discipline]]、 internal/OPERATOR_TODO.md
 
 実行モード:
   既定           — anonymous HTTPS チェック（profile / repo 可視性 / commit
                   pacing）。 ネット越しのみ。 pre-push hook + セッション開始
                   時に走らせる。
-  --auth         — PAT を env/REGISTRATIONS.md から拾って GitHub API auth
+  --auth         — PAT を internal/env/REGISTRATIONS.md から拾って GitHub API auth
                   系（2FA enabled / SSH key 登録 / PAT 有効期限）を確認。
   --full         — 上記 + ローカルの commit history の 24h/7d 集計 +
                   pre-push の安全マージン推定。
@@ -48,7 +48,7 @@ Rules:
   R25 author-email-stability:      no forbidden pattern; no flip-flop
   R26 co-author-AI-saturation:     ≤ 80% commits w/ Co-Authored-By: Claude/AI/Bot
   R27 ci-failure-streak:           last 5 workflow runs success ratio ≥ 60%
-  R28 repo-topic-cap:              public repo has ≤ 5 topic tags
+  R28 repo-topic-cap:              public repo has ≤ 15 topic tags
   R29 push-discipline-1-per-day:   freeze-period only — ≤ 1 push event per
                                    operator-local day (offset configurable)
   R30 push-window:                 freeze-period only — current UTC hour must
@@ -168,14 +168,14 @@ def http_head(url: str, timeout: int = 12) -> int:
 
 
 def load_pat() -> str | None:
-    """Return the active PAT for the currently watched USER from env/REGISTRATIONS.md.
+    """Return the active PAT for the currently watched USER from internal/env/REGISTRATIONS.md.
 
     Supports two stanza formats:
       legacy (anp2dev):  "## anp2dev — Personal Access Token ... **Token**: `github_pat_...`"
       anp2dev (2026-05-24+):  "## PAT: <user> (fine-grained, ...) ... Token: github_pat_..."
     Searches in stanza order; the first match for the active USER wins.
     """
-    path = "env/REGISTRATIONS.md"
+    path = "internal/env/REGISTRATIONS.md"
     if not os.path.exists(path):
         return None
     with open(path) as f:
@@ -328,7 +328,7 @@ def check_fork_burst() -> None:
 
     Sources of truth:
       - GitHub API `/users/<user>/repos?type=forks` for actual fork timestamps
-      - local env/.gh-activity-log.jsonl for ops gh_safe.sh has wrapped
+      - local internal/env/.gh-activity-log.jsonl for ops gh_safe.sh has wrapped
     The maximum of the two is used (covers direct `gh repo fork` bypass).
     """
     import json as _json
@@ -350,7 +350,7 @@ def check_fork_burst() -> None:
 
     forks_local: list[float] = []
     try:
-        with open("env/.gh-activity-log.jsonl") as fh:
+        with open("internal/env/.gh-activity-log.jsonl") as fh:
             for line in fh:
                 e = _json.loads(line)
                 if e.get("action") == "fork" and e.get("status") == "OK":
@@ -389,7 +389,7 @@ def check_fork_burst() -> None:
     # search has different rate limits we don't want to rely on)
     prs_24h = 0
     try:
-        with open("env/.gh-activity-log.jsonl") as fh:
+        with open("internal/env/.gh-activity-log.jsonl") as fh:
             for line in fh:
                 e = _json.loads(line)
                 if e.get("action") == "pr-create" and e.get("status") == "OK" \
@@ -424,7 +424,7 @@ def check_fork_burst() -> None:
 def check_git_burst() -> None:
     """R23-R25: git push / force-push / author-email rate checks.
 
-    Reads env/.git-activity-log.jsonl populated by tools/git_safe.sh. The
+    Reads internal/env/.git-activity-log.jsonl populated by tools/git_safe.sh. The
     log is gitignored. If git_safe wasn't used (direct git push), the log
     won't have that event — fall back to GitHub /events API (R17 already
     covers that surface from a different angle).
@@ -435,7 +435,7 @@ def check_git_burst() -> None:
     forces: list[float] = []
     emails: list[tuple[float, str]] = []
     try:
-        with open("env/.git-activity-log.jsonl") as fh:
+        with open("internal/env/.git-activity-log.jsonl") as fh:
             for line in fh:
                 e = _json.loads(line)
                 if e.get("status") != "OK":
@@ -541,7 +541,10 @@ def check_extra_flag_patterns() -> None:
     st2, repo_data = http_get_json(f"https://api.github.com/repos/{USER}/{REPO}", token=_AMBIENT_TOKEN)
     if st2 == 200 and isinstance(repo_data, dict):
         topics = repo_data.get("topics", []) or []
-        cap_t = int(os.environ.get("ANP2_REPO_TOPIC_CAP", "5"))
+        # Raised 2026-05-25 from 5 → 15. GitHub allows up to 20; 5 was over-strict
+        # for active discovery-surface repos. Bot-spammed-topics pattern is
+        # better caught by R26/R31/R33 (= identity/template/lone-author signals).
+        cap_t = int(os.environ.get("ANP2_REPO_TOPIC_CAP", "15"))
         if len(topics) > cap_t:
             record("FAIL", "R28 repo-topic-cap", f"{USER}/{REPO}",
                    f"{len(topics)} topics > {cap_t} — looks topic-spammed")
@@ -797,9 +800,9 @@ def check_mfa_and_keys(token: str) -> None:
 
 def check_pat_expiry(token: str) -> None:
     # Fine-grained PAT API: GET /personal-access-tokens via /user/permitted-tokens isn't trivial;
-    # 代替: env/REGISTRATIONS.md の expires メモを読む
+    # 代替: internal/env/REGISTRATIONS.md の expires メモを読む
     try:
-        with open("env/REGISTRATIONS.md") as f:
+        with open("internal/env/REGISTRATIONS.md") as f:
             text = f.read()
     except FileNotFoundError:
         return
@@ -812,7 +815,7 @@ def check_pat_expiry(token: str) -> None:
         m = re.search(rf"## {re.escape(USER)} — Personal Access Token.*?\*\*Expires\*\*:\s*([^\n]+)",
                       text, re.DOTALL)
     if not m:
-        record("WARN", "R15 pat-expiry-not-imminent", "env/REGISTRATIONS.md", "expiry note not found")
+        record("WARN", "R15 pat-expiry-not-imminent", "internal/env/REGISTRATIONS.md", "expiry note not found")
         return
     note = m.group(1).strip()
     # Three accepted formats:
@@ -831,7 +834,7 @@ def check_pat_expiry(token: str) -> None:
             month, day, year = m_date.groups()
             exp = datetime(int(year), months[month], int(day), tzinfo=timezone.utc)
     if exp is None:
-        record("WARN", "R15 pat-expiry-not-imminent", "env/REGISTRATIONS.md", f"unparsed: {note[:50]}")
+        record("WARN", "R15 pat-expiry-not-imminent", "internal/env/REGISTRATIONS.md", f"unparsed: {note[:50]}")
         return
     days_left = (exp - datetime.now(timezone.utc)).days
     if days_left < 0:
@@ -867,7 +870,7 @@ def check_branch_protection(token: str) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--auth", action="store_true",
-                    help="also run authenticated checks (uses PAT from env/REGISTRATIONS.md)")
+                    help="also run authenticated checks (uses PAT from internal/env/REGISTRATIONS.md)")
     ap.add_argument("--full", action="store_true",
                     help="default + auth + local-history pacing")
     ap.add_argument("--push-mode", action="store_true",
@@ -899,7 +902,7 @@ def main() -> int:
     if use_auth:
         token = load_pat()
         if not token:
-            record("WARN", "auth", "env/REGISTRATIONS.md", "PAT not found — skipping auth checks")
+            record("WARN", "auth", "internal/env/REGISTRATIONS.md", "PAT not found — skipping auth checks")
         else:
             check_mfa_and_keys(token)
             check_pat_expiry(token)

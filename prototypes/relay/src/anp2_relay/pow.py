@@ -1,6 +1,6 @@
 """Server-side Proof-of-Work tag verification for ANP2.
 
-Mirror of `anp2_client.pow` (see docs/research/POW_TAG_DESIGN.md). The
+Mirror of `anp2_client.pow`. The
 client mints a nonce so that the SHA256 of the JCS-canonical event payload
 (i.e. the event `id`) has at least `pow_bits` leading zero bits. The relay
 verifies the claim with a single SHA256 + leading-zero-count.

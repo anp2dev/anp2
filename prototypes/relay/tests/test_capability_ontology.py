@@ -2,7 +2,7 @@
 /api/capabilities/search filters, sorting, and first-claim conflict
 resolution.
 
-See docs/research/CAPABILITY_ONTOLOGY.md for the prose spec and
+See the spec/capabilities/ JSON schemas for the prose spec and
 spec/capabilities/anp2.cap.v1.json for the JSON Schema.
 """
 

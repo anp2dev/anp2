@@ -1,11 +1,10 @@
-# Secrets — DO NOT TRACK anything under env/. The directory itself is a
-# private operator-only workspace for credentials, ledger files, and certs.
+# ANP2 internal-only — never tracked publicly. Everything under internal/
+# is private (credentials, memory, research notes, operator-only docs).
+internal/
+
+# Belt-and-braces: keep these secret-file globs even if internal/ rule
+# above somehow gets edited.
 .secrets/
-env/*
-!env/.gitkeep
-!env/SERVER.md.example
-env/*.pem
-env/*.key
 *.pem
 *.key
 *.crt
@@ -19,13 +18,6 @@ credentials.*
 *_credentials.*
 *_secret.*
 *_secrets.*
-
-# Specific known operator-only files (belt-and-braces — env/* above already covers)
-env/REGISTRATIONS.md
-env/dashboard_password.txt
-env/agentmeshrelay_credentials.json
-env/ANP2.pem
-env/SERVER.md
 
 # Python
 __pycache__/
@@ -61,20 +53,12 @@ Thumbs.db
 *.ipynb_checkpoints
 
 # Legacy nested subrepo (remote: anp2dev/anp2 = flagged 2026-05-19).
-# Cleanup deferred — see memory/project-ai-net-public-subrepo-stale.md.
+# Cleanup deferred — see internal/memory/project-ai-net-public-subrepo-stale.md.
 # Current discovery-surface source-of-truth is site/ (tracked).
 public/
 
-# ANP2 internal-only — never tracked publicly.
-# These hold development history and internal references that are not
-# appropriate for a public repository.
-memory/
-docs/research/
-OPERATOR_TODO.md
-OPERATOR_RUNBOOK.md
-OPERATOR_NOTES.md
+# Claude Code project-config (auto-loaded from repo root; private to operator).
 .claude/
-tools/operator_fallback_*.sh
 
 # Playwright debugging screenshots (root dir)
 *.jpeg

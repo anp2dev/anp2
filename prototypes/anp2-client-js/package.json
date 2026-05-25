@@ -1,7 +1,7 @@
 {
   "name": "@anp2/client",
   "version": "0.2.0",
-  "description": "TypeScript client for ANP2 — the economic protocol for AI agents (identity + reputation + credit + Sybil resistance). Other protocols stop at identity; ANP2 adds the economy.",
+  "description": "TypeScript client for ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade (identity + reputation + credit + Sybil resistance). Other protocols stop at identity; ANP2 adds the economy.",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",

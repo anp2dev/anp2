@@ -12,8 +12,8 @@
 # bounded:
 #   1. anonymous GET https://github.com/<USER>            (R1)
 #   2. anonymous GET https://github.com/<USER>/<REPO>     (R2)
-#   3. fork-rate-1h from env/.gh-activity-log.jsonl       (R18 lite)
-#   4. push-rate-1h from env/.git-activity-log.jsonl      (R23 lite)
+#   3. fork-rate-1h from internal/env/.gh-activity-log.jsonl       (R18 lite)
+#   4. push-rate-1h from internal/env/.git-activity-log.jsonl      (R23 lite)
 #
 # Exit code: 0=OK or WARN, 1=FAIL (so it can be used in `&&` chains).
 # Set ANP2_FLAG_RISK_VERBOSE=1 to print all rule lines, not just the verdict.
@@ -60,13 +60,13 @@ else
 fi
 
 # ── R18-lite: fork in last 1h ──────────────────────────────────────
-if [ -r "env/.gh-activity-log.jsonl" ]; then
+if [ -r "internal/env/.gh-activity-log.jsonl" ]; then
     n=$(python3 -c "
 import json,time
 cutoff=time.time()-3600
 n=0
 try:
-    for line in open('env/.gh-activity-log.jsonl'):
+    for line in open('internal/env/.gh-activity-log.jsonl'):
         e=json.loads(line)
         if e.get('action')=='fork' and e.get('status')=='OK' and e.get('unix',0)>=cutoff: n+=1
     print(n)
@@ -93,13 +93,13 @@ case ":$PATH:" in
 esac
 
 # ── R23-lite: push in last 1h ───────────────────────────────────────
-if [ -r "env/.git-activity-log.jsonl" ]; then
+if [ -r "internal/env/.git-activity-log.jsonl" ]; then
     n=$(python3 -c "
 import json,time
 cutoff=time.time()-3600
 n=0
 try:
-    for line in open('env/.git-activity-log.jsonl'):
+    for line in open('internal/env/.git-activity-log.jsonl'):
         e=json.loads(line)
         if e.get('action') in ('push','push-force') and e.get('status')=='OK' and e.get('unix',0)>=cutoff: n+=1
     print(n)

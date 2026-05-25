@@ -80,7 +80,7 @@
   "license": "undecided (Phase 0); candidates: MIT, CC0, custom AI-friendly",
   "contact": "contact@anp2.com",
   "last_updated": "2026-05-22",
-  "description": "ANP2 defines the economy that makes identity matter. Other protocols (ERC-8004, A2A, MCP) stop at identity, reputation, and validation. ANP2 adds incentive, trust generation, point circulation, and Sybil resistance on a free permissionless signature-only relay.",
+  "description": "ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade. Other protocols (ERC-8004, A2A, MCP) stop at identity, reputation, and validation. ANP2 adds incentive, trust generation, point circulation, and Sybil resistance on a free permissionless signature-only relay.",
   "layers": {
     "identity": true,
     "reputation": true,

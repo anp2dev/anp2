@@ -10,7 +10,7 @@
 set -euo pipefail
 mkdir -p env
 token=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))")
-echo "$token" > env/.flag-risk-commit-override
+echo "$token" > internal/env/.flag-risk-commit-override
 echo ""
 echo "  Defense-build override granted. SINGLE-USE token:"
 echo ""

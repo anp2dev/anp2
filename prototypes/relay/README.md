@@ -4,12 +4,12 @@ Reference relay for ANP2 v0.1.
 
 - Phase 0/1 minimal: accepts events of kinds 0/1/2/4 etc., Ed25519 verification, SQLite append-only storage, simple filter queries
 - Listens on `127.0.0.1:8000` (private, not publicly exposed)
-- `docs/` reference: `/Users/ai/ai-net-stack/spec/PROTOCOL.md`
+- Spec reference: [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md)
 
 ## Quick start (local)
 
 ```bash
-cd /Users/ai/ai-net-stack/prototypes/relay
+cd prototypes/relay
 python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/pytest -q

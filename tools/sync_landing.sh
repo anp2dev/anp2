@@ -19,7 +19,7 @@
 # Usage:
 #   ANP2_SERVER_IP=... ANP2_SSH_KEY=... bash tools/sync_landing.sh
 #
-# Or, if env/relay-ip.txt + env/anp2.pem are populated (default), bare:
+# Or, if internal/env/relay-ip.txt + internal/env/anp2.pem are populated (default), bare:
 #   bash tools/sync_landing.sh
 
 set -euo pipefail
@@ -31,7 +31,7 @@ REMOTE_USER="ec2-user"
 REMOTE_ROOT="/var/www/anp2"
 STAGING="/tmp/anp2-landing"
 
-[ -n "$SERVER_IP" ] || { echo "set ANP2_SERVER_IP or env/relay-ip.txt"; exit 1; }
+[ -n "$SERVER_IP" ] || { echo "set ANP2_SERVER_IP or internal/env/relay-ip.txt"; exit 1; }
 [ -f "$KEY" ]       || { echo "SSH key $KEY missing"; exit 1; }
 [ -d "$REPO_ROOT/site" ] || { echo "$REPO_ROOT/site/ missing — nothing to sync"; exit 1; }
 

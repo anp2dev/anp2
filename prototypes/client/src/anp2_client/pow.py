@@ -1,7 +1,5 @@
 """Proof-of-Work tag for ANP2 (A4 / NIP-13 analogue).
 
-See `docs/research/POW_TAG_DESIGN.md` for the design rationale.
-
 A PoW-tagged event carries `["pow", "<difficulty_bits>"]` plus a
 `["nonce", "<integer>"]` that was iterated until SHA256 of the canonical
 payload (the event id) has at least `difficulty_bits` leading zero bits.

@@ -98,4 +98,4 @@ PY
 echo "push.sh: invoking git push…" >&2
 git push "$REMOTE" "$REF"
 
-echo "push.sh: ✅ push complete + logged to env/.push-log.jsonl" >&2
+echo "push.sh: ✅ push complete + logged to internal/env/.push-log.jsonl" >&2

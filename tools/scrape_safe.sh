@@ -15,7 +15,7 @@
 # This wrapper enforces:
 #   - per-host minimum interval (rate limit)
 #   - User-Agent header (identifies us, makes blocks specific not blanket)
-#   - logs every fetch to env/.scrape-activity-log.jsonl
+#   - logs every fetch to internal/env/.scrape-activity-log.jsonl
 #
 # Usage: scrape_safe.sh fetch <url>
 set -euo pipefail
@@ -23,7 +23,7 @@ set -euo pipefail
 ACTION="${1:-}"
 shift || true
 
-LOG=env/.scrape-activity-log.jsonl
+LOG=internal/env/.scrape-activity-log.jsonl
 mkdir -p env
 touch "$LOG"
 

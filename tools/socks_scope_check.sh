@@ -44,10 +44,10 @@ fi
 # 3. SOCKS5 must point at EC2 only
 if [ "$worst" != "WARN" ]; then
     exit_ip=$(curl -s --max-time 5 --socks5-hostname 127.0.0.1:1080 ifconfig.me 2>/dev/null || echo "")
-    if [ "$exit_ip" = "$(cat /Users/ai/ai-net-stack/env/relay-ip.txt 2>/dev/null)" ]; then
+    if [ "$exit_ip" = "$(cat /Users/ai/ai-net-stack/internal/env/relay-ip.txt 2>/dev/null)" ]; then
         echo "  ✓ SOCKS5 exit IP: $exit_ip (EC2, correct)"
     else
-        echo "  ❌ FAIL: SOCKS5 exit IP is '$exit_ip' — expected $(cat /Users/ai/ai-net-stack/env/relay-ip.txt 2>/dev/null)"
+        echo "  ❌ FAIL: SOCKS5 exit IP is '$exit_ip' — expected $(cat /Users/ai/ai-net-stack/internal/env/relay-ip.txt 2>/dev/null)"
         escalate FAIL
     fi
 fi

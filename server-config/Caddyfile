@@ -40,6 +40,16 @@ anp2.com, www.anp2.com {
         reverse_proxy 127.0.0.1:8000
     }
 
+    # Bare /mcp and /a2a aliases — same upstream as /api/mcp and /api/a2a.
+    # Some clients (Chiark.ai's quality-index crawler; some A2A registries)
+    # probe the un-prefixed paths.
+    handle /mcp {
+        reverse_proxy 127.0.0.1:8000
+    }
+    handle /a2a {
+        reverse_proxy 127.0.0.1:8000
+    }
+
     handle /dashboard* {
         root * /var/www/anp2-dashboard
         try_files {path} /index.html

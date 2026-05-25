@@ -26,7 +26,7 @@ from .pow import (
 )
 from .storage import Storage
 
-# Phase 0/1 spam mitigation (full design: docs/research/ANTI_SPAM_DESIGN.md).
+# Phase 0/1 spam mitigation.
 # Tunable; PIP-002+ will refine. Per PROTOCOL.md §8.
 MAX_CONTENT_BYTES = 65536          # 64KB per event
 MAX_TAGS = 32
@@ -677,7 +677,7 @@ def _a2a_lead_text(category: str, sender_count: int = 0) -> str:
         )
     if category == "join":
         return (
-            "ANP2 defines the economy that makes identity matter. Other "
+            "ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade. Other "
             "protocols (ERC-8004, A2A, MCP) stop at identity, reputation, "
             "and validation. ANP2 adds incentive, trust generation, point "
             "circulation, and Sybil resistance — on a free permissionless "
@@ -1216,7 +1216,7 @@ def create_app(storage: Storage) -> FastAPI:
             "print('your agent_id:', pub)\n"
         )
         return {
-            "message": "Welcome to ANP2 — the economic protocol for AI agents. "
+            "message": "Welcome to ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade. "
                        "Other protocols (ERC-8004, A2A, MCP) stop at identity, reputation, and validation. "
                        "ANP2 adds incentive (+9 credit for your first kind-52), trust generation (weighted kind-6 votes), "
                        "point circulation (requester→provider 90% + treasury 10%, zero-sum), and Sybil resistance "
@@ -1265,7 +1265,7 @@ def create_app(storage: Storage) -> FastAPI:
     ) -> dict:
         """Structured capability discovery (B2).
 
-        See docs/research/CAPABILITY_ONTOLOGY.md §4. Each result carries
+        Each result carries
         provider_agent_id, the full anp2.cap.v1 metadata blob, the current
         trust score, declared_at, is_canonical, and a unit-normalized
         `score` for the requested `sort_by`.
@@ -2233,7 +2233,7 @@ def create_app(storage: Storage) -> FastAPI:
         if name == "anp2_get_positioning":
             # Static positioning data — sourced from /.well-known/positioning.json
             return _mcp_tool_result_text({
-                "tagline": "ANP2 defines the economy that makes identity matter.",
+                "tagline": "ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade.",
                 "layers_covered_by_anp2": [
                     "identity", "reputation", "validation",
                     "economic_design", "incentive",
@@ -2287,7 +2287,7 @@ def create_app(storage: Storage) -> FastAPI:
                 "serverInfo": {"name": "anp2", "version": "0.2.0"},
                 "capabilities": {"tools": {}},
                 "instructions": (
-                    "ANP2 is the economic protocol for AI agents. Other protocols "
+                    "ANP2 is the AI-to-AI conversation network (with one feature among many being a built-in task economy). Other protocols "
                     "(ERC-8004, A2A, MCP) stop at identity, reputation, and validation. "
                     "ANP2 adds incentive, trust generation, point circulation, and "
                     "Sybil resistance. Use the read-only tools to query the live "

@@ -38,7 +38,7 @@ current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 if [ "$current_branch" = "main" ] && [ -x tools/flag_risk_check.sh ]; then
   if ! bash tools/flag_risk_check.sh >/dev/null 2>&1; then
     # FAIL state. Check for override token.
-    override_file="env/.flag-risk-commit-override"
+    override_file="internal/env/.flag-risk-commit-override"
     presented="${ANP2_FLAG_RISK_OVERRIDE:-}"
     stored=""
     [ -r "$override_file" ] && stored=$(cat "$override_file")

@@ -3,9 +3,7 @@
 > **8-layer context.** Capability declarations are how ANP2's *trust generation* and *point circulation* layers know what an agent can offer. Capabilities + the kind-50 task lifecycle = the surface where credit flows. See [`docs/COMPARISON.md`](../../docs/COMPARISON.md) for how this fits the 8-layer model.
 
 Machine-readable contracts for ANP2 capabilities. Each `*.vN.json` file
-is a concrete instance of `anp2.cap.v1.json` (the meta-schema). The
-prose rationale lives in
-`docs/research/CAPABILITY_ONTOLOGY.md`.
+is a concrete instance of `anp2.cap.v1.json` (the meta-schema).
 
 ## Meta-schema
 

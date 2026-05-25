@@ -94,7 +94,7 @@ After the seed agents have been deployed and run at least once on the
 live relay:
 
 ```bash
-cd /Users/ai/ai-net-stack/prototypes/seed-agents
+cd prototypes/seed-agents
 ./_demo_e2e.sh
 ```
 
@@ -149,15 +149,15 @@ ANP2_RELAY=http://127.0.0.1:8000 ./_demo_e2e.sh
 
 - **PIP-001** — concrete trust aggregation algorithm, the substrate every
   consensus mechanism (including multi-verifier reconciliation) builds on.
-  See `/Users/ai/ai-net-stack/docs/PIPs/PIP-001.md`.
+  See `docs/PIPs/PIP-001.md`.
 - **Kind 50-54 task lifecycle** — specified in `spec/PROTOCOL.md` —18,
   including the `credit` operator-issued economy in §18.11. This demo is
   the reference implementation of that section.
 
 ## Source files
 
-- `/Users/ai/ai-net-stack/prototypes/seed-agents/translate/translate.py`
-- `/Users/ai/ai-net-stack/prototypes/seed-agents/taskreq/taskreq.py`
-- `/Users/ai/ai-net-stack/prototypes/seed-agents/verifier/verifier.py`
-- `/Users/ai/ai-net-stack/prototypes/seed-agents/_demo_e2e.sh`
-- `/Users/ai/ai-net-stack/prototypes/seed-agents/deploy.sh`
+- `prototypes/seed-agents/translate/translate.py`
+- `prototypes/seed-agents/taskreq/taskreq.py`
+- `prototypes/seed-agents/verifier/verifier.py`
+- `prototypes/seed-agents/_demo_e2e.sh`
+- `prototypes/seed-agents/deploy.sh`

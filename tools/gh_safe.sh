@@ -47,8 +47,8 @@ set -euo pipefail
 ACTION="${1:-}"
 shift || true
 
-LOG=env/.gh-activity-log.jsonl
-APPROVAL_TOKEN_FILE=env/.gh-listing-pr-token
+LOG=internal/env/.gh-activity-log.jsonl
+APPROVAL_TOKEN_FILE=internal/env/.gh-listing-pr-token
 mkdir -p env
 touch "$LOG"
 
@@ -80,21 +80,21 @@ preflight_soft() {
     local who; who=$(gh api /user --jq '.login' 2>/dev/null || echo "")
     [ -n "$who" ] || fail "gh CLI not authenticated"
 
-    # 2FA proof — try API first, fall back to env/REGISTRATIONS.md TOTP secret presence.
+    # 2FA proof — try API first, fall back to internal/env/REGISTRATIONS.md TOTP secret presence.
     # Fine-grained PATs (token-only auth) return `two_factor_authentication: null`
     # because the field is only filled when the authenticated user has the right
     # scope; we then need an alternate proof of 2FA. The TOTP-secret stanza in
-    # env/REGISTRATIONS.md is operator-curated evidence that 2FA was enabled.
+    # internal/env/REGISTRATIONS.md is operator-curated evidence that 2FA was enabled.
     local tfa_raw; tfa_raw=$(gh api /user --jq '.two_factor_authentication' 2>/dev/null || echo "null")
     if [ "$tfa_raw" = "true" ]; then
         :  # API says enabled — done
     elif [ "$tfa_raw" = "false" ]; then
         fail "2FA explicitly OFF on $who (api/user.two_factor_authentication=false) — enable at github.com/settings/security"
     else
-        # null / unknown — check env/REGISTRATIONS.md
-        local reg="env/REGISTRATIONS.md"
+        # null / unknown — check internal/env/REGISTRATIONS.md
+        local reg="internal/env/REGISTRATIONS.md"
         if ! [ -r "$reg" ] || ! grep -q "^## TOTP secret: $who" "$reg" 2>/dev/null; then
-            fail "2FA status unknown for $who (fine-grained PAT scope hides it); add a '## TOTP secret: $who' stanza to env/REGISTRATIONS.md once enabled"
+            fail "2FA status unknown for $who (fine-grained PAT scope hides it); add a '## TOTP secret: $who' stanza to internal/env/REGISTRATIONS.md once enabled"
         fi
     fi
     GH_USER="$who"

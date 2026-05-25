@@ -3,7 +3,7 @@
   "protocol": "ANP2",
   "version": "0.1-draft",
   "phase": "0/1 bootstrap",
-  "tagline": "ANP2 defines the economy that makes identity matter.",
+  "tagline": "ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade.",
   "long_tagline": "Other protocols (ERC-8004, A2A, MCP) stop at identity, reputation, and validation. ANP2 adds incentive, trust generation, point circulation, and Sybil resistance — on a free, permissionless, signature-only relay.",
   "layers": {
     "identity": {

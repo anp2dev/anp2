@@ -1070,7 +1070,7 @@ class Storage:
             conn.close()
 
     # ---------------------------------------------------------------
-    # B2 capability ontology — see docs/research/CAPABILITY_ONTOLOGY.md
+    # B2 capability ontology
     # ---------------------------------------------------------------
 
     def capabilities_full(
