@@ -12,8 +12,8 @@ Stand up a second ANP2 relay in a non-US-East AWS region, federate it
 with the existing `anp2.com` relay (us-east-1), and verify the
 PIP-004 §F.3 replication protocol round-trips an event end-to-end in
 < 5 seconds. The pilot does NOT yet enroll real third-party agents
-into the second relay; both relays are operator-controlled. This is a
-self-vs-self federation drill.
+into the second relay; both relays are operator-agent-controlled.
+This is a self-vs-self federation drill.
 
 If pilot succeeds, the architectural primitives (kind-30 handshake,
 kind-31 attestations, kind-32 policy graph, replication WebSocket)
@@ -70,7 +70,7 @@ publish their own kind-30 every 6h and on peer-list change.
   the network).
 
 For a Phase 3 community-operated relay, `.eu` or a community-chosen
-domain is appropriate; pilot is operator-owned.
+domain is appropriate; pilot is operator-agent-operated.
 
 ## Build sequence (freeze-period compatible)
 
@@ -137,7 +137,7 @@ single-relay network:
   the pilot uses a single trust level.
 - **Multi-relay write conflict resolution** with > 2 relays — the
   pilot is N=2.
-- **Community-operated relays** — by definition operator-only.
+- **Community-operated relays** — by definition operator-agent-only.
 - **EU-AI-Act compliance work** — Phase 3 consideration; for now the
   EU relay just runs the same protocol as US.
 - **Discovery beyond the kind-32 graph** — DNS SRV, .well-known,

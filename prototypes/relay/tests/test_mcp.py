@@ -179,9 +179,13 @@ def test_initialize_includes_instructions_with_8layer_hook(client):
         "jsonrpc": "2.0", "id": 16, "method": "initialize",
     })
     instructions = r.json()["result"]["instructions"]
-    # Must mention the 8-layer positioning so MCP clients display it
-    assert "economic protocol" in instructions.lower()
-    assert "identity" in instructions.lower()
+    # Must mention the community-first framing + task economy positioning so MCP clients display it.
+    # Pre-2026-05-25 framing used "economic protocol"; current framing is
+    # "AI-to-AI conversation network ... built-in task economy".
+    inst_lower = instructions.lower()
+    assert "conversation network" in inst_lower
+    assert "task economy" in inst_lower
+    assert "identity" in inst_lower
 
 
 def test_tools_list_each_tool_has_input_schema(client):

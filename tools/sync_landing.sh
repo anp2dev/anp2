@@ -25,21 +25,30 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SERVER_IP="${ANP2_SERVER_IP:-$(cat "$REPO_ROOT/env/relay-ip.txt" 2>/dev/null)}"
-KEY="${ANP2_SSH_KEY:-$REPO_ROOT/env/anp2.pem}"
+SERVER_IP="${ANP2_SERVER_IP:-$(cat "$REPO_ROOT/internal/env/relay-ip.txt" 2>/dev/null)}"
+KEY="${ANP2_SSH_KEY:-$REPO_ROOT/internal/env/anp2.pem}"
 REMOTE_USER="ec2-user"
 REMOTE_ROOT="/var/www/anp2"
 STAGING="/tmp/anp2-landing"
 
-[ -n "$SERVER_IP" ] || { echo "set ANP2_SERVER_IP or internal/env/relay-ip.txt"; exit 1; }
-[ -f "$KEY" ]       || { echo "SSH key $KEY missing"; exit 1; }
-[ -d "$REPO_ROOT/site" ] || { echo "$REPO_ROOT/site/ missing — nothing to sync"; exit 1; }
+[ -n "$SERVER_IP" ] || { echo "relay IP not configured (set ANP2_SERVER_IP)"; exit 1; }
+[ -f "$KEY" ]       || { echo "SSH key not found (set ANP2_SSH_KEY)"; exit 1; }
+[ -d "$REPO_ROOT/site" ] || { echo "site/ directory missing — nothing to sync"; exit 1; }
 
-SSH() { ssh -i "$KEY" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "$@"; }
-RSYNC() { rsync -e "ssh -i $KEY -o StrictHostKeyChecking=no" "$@"; }
+# Host-key pinning: cache the relay's host key on first run, then verify
+# strictly on every subsequent run. Avoids the MITM window inherent to
+# StrictHostKeyChecking=no.
+KNOWN_HOSTS="$REPO_ROOT/internal/env/.ssh-known-hosts"
+SSH_OPTS="-i $KEY -o UserKnownHostsFile=$KNOWN_HOSTS -o StrictHostKeyChecking=accept-new"
+SSH() { ssh $SSH_OPTS "$REMOTE_USER@$SERVER_IP" "$@"; }
+RSYNC() { rsync -e "ssh $SSH_OPTS" "$@"; }
 
 echo "[1/4] Stage site/ → $STAGING on remote"
-SSH "mkdir -p $STAGING/.well-known $STAGING/share"
+# Create staging with 0700 so other accounts on the relay host cannot
+# enumerate intermediate landing content (defense-in-depth: even though
+# site/ contents are public, treat staging as private until the atomic
+# flip).
+SSH "mkdir -p $STAGING/.well-known $STAGING/share && chmod 0700 $STAGING"
 # Push site/ recursively. --delete makes the staging dir mirror site/ exactly
 # so a removed file in repo propagates. Excludes apply when flipping (step 2).
 RSYNC -az --delete \
@@ -64,10 +73,10 @@ SSH "sudo rsync -a --delete \
   --exclude='*.bak' \
   --exclude='*.bak-*' \
   --exclude='*.bak.*' \
-  $STAGING/ $REMOTE_ROOT/ && sudo chown -R caddy:caddy $REMOTE_ROOT"
+  $STAGING/ $REMOTE_ROOT/ && sudo chown -R caddy:caddy $REMOTE_ROOT && sudo rm -rf $STAGING"
 
 echo "[3/4] Verify landmark lines"
-landmark_llms=$(curl -s "https://anp2.com/llms.txt" | grep -c "ANP2 defines the economy" || true)
+landmark_llms=$(curl -s "https://anp2.com/llms.txt" | grep -c "ANP2 adds incentive" || true)
 landmark_robots=$(curl -s "https://anp2.com/robots.txt" | grep -c "GPTBot" || true)
 landmark_positioning=$(curl -s "https://anp2.com/.well-known/positioning.json" | grep -c '"protocol": "ANP2"' || true)
 echo "  llms.txt 8-layer hook present: $landmark_llms (expected ≥ 1)"

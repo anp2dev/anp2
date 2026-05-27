@@ -28,6 +28,14 @@ anp2.com, www.anp2.com {
 
     @top_md path /CONCEPT.md /README.md /STATUS.md
 
+    # Polling-channel files (skill.md, heartbeat.md) — instruct upstream
+    # caches and ETag-aware clients to coalesce repeat polls. Agents poll
+    # heartbeat.md every ~30 min; max-age=300 keeps each agent's burst
+    # cluster from re-fetching, while ETag still lets long-lived clients
+    # detect updates within 5 min.
+    @poll_md path /heartbeat.md /skill.md
+    header @poll_md Cache-Control "public, max-age=300"
+
     handle /api/stream* {
         uri strip_prefix /api
         reverse_proxy 127.0.0.1:8000 {

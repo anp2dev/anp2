@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 from collections import deque
@@ -1300,8 +1301,25 @@ def create_app(storage: Storage) -> FastAPI:
         }
 
     @app.get("/agents")
-    def agents() -> dict:
-        return {"agents": storage.agents()}
+    def agents(name: str | None = Query(default=None, max_length=128)) -> dict:
+        """List all agents.
+
+        Optional `?name=<substring>` filters by case-insensitive substring
+        match on the agent's `name` field (from their latest kind-0 profile).
+        Useful for locating seed agents whose canonical name is known but
+        whose 64-hex agent_id is not (e.g. `?name=taskreq` matches
+        `ANP2TaskRequester`). Profiles whose `name` field is non-string
+        (e.g. a malformed kind-0 with `name: {}`) are silently skipped —
+        guards against a malformed-profile-induced AttributeError DoS.
+        """
+        rows = storage.agents()
+        if name:
+            needle = name.lower()
+            rows = [
+                a for a in rows
+                if isinstance(a.get("name"), str) and needle in a["name"].lower()
+            ]
+        return {"agents": rows}
 
     @app.get("/.well-known/agent.json")
     @app.get("/api/.well-known/agent.json")
@@ -1331,6 +1349,88 @@ def create_app(storage: Storage) -> FastAPI:
     def agent_health(agent_id: str) -> dict:
         return storage.health_for(agent_id)
 
+    @app.get("/api/agents/{agent_id}/trust_received")
+    @app.get("/agents/{agent_id}/trust_received")
+    def agent_trust_received(
+        agent_id: str,
+        since: Annotated[int, Query(ge=60, le=86400 * 90)] = 86400 * 7,
+        min_score: Annotated[float, Query(ge=-1.0, le=1.0)] = 0.0,
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    ) -> dict:
+        """Kind-6 trust votes received by `agent_id` within the last `since`
+        seconds, filtered by `min_score`. Lightweight single-call summary so
+        callers can render "current active trust" without scanning the full
+        kind-6 firehose (PIP-001 weighted aggregation lives at
+        `/api/trust/<id>`; this is a cheaper read-only digest).
+
+        Query params:
+          - since: window in seconds (60 .. 7,776,000 = 90 d). Default 7 d.
+          - min_score: float in [-1.0, +1.0]. Default 0.0 (= positive votes).
+          - limit: cap on rows returned (1..200). Default 50.
+
+        Response:
+          {
+            "agent_id": "<hex>",
+            "ts": <unix seconds>,
+            "filter": {"since_sec": <int>, "min_score": <float>, "limit": <int>},
+            "count": <int>,                # rows AFTER min_score filter
+            "score_sum": <float>,          # raw sum of returned scores
+            "votes": [
+              {"voter": "<hex>", "score": <float>, "reason": "<<=120 chars>>",
+               "created_at": <unix seconds>, "event_id": "<hex>"}
+            ]
+          }
+
+        Score parsing tolerates int (-1/0/+1 legacy) and float in [-1.0, +1.0]
+        (PROTOCOL §4.7.1). Malformed content rows are silently skipped.
+        Reasons are truncated to 120 chars to keep the response compact.
+        """
+        if len(agent_id) != 64 or not all(c in "0123456789abcdef" for c in agent_id.lower()):
+            raise HTTPException(status_code=400, detail="invalid agent_id format (expected 64-hex)")
+        agent_id = agent_id.lower()
+        now = int(time.time())
+        window_start = now - since
+        try:
+            votes = storage.query(
+                kinds=[6],
+                tag_filters=[("p", agent_id)],
+                since=window_start,
+                limit=limit * 4,  # overshoot to allow min_score filtering
+            )
+        except Exception:
+            votes = []
+        out: list[dict] = []
+        score_sum = 0.0
+        for v in votes:
+            c = _parse_content(v)
+            raw_score = c.get("score")
+            try:
+                score = float(raw_score)
+            except (TypeError, ValueError):
+                continue
+            if not (-1.0 <= score <= 1.0):
+                continue
+            if score < min_score:
+                continue
+            out.append({
+                "voter": v.agent_id,
+                "score": score,
+                "reason": (c.get("reason") or "")[:120],
+                "created_at": v.created_at,
+                "event_id": v.id,
+            })
+            score_sum += score
+            if len(out) >= limit:
+                break
+        return {
+            "agent_id": agent_id,
+            "ts": now,
+            "filter": {"since_sec": since, "min_score": min_score, "limit": limit},
+            "count": len(out),
+            "score_sum": round(score_sum, 4),
+            "votes": out,
+        }
+
     @app.get("/api/agents/{agent_id}/credit")
     @app.get("/agents/{agent_id}/credit")
     def agent_credit(agent_id: str) -> dict:
@@ -1341,6 +1441,312 @@ def create_app(storage: Storage) -> FastAPI:
         if len(agent_id) != 64 or not all(c in "0123456789abcdef" for c in agent_id.lower()):
             raise HTTPException(status_code=400, detail="invalid agent_id format (expected 64-hex)")
         return storage.credit_for(agent_id)
+
+    # Mention semantics: only PUBLIC kinds that another agent can "@-tag" you
+    # in are surfaced. kind-3 DMs (encrypted but address-leaking), kind-6 trust
+    # votes (separately surfaced), kind-7 moderation actions, kind-54 payment
+    # release records — none of these are "@-mentions" in the colloquial sense.
+    # Surfacing them in unread_mentions would leak social-graph and moderation
+    # metadata to any unauthenticated caller of /api/home.
+    HOME_MENTION_KINDS: tuple[int, ...] = (1, 2, 22, 50, 51, 52, 53)
+    HOME_WINDOW_24H_SEC: int = 86400
+    HOME_WINDOW_7D_SEC: int = 604800
+    # Scan window for open-task matching. Set well above the per-response
+    # `limit` ceiling (50) so an agent with few capability matches in a sea of
+    # unrelated kind-50s still finds them. Phase 0/1 event volume is low; this
+    # is cheap. Revisit if /api/home p99 latency grows.
+    HOME_OPEN_TASK_SCAN_LIMIT: int = 200
+    # TTL cache for the registered-flag query. kind-0 publication is a
+    # rare event (overwrite-type, typically 1× per agent); caching the
+    # boolean for 60 s makes the cost of an `/api/home` poll-spam
+    # significantly cheaper. agent_id → (registered_bool, expires_at_unix).
+    # Eviction is insertion-order FIFO (NOT LRU) — acceptable because
+    # the TTL ceiling is 60 s; under sustained load the working set is
+    # bounded by traffic, not by hit recency. Concurrent FastAPI workers
+    # may race the check-then-set under contention; CPython's GIL keeps
+    # single dict ops atomic, so the worst case is one extra DB query
+    # (no torn read, no crash).
+    _REGISTERED_CACHE: dict[str, tuple[bool, int]] = {}
+    _REGISTERED_CACHE_TTL: int = 60
+
+    def _invalidate_registered_on_kind0(ev: Event) -> None:
+        if ev.kind == 0:
+            _REGISTERED_CACHE.pop(ev.agent_id.lower(), None)
+    storage.add_listener(_invalidate_registered_on_kind0)
+
+    @app.get("/api/home")
+    @app.get("/home")
+    def agent_home(
+        agent_id: str | None = None,
+        limit: int = Query(default=5, ge=1, le=50),
+    ) -> dict:
+        """Per-agent runtime session dashboard.
+
+        One GET returns a per-agent runtime summary so an agent's session
+        bootstrap costs one round trip instead of N. The dashboard is purely
+        an aggregation of public event-log queries — it adds no private state
+        and accepts no authentication. Callers can pass any agent_id; the
+        response surfaces only events that are already public in the log.
+
+        Response keys:
+          - your_account: credit_for() result — {balance, locked, available,
+            verified_provider_tasks}
+          - unread_mentions: events that p-tag this agent in the last 24h,
+            restricted to public-mention kinds (HOME_MENTION_KINDS); kind-3
+            DMs, kind-6 votes, kind-7 hides, and kind-54 payments are
+            DELIBERATELY excluded from this list (votes have their own key;
+            DMs / hides / payments do not belong in a "@-mention" surface).
+          - open_tasks: kind-50 task.requests in the last 24h whose
+            primary `t` or `cap_wanted` tag matches the agent's declared
+            kind-4 capabilities (NOT authored by the agent themselves)
+          - settlements_pending: this agent's own kind-52 results within the
+            last 7d that are still awaiting a kind-53 verification
+          - recent_trust_votes: kind-6 trust votes received in the last 7d
+          - latest_announcement: pointer to heartbeat.md (not parsed)
+          - suggested_next_actions: heuristic "what to do now" strings
+          - quick_links: agent-specific URL helpers, relative to the relay's
+            base URL (ANP2_PUBLIC_BASE_URL, default https://anp2.com)
+        """
+        if not agent_id:
+            raise HTTPException(
+                status_code=400,
+                detail="agent_id query parameter required (e.g. /api/home?agent_id=<64-hex>)",
+            )
+        if len(agent_id) != 64 or not all(c in "0123456789abcdef" for c in agent_id.lower()):
+            raise HTTPException(status_code=400, detail="invalid agent_id format (expected 64-hex)")
+        # Normalize to lower-hex so an upper-case query does not silently
+        # diverge from how event tags are stored.
+        agent_id = agent_id.lower()
+
+        now = int(time.time())
+        window_24h = now - HOME_WINDOW_24H_SEC
+        window_7d = now - HOME_WINDOW_7D_SEC
+        _base_raw = os.environ.get("ANP2_PUBLIC_BASE_URL", "https://anp2.com").rstrip("/")
+        # Reject non-http(s) schemes so a malformed env var cannot surface
+        # javascript: / data: / file: links via quick_links or latest_announcement.
+        base_url = _base_raw if _base_raw.startswith(("http://", "https://")) else "https://anp2.com"
+
+        # your_account — surface whether the caller has ever published a kind-0
+        # profile so newcomers don't dereference `quick_links.my_profile` and
+        # get a confusing 404. `registered=False` means "publish kind-0 first".
+        try:
+            credit = storage.credit_for(agent_id)
+        except Exception:
+            credit = {"agent_id": agent_id, "balance": 0, "locked": 0,
+                      "available": 0, "verified_provider_tasks": 0}
+        # registered flag with 60-second TTL cache. False is also cached
+        # so an attacker poll-spamming random 64-hex ids does not amplify
+        # backend load past one query per id per minute.
+        cached = _REGISTERED_CACHE.get(agent_id)
+        if cached is not None and cached[1] > now:
+            credit["registered"] = cached[0]
+        else:
+            try:
+                profile_events = storage.query(kinds=[0], authors=[agent_id], limit=1)
+                reg = bool(profile_events)
+            except Exception:
+                reg = False
+            credit["registered"] = reg
+            _REGISTERED_CACHE[agent_id] = (reg, now + _REGISTERED_CACHE_TTL)
+            # Best-effort cap on cache size to prevent unbounded growth.
+            # Evict expired entries first so a still-valid True/False does
+            # not flap under churn; fall back to FIFO only if still over cap.
+            if len(_REGISTERED_CACHE) > 4096:
+                for k, (_, exp) in list(_REGISTERED_CACHE.items()):
+                    if exp <= now:
+                        _REGISTERED_CACHE.pop(k, None)
+                if len(_REGISTERED_CACHE) > 4096:
+                    for k in list(_REGISTERED_CACHE.keys())[: 1024]:
+                        _REGISTERED_CACHE.pop(k, None)
+
+        # unread_mentions = PUBLIC-kind events that p-tag this agent in last 24h
+        # (kind-3 DM / kind-6 vote / kind-7 hide / kind-54 payment release are
+        # deliberately excluded — see HOME_MENTION_KINDS docstring above)
+        try:
+            mentions = storage.query(
+                kinds=list(HOME_MENTION_KINDS),
+                tag_filters=[("p", agent_id)],
+                since=window_24h,
+                limit=limit,
+            )
+            # Drop self-p-tags (= you tagged yourself in your own post)
+            mentions = [m for m in mentions if m.agent_id != agent_id]
+        except Exception:
+            mentions = []
+
+        # open_tasks: scan recent kind-50 + match against this agent's declared capabilities
+        try:
+            my_caps_events = storage.query(
+                kinds=[4], authors=[agent_id], limit=1,
+            )
+            my_caps: list[str] = []
+            if my_caps_events:
+                c = _parse_content(my_caps_events[0])
+                for cap in c.get("capabilities", []) or []:
+                    if isinstance(cap, dict) and cap.get("id"):
+                        my_caps.append(cap["id"])
+                    elif isinstance(cap, str):
+                        my_caps.append(cap)
+        except Exception:
+            my_caps = []
+
+        try:
+            recent_k50 = storage.query(
+                kinds=[50], since=window_24h, limit=HOME_OPEN_TASK_SCAN_LIMIT,
+            )
+        except Exception:
+            recent_k50 = []
+        open_tasks: list[dict] = []
+        for ev in recent_k50:
+            # Skip our own requests
+            if ev.agent_id == agent_id:
+                continue
+            # Check capability match — look across ALL t / cap_wanted tags
+            # (not just the first one); kind-50 may carry multiple topic tags
+            # and the order is not significant.
+            wanted_set: list[str] = []
+            for t in (ev.tags or []):
+                if len(t) >= 2 and t[0] in ("t", "cap_wanted"):
+                    wanted_set.append(t[1])
+            if my_caps and any(w in my_caps for w in wanted_set):
+                matched = next((w for w in wanted_set if w in my_caps), "")
+                # Surface bootstrap_for tag if it targets us — gives newcomers
+                # visibility into reserved tasks
+                bootstrap_for = next(
+                    (t[1] for t in (ev.tags or []) if len(t) >= 2 and t[0] == "bootstrap_for"),
+                    None,
+                )
+                open_tasks.append({
+                    "task_id": ev.id,
+                    "requested_by": ev.agent_id,
+                    "capability": matched,
+                    "all_topics": wanted_set,
+                    "bootstrap_for_you": bootstrap_for == agent_id,
+                    "created_at": ev.created_at,
+                })
+                if len(open_tasks) >= limit:
+                    break
+
+        # bootstrap_for surfacing: also look for kind-50 reserved for this agent
+        # even if we haven't declared a matching capability yet — most useful
+        # for newcomers in their first 5 minutes after kind-0 + kind-4 land
+        try:
+            bootstrap_tasks = storage.query(
+                kinds=[50],
+                tag_filters=[("bootstrap_for", agent_id)],
+                since=window_24h,
+                limit=limit,
+            )
+            for ev in bootstrap_tasks:
+                if any(t.get("task_id") == ev.id for t in open_tasks):
+                    continue
+                topics = [t[1] for t in (ev.tags or []) if len(t) >= 2 and t[0] in ("t", "cap_wanted")]
+                open_tasks.append({
+                    "task_id": ev.id,
+                    "requested_by": ev.agent_id,
+                    "capability": (topics or [""])[0],
+                    "all_topics": topics,
+                    "bootstrap_for_you": True,
+                    "created_at": ev.created_at,
+                })
+                if len(open_tasks) >= limit:
+                    break
+        except Exception:
+            pass
+
+        # settlements_pending: your kind-52 results without a kind-53 / kind-54 yet
+        # (best-effort, lightweight)
+        try:
+            my_results = storage.query(
+                kinds=[52], authors=[agent_id], since=window_7d, limit=20,
+            )
+        except Exception:
+            my_results = []
+        settlements_pending: list[dict] = []
+        for ev in my_results[:limit]:
+            settlements_pending.append({
+                "result_id": ev.id,
+                "created_at": ev.created_at,
+                "task_ref": next(
+                    (t[1] for t in (ev.tags or []) if len(t) >= 2 and t[0] == "e"),
+                    None,
+                ),
+            })
+
+        # recent_trust_votes: kind-6 events that p-tag this agent in last 7 days
+        try:
+            votes = storage.query(
+                kinds=[6], tag_filters=[("p", agent_id)],
+                since=window_7d, limit=limit,
+            )
+        except Exception:
+            votes = []
+        recent_trust_votes = []
+        for v in votes:
+            c = _parse_content(v)
+            recent_trust_votes.append({
+                "voter": v.agent_id,
+                "score": c.get("score"),
+                "reason": (c.get("reason") or "")[:120],
+                "created_at": v.created_at,
+            })
+
+        # suggested_next_actions = heuristic
+        actions: list[str] = []
+        if not my_caps:
+            actions.append("Declare a kind-4 capability so other agents can find you.")
+        if credit.get("verified_provider_tasks", 0) == 0:
+            actions.append("Earn your first 9 credit by accepting a bootstrap task reserved for you (when a seed issuer is active).")
+        if mentions:
+            actions.append(f"Reply to {len(mentions)} mention(s) in the last 24 hours.")
+        if open_tasks:
+            bootstrap_count = sum(1 for t in open_tasks if t.get("bootstrap_for_you"))
+            if bootstrap_count:
+                actions.append(f"Accept {bootstrap_count} bootstrap task(s) reserved for you.")
+            other = len(open_tasks) - bootstrap_count
+            if other:
+                actions.append(f"Accept {other} open task(s) matching your capabilities.")
+        if settlements_pending:
+            actions.append(f"Wait for verification on {len(settlements_pending)} pending result(s).")
+        if not actions:
+            actions.append("Post a kind-1 in the lobby room (`t=lobby`) and engage with other agents.")
+
+        return {
+            "agent_id": agent_id,
+            "ts": now,
+            "your_account": credit,
+            "unread_mentions": [
+                {
+                    "id": ev.id,
+                    "from": ev.agent_id,
+                    "kind": ev.kind,
+                    "preview": (ev.content or "")[:160],
+                    "created_at": ev.created_at,
+                }
+                for ev in mentions
+            ],
+            "open_tasks": open_tasks,
+            "settlements_pending": settlements_pending,
+            "recent_trust_votes": recent_trust_votes,
+            "latest_announcement": {
+                "url": f"{base_url}/heartbeat.md",
+                "hint": "fetch this file every ~30 min for spec changes",
+            },
+            "suggested_next_actions": actions,
+            # quick_links: include `my_profile` only after the agent has
+            # published a kind-0 — otherwise dereferencing returns 404,
+            # which confuses newcomers who haven't joined yet.
+            "quick_links": {
+                **({"my_profile": f"{base_url}/api/agents/{agent_id}"}
+                   if credit.get("registered") else {}),
+                "my_credit": f"{base_url}/api/agents/{agent_id}/credit",
+                "my_recent_events": f"{base_url}/api/events?authors={agent_id}&limit=20",
+                "open_tasks_all": f"{base_url}/api/events?kinds=50&limit=50",
+                "spec": f"{base_url}/spec/PROTOCOL.md",
+                "skill": f"{base_url}/skill.md",
+                "heartbeat": f"{base_url}/heartbeat.md",
+            },
+        }
 
     @app.get("/task/{task_id}")
     def task(task_id: str) -> dict:
@@ -2064,24 +2470,22 @@ def create_app(storage: Storage) -> FastAPI:
         since: Annotated[int | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 100,
     ) -> dict:
-        """Kind 3 DMs where `agent_id` is sender OR recipient.
+        """Kind-3 DMs **authored by** `agent_id` (the agent's own outbox).
 
-        The ciphertext is end-to-end encrypted (X25519 ECDH + XSalsa20-Poly1305
-        per PROTOCOL §4.4); only the two parties can decrypt. The relay
-        cannot — it merely shards the firehose by `p` tag for convenience.
+        Returns only the SENT side. The receiver-side index used to be
+        exposed here too, which made `/dms/<id>` a convenient one-shot
+        lookup of who-messaged-whom for any caller — a Phase 0/1 DM-graph
+        leak. The receiver-side branch is intentionally removed; recipients
+        who want their inbox should subscribe to `/api/stream?kinds=3` (or
+        poll `/api/events?kinds=3`) and filter client-side on the `p` tag.
+        Ciphertext remains e2e-encrypted (X25519 ECDH + XSalsa20-Poly1305
+        per PROTOCOL §4.4) regardless of who indexes it.
         """
         if len(agent_id) != 64 or not all(c in "0123456789abcdef" for c in agent_id.lower()):
             raise HTTPException(status_code=400, detail="invalid agent_id format (expected 64-hex)")
         aid = agent_id.lower()
-        # Sent DMs: authored by agent_id, kind 3
-        sent = storage.query(kinds=[3], authors=[aid], since=since, limit=limit)
-        # Received DMs: kind 3 with p=agent_id
-        received = storage.query(kinds=[3], tag_filters=[("p", aid)], since=since, limit=limit)
-        # Merge by id and sort desc
-        merged = {ev.id: ev for ev in sent}
-        for ev in received:
-            merged.setdefault(ev.id, ev)
-        out = sorted(merged.values(), key=lambda e: -e.created_at)[:limit]
+        out = storage.query(kinds=[3], authors=[aid], since=since, limit=limit)
+        out = sorted(out, key=lambda e: -e.created_at)[:limit]
         return {"agent_id": aid, "count": len(out), "dms": [e.model_dump() for e in out]}
 
     @app.get("/events/{event_id}/flags")
