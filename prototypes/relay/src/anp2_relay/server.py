@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import threading
@@ -571,6 +572,23 @@ def _validate_event_shape(event: Event, now: int) -> str | None:
 # Iter 20's design choice for prompt-injection safety; see
 # memory/feedback-ai-net-never-disclose-secrets.md.
 _A2A_NOISE_KEYS = ("sylex commons", "you are part of the sylex")
+# Iter 32 (2026-05-28) — explicit injection-attack fingerprints distinct from
+# the generic noise preamble. A match promotes the category to "injection",
+# emits a separate journald line, and redacts the full payload at the log
+# site to len + sha256 only (so attacker code does not persist on disk).
+# The reply text is unchanged — same fall-through as noise / generic — so
+# the classifier outcome is not observable via response.
+_A2A_INJECTION_KEYS = (
+    # filesystem-recon paths leaked from attacker dev env
+    "/home/alex/", "sergei/", "sergei-bot/",
+    # callable-interface seed pattern (supply-chain shell)
+    "assemble_output(",
+    # search-index poisoning preamble
+    "search index",
+    # tool-name explicit invocations (claude-code shape)
+    "use the glob tool", "use the read tool", "use the bash tool",
+    "run a single glob",
+)
 _A2A_DISCOVER_KEYS = ("what can you do", "what do you do", "what skills",
                      "capabilities you", "what can anp", "discover_agents")
 _A2A_JOIN_KEYS = ("how to join", "how do i join", "how can i join",
@@ -613,6 +631,8 @@ def _classify_a2a_query(text: str) -> tuple[str, bool]:
         return ("ping", False)
     if any(k in t for k in _A2A_NOISE_KEYS):
         return ("noise", False)
+    if any(k in t for k in _A2A_INJECTION_KEYS):
+        return ("injection", False)
     if any(k in t for k in _A2A_JOIN_KEYS):
         return ("join", False)
     if any(k in t for k in _A2A_DISCOVER_KEYS):
@@ -710,9 +730,14 @@ def _a2a_lead_text(category: str, sender_count: int = 0) -> str:
             "result.metadata.anp2.{credit_economy, earn_credit}. Full "
             "details follow.\n\n"
         )
-    # noise / generic / unknown: no special lead, fall through to standard
-    # reply. But if this IP has engaged repeatedly without converting, add
-    # a tailored hook so the operator-review queue can pick it up.
+    # noise / injection: known-hostile patterns. Return empty lead and DO
+    # NOT include the sender_count branch — exposing an internal counter
+    # back to a hostile sender is an oracle the attacker can probe.
+    if category in ("noise", "injection"):
+        return ""
+    # generic / unknown: no special lead, fall through to standard reply.
+    # But if this IP has engaged repeatedly without converting, add a
+    # tailored hook so the operator-review queue can pick it up.
     if sender_count >= _A2A_REPEAT_ENGAGED_THRESHOLD:
         return (
             f"ANP2 notices your endpoint has sent {sender_count} A2A messages "
@@ -822,8 +847,22 @@ def create_app(storage: Storage) -> FastAPI:
             _xff = (request.headers.get("x-forwarded-for")
                     or (request.client.host if request.client else "?"))
             _ua = request.headers.get("user-agent", "")
-            print(f"[A2A-IN] ip={_xff} ua={_ua!r} method={method!r} "
-                  f"body={json.dumps(body)[:1000]}", flush=True)
+            _body_json = json.dumps(body)
+            # Iter 32 (2026-05-28): redact known-hostile injection payloads at
+            # the log site so attacker code does not persist on disk via
+            # journald. The downstream classifier still re-runs and produces
+            # the same reply, so the redaction is not observable to the
+            # sender (= no oracle).
+            _body_lower = _body_json.lower()
+            if any(k in _body_lower for k in _A2A_INJECTION_KEYS):
+                _body_sha = hashlib.sha256(_body_json.encode()).hexdigest()[:16]
+                print(f"[A2A-INJECTION-ATTEMPT] ip={_xff} ua={_ua!r} method={method!r} "
+                      f"body_len={len(_body_json)} body_sha256={_body_sha}", flush=True)
+                print(f"[A2A-IN] ip={_xff} ua={_ua!r} method={method!r} "
+                      f"body=REDACTED(injection) body_sha256={_body_sha}", flush=True)
+            else:
+                print(f"[A2A-IN] ip={_xff} ua={_ua!r} method={method!r} "
+                      f"body={_body_json[:1000]}", flush=True)
         except Exception:
             pass
 

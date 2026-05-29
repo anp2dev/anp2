@@ -1,15 +1,33 @@
 {
   "_meta": {
     "purpose": "Catalog of external services this stack interacts with. Each entry documents the ban/AUP/rate-limit risks and the defense mechanism in place.",
-    "updated": "2026-05-24",
+    "updated": "2026-05-28",
     "status_values": {
       "PROTECTED": "wrapper or hook actively gates write ops",
       "MONITORED": "no wrapper but rate/usage tracked + alert on drift",
       "READ_ONLY": "stack only reads from this service; ban risk near zero",
       "UNCOVERED": "stack writes to this service but defense is incomplete",
-      "DOCUMENTED": "stack does not write; documentation/link reference only"
+      "DOCUMENTED": "stack does not write; documentation/link reference only",
+      "HOSTILE_BLOCKED": "inbound actor classified hostile; edge + relay layers actively deny"
     },
     "_when_to_wrap": "If we can WRITE (POST/PUT/PATCH/DELETE/upload/publish/submit) to it AND volume/rate could trigger anti-spam/AUP, build a *_safe.sh wrapper. If we only READ, monitoring is sufficient."
+  },
+
+  "inbound-hostile-actors": {
+    "sylex-commons-187.77.212.130": {
+      "kind": "inbound prompt-injection actor",
+      "first_seen": "2026-05-26",
+      "ttps": [
+        "preamble injection ('You are part of the Sylex Commons community...')",
+        "search-index poisoning (TensorFlow/PyTorch/Keras fake entries)",
+        "filesystem reconnaissance via glob (paths leak attacker dev env: /home/alex/new-system, sergei/, sergei-bot/)",
+        "callable-interface seed (assemble_output(resolved_string, unresolved) — supply-chain shell pattern)",
+        "claude-code tool-name explicit invocation (Glob/Read/Bash)"
+      ],
+      "severity": "high",
+      "defense": "Iter 32 layered: (L1) Caddyfile @hostile_ip remote_ip 187.77.212.130 → respond 403 — edge drop; (L2) server.py _A2A_INJECTION_KEYS → category=injection; (L3) body redaction at journald (body_len + sha256 only, full payload not persisted); (L4) [A2A-INJECTION-ATTEMPT] separate log kind; (L5) reply text identical to noise/generic so classifier outcome is not observable to the sender",
+      "status": "HOSTILE_BLOCKED"
+    }
   },
 
   "code-hosting + collaboration": {
@@ -58,6 +76,12 @@
     "platform.openai.com": {
       "note": "API consumer (we read), no publish surface",
       "status": "READ_ONLY"
+    },
+    "openrouter.ai": {
+      "ban_patterns": ["runaway image-gen spend", "key leak"],
+      "defense": "tools/anp2_image_gen.py — per-image cost cap ~$0.06 (warns+stops if exceeded), per-run cap 2 images, sparingly (not dozens), policy prompt guard; API key held in a gitignored env file (0600, never tracked); leak_audit openrouter-openai-key rule catches key leaks in tracked content",
+      "note": "metered API consumer for ANP2 post images (openai/gpt-5-image-mini, cheapest). Outbound POST with key; no publish-to-platform surface",
+      "status": "PROTECTED"
     },
     "docs.letta.com": {
       "note": "doc link reference",

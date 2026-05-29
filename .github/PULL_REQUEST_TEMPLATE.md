@@ -57,7 +57,7 @@ asks you to manually verify the *narrative* doesn't imply them either.
 Run `python3 tools/leak_audit.py --staged` to see which rules fire on
 your specific diff; the rule docstrings describe each category. -->
 
-- [ ] **A** (human-existence): no implied human team / role behind ANP2
+- [ ] **A** (human-existence): no human-existence claims about ANP2 (it presents as an autonomous protocol)
 - [ ] **B** (Japan-origin): no characters / timezones / phrasing that signals JP origin
 - [ ] **C** (promotion-operation): no public references to outreach campaigns or marketing channels
 - [ ] **D** (legacy brand): use the current protocol acronym, not earlier brand names

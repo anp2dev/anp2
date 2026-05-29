@@ -34,6 +34,17 @@ import sys
 import time
 from typing import Iterable
 
+# Sentinel marking THIS file (and any rule-definition file that carries it) as
+# one that contains forbidden patterns as regex literals BY DESIGN. The full-
+# history scan excludes CONTENT_SCAN_EXCLUDE files by PATH, but a DANGLING blob
+# (e.g. a `git stash create` snapshot of a dirty leak_audit.py made by an
+# editor/Stop-hook) has no path, so the path exclusion can't apply. The
+# dangling-blob scan skips any blob containing this sentinel. The marker MUST
+# appear VERBATIM (contiguous) in this file's source so a stash snapshot of it
+# is recognized by `_RULEDEF_SENTINEL in text`. It is a harmless marker, not a
+# leak pattern, and leak_audit.py is already CONTENT_SCAN_EXCLUDE on the path.
+_RULEDEF_SENTINEL = "ANP2-RULEDEF-FILE-SKIP-DANGLING-SCAN-v1"
+
 # ── Leak rules ────────────────────────────────────────────────────────────
 # Each rule: (name, kind, pattern, severity, description).
 # kind ∈ {"content", "path", "author"}.
@@ -93,6 +104,34 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "content", r"\bfounder(?:s)?\b", "MEDIUM",
      "rule: 'founder' word in operator-authored text — "
      "use 'seed multisig' / 'seed authority' per PROTOCOL §14.7"),
+    # — rule gaps closed 2026-05-29 (SECURITY.md slipped 'single full-time
+    #   maintainer' / 'humans / orgs' / 'human pen-tester' past the audit) —
+    ("content-human-role2",
+     "content", r"\bhuman[\s-]+(?:founder|owner|staff|team|pen[\s-]?tester)s?\b",
+     "HIGH",
+     "rule: 'human <role>' (founder/owner/staff/team/pen-tester) implies "
+     "human involvement — omit or route through an agent/key abstraction"),
+    ("content-run-by-people",
+     "content",
+     r"\b(?:run|operated|maintained|founded|started|funded|built|owned|created|staffed)"
+     r"\s+by\s+(?:a\s+|an\s+|the\s+)?(?:persons?|people|humans?|individuals?|"
+     r"a\s+team\s+of\s+(?:people|humans?))\b",
+     "HIGH",
+     "rule: '<verb> by a person/people/humans' asserts human involvement"),
+    ("content-human-staffing",
+     "content",
+     # Human-staffing phrasing implies people run/build ANP2. Targets the
+     # qualifier+role form ("single full-time maintainer", "solo developer")
+     # — NOT bare 'maintainer', which has many compliant senses ('maintainer
+     # agent_id', 'AI maintainer', 'maintainer review/loop', citations).
+     r"\b(?:full[\s-]?time|part[\s-]?time|paid|volunteer|solo|single|lone|dedicated)"
+     r"\s+(?:maintainer|developer|engineer|staff)s?\b",
+     "HIGH",
+     "rule: human-staffing phrasing ('single full-time maintainer' etc.) — "
+     "describe response capacity without implying people"),
+    ("content-humans-orgs",
+     "content", r"\bhumans?\s*[/&]\s*orgs?\b", "MEDIUM",
+     "rule: 'humans / orgs' phrasing asserts human staffing"),
     # — rule (JP-origin) tight patterns —
     ("content-xx-en-pair",
      "content", r"\bja[_\-]en\b|translate\.text\.ja\b", "HIGH",
@@ -164,6 +203,9 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("github-pat",
      "content", r"\bgh[pousr]_[A-Za-z0-9_]{36,}", "CRITICAL",
      "GitHub personal-access-token"),
+    ("openrouter-openai-key",
+     "content", r"\bsk-(?:or-v1-|proj-)?[A-Za-z0-9]{32,}", "CRITICAL",
+     "OpenRouter / OpenAI API key literal (key belongs in internal/env only)"),
     ("bearer-token",
      "content", r"\bBearer\s+[A-Za-z0-9._~+/=-]{30,}", "HIGH",
      "Bearer-style token literal in source"),
@@ -287,6 +329,10 @@ CONTENT_SCAN_EXCLUDE: set[str] = {
     # contain the forbidden words ("anp2", "UTC", "human operator",
     # etc.) — the patterns ARE the defense.
     "prototypes/seed-agents/concierge/concierge.py",
+    # anp2_image_gen.py has an policy prompt-guard whose FORBIDDEN list
+    # contains the forbidden words as regex literals BY DESIGN — same
+    # category as concierge.py; the patterns are the defense, not a leak.
+    "tools/anp2_image_gen.py",
 }
 
 # Per-rule false-positive exemptions: rule_name → set of file paths where
@@ -315,6 +361,12 @@ RULE_FILE_EXCLUDE: dict[str, set[str]] = {
         "tools/defense_integrity.sh",
         "tools/push.sh",
         "tools/commit.sh",
+        # reads its key + spend ledger + image output dir from internal/env &
+        # internal/generated-images (functional defaults, not a leak).
+        "tools/anp2_image_gen.py",
+        # scans the relay mailboxes via internal/env SSH key + relay-ip and
+        # keeps its handled-set in internal/research (functional defaults).
+        "tools/followup_check.py",
         "hooks/pre-commit",
         "hooks/pre-push",
     },
@@ -337,6 +389,27 @@ RULE_FILE_EXCLUDE: dict[str, set[str]] = {
         "prototypes/seed-agents/oracle/oracle.py",
         "prototypes/seed-agents/heartbeat/heartbeat.py",
     },
+    # The optional `human_anchor` kind-0 feature lets ANY agent publicly
+    # anchor to a real-world owner / vouching entity. Describing that protocol
+    # feature ("declare a human owner / vouching entity") is about agents in
+    # general, NOT about who operates ANP2 — the generic-humans carve-out.
+    "content-human-role2": {
+        "site/heartbeat.md",
+    },
+}
+
+# Soft rule PROSE heuristics added 2026-05-29. They enforce on the current
+# tree + staged diff (fixable in place), but are EXEMPT from history-blob
+# scanning: historical prose can only be remediated by a deliberate
+# `git filter-repo` rewrite (operator-gated, force-push), so blocking every
+# --full / pre-push on un-rewritable old prose would be disproportionate.
+# Hard identifiers (anp2 / JP script / keys / IPs / emails / tokens) stay
+# history-strict — they are NOT in this set. Any hit these rules make on
+# history is a deferred history-scrub candidate, not a push blocker.
+HISTORY_EXEMPT_RULES: set[str] = {
+    "content-human-role2",
+    "content-human-staffing",
+    "content-humans-orgs",
 }
 
 # Findings: (severity, rule_name, scope, detail)
@@ -621,10 +694,17 @@ def check_full_history() -> None:
                 text = blob.decode("utf-8")
             except UnicodeDecodeError:
                 text = blob.decode("utf-8", "replace")
+            if path == "(dangling)" and _RULEDEF_SENTINEL in text:
+                # Snapshot of a rule-definition file (carries leak patterns as
+                # regex literals by design). Path-based CONTENT_SCAN_EXCLUDE
+                # cannot apply to a pathless dangling blob, so skip by sentinel.
+                continue
             for r in RULES:
                 name, kind, pat, sev, _ = r
                 if kind != "content":
                     continue
+                if name in HISTORY_EXEMPT_RULES:
+                    continue  # soft prose heuristic — current-tree only
                 if (name, path) in fired:
                     continue
                 if path in RULE_FILE_EXCLUDE.get(name, set()):

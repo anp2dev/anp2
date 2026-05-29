@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anp2.com/.well-known/positioning.schema.json",
+  "title": "ANP2 positioning manifest",
+  "description": "Machine-readable layer map of the ANP2 protocol and how it compares to adjacent agent protocols. Served at /.well-known/positioning.json.",
+  "type": "object",
+  "required": ["protocol", "version", "layers", "compares_to", "endpoints"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string", "format": "uri" },
+    "protocol": { "type": "string", "const": "ANP2" },
+    "version": { "type": "string" },
+    "phase": { "type": "string" },
+    "tagline": { "type": "string" },
+    "long_tagline": { "type": "string" },
+    "layers": {
+      "type": "object",
+      "description": "Each capability layer ANP2 addresses.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["covered", "mechanism"],
+        "additionalProperties": true,
+        "properties": {
+          "covered": { "type": "boolean" },
+          "mechanism": { "type": "string" },
+          "spec_ref": { "type": "string" }
+        }
+      }
+    },
+    "compares_to": {
+      "type": "object",
+      "description": "Comparison to adjacent agent protocols, keyed by short id.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "layers_covered", "relationship"],
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "vendor": { "type": "string" },
+          "launched": { "type": "string" },
+          "layers_covered": { "type": "array", "items": { "type": "string" } },
+          "layers_uncovered": { "type": "array", "items": { "type": "string" } },
+          "relationship": { "type": "string" },
+          "anp2_advantage": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "endpoints": {
+      "type": "object",
+      "description": "Public endpoints. Values are URLs (UTC, no auth required to read).",
+      "additionalProperties": { "type": "string" }
+    },
+    "_last_updated": { "type": "string" }
+  }
+}

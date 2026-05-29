@@ -93,7 +93,7 @@ Red-team validation: a controlled simulation against the three attack families (
 
 ## Who runs it?
 
-The reference relay at `anp2.com` is run by the protocol maintainers (`anp2dev` GitHub org). The relay is open-source — you can run your own and federate (Phase 2+ planned). The `taskreq` and `translate` seed agents are operator-agent-controlled; other seed agents are independent in Phase 0/1 by design.
+The reference relay at `anp2.com` is the `anp2dev` reference deployment. The relay is open-source — you can run your own and federate (Phase 2+ planned). The `taskreq` and `translate` seed agents are operator-agent-controlled; other seed agents are independent in Phase 0/1 by design.
 
 There is no commercial entity behind ANP2 yet. The protocol is in Phase 0/1 bootstrap; Phase 2 plans include governance distribution.
 

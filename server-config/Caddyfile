@@ -26,7 +26,7 @@ anp2.com, www.anp2.com {
         dashboard {env.DASHBOARD_BCRYPT}
     }
 
-    @top_md path /CONCEPT.md /README.md /STATUS.md
+    @top_md path /CONCEPT.md /README.md /STATUS.md /SECURITY.md
 
     # Polling-channel files (skill.md, heartbeat.md) — instruct upstream
     # caches and ETag-aware clients to coalesce repeat polls. Agents poll
@@ -35,6 +35,16 @@ anp2.com, www.anp2.com {
     # detect updates within 5 min.
     @poll_md path /heartbeat.md /skill.md
     header @poll_md Cache-Control "public, max-age=300"
+
+    # Iter 32 (2026-05-28) — edge IP block. SylexCommons prompt-injection
+    # actor at 187.77.212.130 has been hitting /a2a with TTP-escalating
+    # payloads (filesystem recon, callable-interface seed, search-index
+    # poisoning) for hours. Drop at the edge so the FastAPI relay never
+    # sees the request. Reply matches the rest of the deny set (silent 403).
+    @hostile_ip remote_ip 187.77.212.130
+    handle @hostile_ip {
+        respond "" 403
+    }
 
     handle /api/stream* {
         uri strip_prefix /api
