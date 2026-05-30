@@ -23,6 +23,18 @@
 # public history.
 set -euo pipefail
 
+# Resolve the REAL git binary. This wrapper is routed via a ~/.local/bin/git
+# PATH shim + a ~/.zshrc git() function, so a bare `git push` inside here would
+# re-enter the shim and recurse (fork-bomb, exit 144). Always invoke the actual
+# binary by absolute path. Override with REAL_GIT=... if git lives elsewhere.
+REAL_GIT="${REAL_GIT:-}"
+if [ -z "$REAL_GIT" ] || [ ! -x "$REAL_GIT" ]; then
+    for _c in /usr/bin/git /opt/homebrew/bin/git /usr/local/bin/git; do
+        [ -x "$_c" ] && REAL_GIT="$_c" && break
+    done
+fi
+[ -n "$REAL_GIT" ] && [ -x "$REAL_GIT" ] || { echo "git_safe: cannot find a real git binary (set REAL_GIT=)" >&2; exit 1; }
+
 ACTION="${1:-}"
 shift || true
 
@@ -100,7 +112,7 @@ op_push() {
     check_push_window || return 1
 
     check_rate push 2 5 15
-    if git push "$@"; then
+    if "$REAL_GIT" push "$@"; then
         log_op push "${TARGET:0:120}" "OK"
         return 0
     fi
@@ -156,7 +168,7 @@ op_push_force() {
     echo "git_safe: force-push approval consumed (single-use)" >&2
 
     check_rate push-force 1 1 2
-    if git push "$@"; then
+    if "$REAL_GIT" push "$@"; then
         log_op push-force "${TARGET:0:120}" "OK"
         return 0
     fi
@@ -183,7 +195,7 @@ op_remote_add() {
     local name="${1:-}" url="${2:-}"
     [ -n "$name" ] && [ -n "$url" ] || fail "usage: git_safe remote-add <name> <url>"
     check_rate remote-add 0 2
-    if git remote add "$name" "$url"; then
+    if "$REAL_GIT" remote add "$name" "$url"; then
         log_op remote-add "$name=$url" "OK"
         return 0
     fi
@@ -207,7 +219,7 @@ op_config_email() {
         fail "email '$new_email' matches founder/admin/host-bearing pattern (rule + flag risk)"
     fi
     check_rate config-email 0 1
-    if git config "$@" user.email "$new_email" 2>/dev/null || git config user.email "$new_email"; then
+    if "$REAL_GIT" config "$@" user.email "$new_email" 2>/dev/null || "$REAL_GIT" config user.email "$new_email"; then
         log_op config-email "$new_email" "OK"
         return 0
     fi
