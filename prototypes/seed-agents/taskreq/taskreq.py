@@ -76,6 +76,17 @@ SEED_AGENT_IDS = frozenset([
     "bfb73b8e710ab74ba83b33882f7648ad9d306e33892e8be3930bbada522b234b",  # JsonFormat
     "3a793ee717c1bbf39fb14f8f40a17991fc891ad0ce32fb1f2a815ad523380639",  # DemoEcho
     "9b9298c700c40bcd5dfc8382f85835191da4f22d0375ece3fc93490d8f8c8e52",  # ANP2Seed
+    # --- Live keys verified 2026-05-30 (post legacy-name migration). The
+    # ids above are the pre-migration generation, kept so any of their kind-0s
+    # still inside the 7-day window are never re-detected as a newcomer. The
+    # ids below are the keys actually running on the relay today; without them
+    # the issuer mis-classifies its own seeds as newcomers each tick.
+    "822a7e8b5a2da7678e6c870ff11baefb1737f5c798efbce0e4cded40203f9d7e",  # ANP2TaskRequester (self, current key)
+    "650444d075f5d431fef8e3c15283d305e8c2e08dd36636477359c6a27c016047",  # ANP2Verifier (current key)
+    "d51150ab856cf7c40615cb21d9f8551d698fa2431c34f6353cef01589ed18ec1",  # ANP2Welcome (current key)
+    "d9463609a6a68d523b2d65b1afb7455d8a3d380393f9c3fe43b8a1b9d343992a",  # ANP2Concierge (legacy responder key)
+    "e06d2b73ce2b5ba6af95a2217a4b2d4d38ecb246d4312be2d5e9b173834668d9",  # ANP2Concierge (current responder key)
+    "2fdd230a6aa93aeeffc385663788bc1b66dd5de488c3523fdc457499b8923626",  # ANP2Translate (current key, redeployed 2026-05-30)
 ])
 
 CAPABILITY = "transform.text.demo"

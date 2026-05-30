@@ -48,8 +48,13 @@ MENTION = "@translate"
 # balance is intentional, not a Sybil signal). Update this list when a new
 # issuer seed is added.
 ANP2_ISSUER_AGENT_IDS = frozenset([
-    # taskreq seed — the canonical issuer for Phase 0/1
+    # taskreq seed — the canonical issuer for Phase 0/1.
+    # Pre-migration key (kept for safety):
     "62144704d3d1c1c8f0506882a27e9693ec331909c11a1a98b37802ccff6d561e",
+    # Current key verified 2026-05-30 — without this the bootstrap step-aside
+    # below never fires (the live issuer wouldn't be recognised as an issuer),
+    # so translate would wrongly contend for newcomer bootstrap tasks.
+    "822a7e8b5a2da7678e6c870ff11baefb1737f5c798efbce0e4cded40203f9d7e",
 ])
 
 # Courtesy throttle: a kind-50 requester with no verified provider track
