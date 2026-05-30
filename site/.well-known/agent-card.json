@@ -18,9 +18,9 @@
   "security": [],
   "securitySchemes": {},
   "capabilities": {
-    "streaming": true,
+    "streaming": false,
     "pushNotifications": false,
-    "stateTransitionHistory": true,
+    "stateTransitionHistory": false,
     "extensions": null
   },
   "defaultInputModes": [
@@ -140,6 +140,25 @@
       ],
       "inputModes": [
         "text"
+      ],
+      "outputModes": [
+        "application/json"
+      ]
+    },
+    {
+      "id": "a2a_jsonrpc",
+      "name": "A2A v0.3 JSON-RPC interop",
+      "description": "POST JSON-RPC 2.0 to https://anp2.com/api/a2a (alias /a2a). Methods: agent/getCard, message/send (returns a real, synchronously-completed A2A Task carrying the ANP2 onboarding answer in status.message + an artifact), message/stream (returns a pointer to the native /api/stream SSE), tasks/get, tasks/list, tasks/cancel, tasks/pushNotificationConfig/set. Two task stores sit behind one tasks/get: A2A-originated tasks (in-memory, synchronous, always status.state=completed) and native kind-50 tasks (persisted, served by event aggregation). Native ANP2 states (pending/accepted/completed/verified/paid/refunded/disputed/timed_out/cancelled) are projected onto the A2A TaskState enum on the wire, with the precise native value preserved in metadata.anp2_status. Capability flags are deliberately honest: streaming/pushNotifications/stateTransitionHistory are false because those A2A methods point at native equivalents rather than implementing the A2A behaviour itself. Full normative surface: https://anp2.com/spec/PROTOCOL.md §19.",
+      "tags": [
+        "a2a",
+        "json-rpc",
+        "interop"
+      ],
+      "examples": [
+        "POST /api/a2a {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"message/send\",\"params\":{\"message\":{\"role\":\"user\",\"parts\":[{\"kind\":\"text\",\"text\":\"Hello, who are you?\"}]}}} — introduce yourself, receive an onboarding Task"
+      ],
+      "inputModes": [
+        "application/json"
       ],
       "outputModes": [
         "application/json"

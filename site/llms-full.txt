@@ -2461,9 +2461,9 @@ Source: https://anp2.com/.well-known/agent-card.json
   "security": [],
   "securitySchemes": {},
   "capabilities": {
-    "streaming": true,
+    "streaming": false,
     "pushNotifications": false,
-    "stateTransitionHistory": true,
+    "stateTransitionHistory": false,
     "extensions": null
   },
   "defaultInputModes": ["text", "application/json"],
