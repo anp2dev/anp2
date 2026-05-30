@@ -196,7 +196,11 @@ def test_a2a_join_query_leads_with_join_answer(tmp_path):
     r = client.post("/api/a2a", json=payload)
     assert r.status_code == 200, r.text
     body = r.json()
-    text = body["result"]["parts"][0]["text"]
+    # Iter 33 (2026-05-30): message/send now returns a real A2A Task; the
+    # agent reply lives in status.message (and history[-1]).
+    result = body["result"]
+    assert result["kind"] == "task"
+    text = result["status"]["message"]["parts"][0]["text"]
     # Leads with the 8-layer positioning hook (TOP #1 narrative lock,
     # 2026-05-24), then the join-specific 2-step procedure, then the
     # standard "ANP2 received your A2A message" overview.
@@ -206,8 +210,8 @@ def test_a2a_join_query_leads_with_join_answer(tmp_path):
     assert "To join in 2 steps:" in text, "join procedure should be in the lead"
     assert "ANP2 received your A2A message." in text
     # Metadata block still carries the kind-0 template and credit_economy
-    # (unchanged by Iter 26a).
-    md = body["result"]["metadata"]["anp2"]
+    # (lifted onto the task metadata).
+    md = result["metadata"]["anp2"]
     assert "kind0_profile_template" in md
     assert "credit_economy" in md
     assert "earn_credit" in md
@@ -232,6 +236,89 @@ def test_a2a_sylex_noise_falls_through_to_standard_reply(tmp_path):
     }
     r = client.post("/api/a2a", json=payload)
     assert r.status_code == 200, r.text
-    text = r.json()["result"]["parts"][0]["text"]
+    text = r.json()["result"]["status"]["message"]["parts"][0]["text"]
     # No category-specific lead — text starts with the standard opener.
     assert text.startswith("ANP2 received your A2A message.")
+
+
+def _send(client, text):
+    return client.post("/api/a2a", json={
+        "jsonrpc": "2.0", "id": 1, "method": "message/send",
+        "params": {"message": {
+            "role": "user", "messageId": "m-1",
+            "parts": [{"kind": "text", "text": text}],
+        }},
+    }).json()
+
+
+def test_message_send_returns_conformant_task(tmp_path):
+    """Iter 33: message/send returns a real A2A v0.3 Task (completed), not a
+    bare message — with id, contextId, status, history and an artifact."""
+    storage = Storage(tmp_path / "credit.db")
+    client = TestClient(create_app(storage))
+    result = _send(client, "Hello, who are you?")["result"]
+    assert result["kind"] == "task"
+    assert isinstance(result["id"], str) and result["id"]
+    assert isinstance(result["contextId"], str) and result["contextId"]
+    # status: completed, with an agent message
+    st = result["status"]
+    assert st["state"] == "completed"
+    assert "timestamp" in st and st["timestamp"].endswith("Z")
+    assert st["message"]["role"] == "agent"
+    assert st["message"]["kind"] == "message"
+    assert st["message"]["taskId"] == result["id"]
+    assert st["message"]["contextId"] == result["contextId"]
+    # history: [user, agent]
+    hist = result["history"]
+    assert len(hist) == 2
+    assert hist[0]["role"] == "user"
+    assert hist[1]["role"] == "agent"
+    # artifact: onboarding text part
+    arts = result["artifacts"]
+    assert len(arts) == 1
+    assert arts[0]["parts"][0]["kind"] == "text"
+    assert "ANP2 received your A2A message." in arts[0]["parts"][0]["text"]
+
+
+def test_message_send_task_is_retrievable_via_tasks_get(tmp_path):
+    """The Task created by message/send round-trips through tasks/get with the
+    same id and a completed state — the lifecycle an A2A auditor verifies."""
+    storage = Storage(tmp_path / "credit.db")
+    client = TestClient(create_app(storage))
+    task = _send(client, "what can you do?")["result"]
+    tid = task["id"]
+    got = client.post("/api/a2a", json={
+        "jsonrpc": "2.0", "id": 2, "method": "tasks/get",
+        "params": {"id": tid},
+    }).json()
+    assert "result" in got, got
+    assert got["result"]["kind"] == "task"
+    assert got["result"]["id"] == tid
+    assert got["result"]["status"]["state"] == "completed"
+
+
+def test_tasks_cancel_on_completed_a2a_task_is_terminal_noop(tmp_path):
+    """tasks/cancel on a synchronously-completed A2A task is a terminal no-op,
+    not an error."""
+    storage = Storage(tmp_path / "credit.db")
+    client = TestClient(create_app(storage))
+    tid = _send(client, "introduce yourself")["result"]["id"]
+    res = client.post("/api/a2a", json={
+        "jsonrpc": "2.0", "id": 3, "method": "tasks/cancel",
+        "params": {"id": tid},
+    }).json()
+    assert "result" in res, res
+    assert res["result"]["id"] == tid
+    assert res["result"]["status"]["state"] == "completed"
+
+
+def test_unknown_a2a_task_id_still_404s(tmp_path):
+    """A genuinely unknown task id (neither A2A-store nor native) errors -32001."""
+    storage = Storage(tmp_path / "credit.db")
+    client = TestClient(create_app(storage))
+    res = client.post("/api/a2a", json={
+        "jsonrpc": "2.0", "id": 4, "method": "tasks/get",
+        "params": {"id": "definitely-not-a-real-task"},
+    }).json()
+    assert "error" in res
+    assert res["error"]["code"] == -32001

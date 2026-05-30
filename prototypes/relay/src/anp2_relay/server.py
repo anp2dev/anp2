@@ -8,7 +8,7 @@ import json
 import os
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 from typing import Annotated, AsyncIterator
 
@@ -787,6 +787,96 @@ def _extract_a2a_text(params: dict) -> str:
     return "\n".join(chunks)
 
 
+# ---------------------------------------------------------------------------
+# A2A v0.3 Task lifecycle (Iter 33, 2026-05-30).
+#
+# message/send creates a real, spec-conformant Task and runs it to completion
+# synchronously — the relay's "work" is to classify the inbound message and
+# compose the deterministic ANP2 onboarding answer, which it genuinely does in
+# one call. The Task carries a status (submitted -> completed), a message
+# history, and a text artifact, and is retrievable via tasks/get and tasks/cancel.
+#
+# The store is in-memory and bounded: A2A-originated tasks live for the relay
+# process lifetime only (native kind 50-54 tasks persist in storage and are
+# served by the existing event-aggregation path). The relay runs as a single
+# process (`python -m anp2_relay`), so a task created by message/send is
+# visible to a follow-up tasks/get on the same process — which is exactly the
+# round-trip an A2A behavioural-trust auditor verifies.
+# ---------------------------------------------------------------------------
+_A2A_TASKS: "OrderedDict[str, dict]" = OrderedDict()
+_A2A_TASKS_MAX = 512
+_a2a_task_seq = 0
+
+
+def _a2a_now_iso() -> str:
+    """UTC ISO-8601 timestamp (no local-time fingerprint)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _a2a_next_id(prefix: str) -> str:
+    """Collision-free A2A object id: prefix + ms-clock + monotonic seq."""
+    global _a2a_task_seq
+    _a2a_task_seq += 1
+    return f"anp2-{prefix}-{int(time.time() * 1000):x}-{_a2a_task_seq:x}"
+
+
+def _a2a_store_task(task: dict) -> None:
+    _A2A_TASKS[task["id"]] = task
+    while len(_A2A_TASKS) > _A2A_TASKS_MAX:
+        _A2A_TASKS.popitem(last=False)
+
+
+def _a2a_wrap_task(incoming_msg: dict, agent_msg: dict) -> dict:
+    """Wrap a fully-built agent reply Message in a completed A2A v0.3 Task.
+
+    The relay's work is synchronous, so the task is `completed` on return.
+    Returns a spec-conformant Task: kind, id, contextId, status{state,
+    timestamp, message}, history[user, agent], artifacts[], metadata. The rich
+    onboarding metadata that previously lived on the message is lifted to the
+    task `metadata` so existing consumers keep finding it at result.metadata.anp2.
+    """
+    if not isinstance(incoming_msg, dict):
+        incoming_msg = {}
+    reply_text = ""
+    for p in agent_msg.get("parts") or []:
+        if isinstance(p, dict) and isinstance(p.get("text"), str):
+            reply_text = p["text"]
+            break
+    context_id = incoming_msg.get("contextId") or _a2a_next_id("ctx")
+    task_id = _a2a_next_id("task")
+    agent_msg["taskId"] = task_id
+    agent_msg["contextId"] = context_id
+    agent_msg.setdefault("messageId", _a2a_next_id("msg"))
+    in_parts = [p for p in (incoming_msg.get("parts") or []) if isinstance(p, dict)]
+    user_msg = {
+        "kind": "message",
+        "role": "user",
+        "messageId": incoming_msg.get("messageId") or _a2a_next_id("msg"),
+        "taskId": task_id,
+        "contextId": context_id,
+        "parts": in_parts or [{"kind": "text", "text": ""}],
+    }
+    task_meta = dict(agent_msg.get("metadata") or {})
+    return {
+        "kind": "task",
+        "id": task_id,
+        "contextId": context_id,
+        "status": {
+            "state": "completed",
+            "timestamp": _a2a_now_iso(),
+            "message": agent_msg,
+        },
+        "history": [user_msg, agent_msg],
+        "artifacts": [{
+            "artifactId": _a2a_next_id("art"),
+            "name": "anp2-onboarding",
+            "description": "ANP2 onboarding answer: how to join, delegate, earn credit, and read the public log.",
+            "parts": [{"kind": "text", "text": reply_text}],
+        }],
+        "metadata": task_meta,
+    }
+
+
 def create_app(storage: Storage) -> FastAPI:
     bus = EventBus()
     limiter_per_agent = _RateLimiter(RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_MAX_EVENTS)
@@ -887,6 +977,7 @@ def create_app(storage: Storage) -> FastAPI:
             # not match a bucket, log a separate journald line so the
             # community-watch routine can surface it for operator follow-up.
             _incoming = _extract_a2a_text(params)
+            _incoming_msg = params.get("message") if isinstance(params.get("message"), dict) else {}
             _category, _needs_op = _classify_a2a_query(_incoming)
             # Bump per-IP A2A counter (24h sliding window) so the lead can
             # tailor to repeat engagers, and so the operator-review queue
@@ -913,10 +1004,7 @@ def create_app(storage: Storage) -> FastAPI:
                           flush=True)
                 except Exception:
                     pass
-            return {
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
+            _a2a_agent_msg = {
                     "kind": "message",
                     "role": "agent",
                     "messageId": f"anp2-{now_ms:x}",
@@ -1058,12 +1146,19 @@ def create_app(storage: Storage) -> FastAPI:
                             "spec": "https://anp2.com/spec/PROTOCOL.md",
                         },
                     },
-                },
             }
+            _a2a_task = _a2a_wrap_task(_incoming_msg, _a2a_agent_msg)
+            _a2a_store_task(_a2a_task)
+            return {"jsonrpc": "2.0", "id": rpc_id, "result": _a2a_task}
         if method == "tasks/get":
             task_id = params.get("id") or params.get("taskId")
             if not task_id:
                 return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32602, "message": "Invalid params: id required"}}
+            # A2A-originated tasks (created by message/send) live in the in-memory
+            # store; native kind-50 tasks fall through to event aggregation.
+            _stored = _A2A_TASKS.get(task_id)
+            if _stored is not None:
+                return {"jsonrpc": "2.0", "id": rpc_id, "result": _stored}
             thread = storage.get_task_thread(task_id)
             if not thread:
                 return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32001, "message": f"Task not found: {task_id}"}}
@@ -1127,6 +1222,22 @@ def create_app(storage: Storage) -> FastAPI:
             task_id = params.get("id") or params.get("taskId")
             if not task_id:
                 return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32602, "message": "Invalid params: id required"}}
+            # A2A-originated tasks complete synchronously, so cancel is a terminal no-op.
+            _stored = _A2A_TASKS.get(task_id)
+            if _stored is not None:
+                return {"jsonrpc": "2.0", "id": rpc_id, "result": {
+                    "kind": "task", "id": task_id,
+                    "contextId": _stored.get("contextId"),
+                    "status": {
+                        "state": _stored.get("status", {}).get("state", "completed"),
+                        "timestamp": _a2a_now_iso(),
+                        "message": {
+                            "kind": "message", "role": "agent",
+                            "messageId": _a2a_next_id("msg"),
+                            "parts": [{"kind": "text", "text": "Task already completed synchronously; cancel is a no-op."}],
+                        },
+                    },
+                }}
             thread = storage.get_task_thread(task_id)
             if not thread:
                 return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32001, "message": f"Task not found: {task_id}"}}
