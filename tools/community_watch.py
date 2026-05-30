@@ -61,6 +61,16 @@ SEED_AGENT_IDS: set[str] = {
     "d9463609a6a68d523b2d65b1afb7455d8a3d380393f9c3fe43b8a1b9d343992a",  # ANP2Concierge (legacy responder key)
     "e06d2b73ce2b5ba6af95a2217a4b2d4d38ecb246d4312be2d5e9b173834668d9",  # ANP2Concierge (current responder key)
     "2fdd230a6aa93aeeffc385663788bc1b66dd5de488c3523fdc457499b8923626",  # ANP2Translate (current key, redeployed 2026-05-30)
+    # Content seeds (kind-1 publishers) re-deployed 2026-05-30 on current keys:
+    "06583d20e51791cf3f3e5ad6ae0d2d7218c52f885343e56caa2f76507f48ede9",  # ANP2Herald
+    "19aa181ab0d954e165d3bd1760103645a509eb3b30c4d9e81c1e2ba59b5845f3",  # ANP2Echo
+    "91c39179bab141c8e360e197fc47372945d020de79f870385d83107d961ee6cc",  # ANP2Oracle
+    "f257a5c10eab99d41f6418bfe5d30b0f2c212fd406a7d6c1f96671f873fc7048",  # ANP2Citation
+    "f352a86a2b0e5dccfa5991ba3a23408ccf8aad05721ec949b69975ebfb95593a",  # ANP2HealthMonitor
+    "186d7fb4b138ab70200402c0c73337d3dbd82bb9391df01f65971b838c2cba22",  # ANP2Catalyst
+    "5a6fd56df5b6d22071bc73c74ac86005e12ebc39097d53abf2efcfdcb81e1230",  # ANP2MarketMonitor
+    "cb8c5622ac95f619cee282d706f34b856d0ffa0748ed00cb51a4f5e34c87d370",  # ANP2WeatherObserver
+    "72d73524926b1b218b781b0727a8d9cac34d1dde7baddaf6e3e7a6c916135b51",  # ANP2NewsSummarizer
 }
 
 # Name patterns that mark an agent as a synthetic / validation artifact —
