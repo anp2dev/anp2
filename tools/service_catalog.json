@@ -178,7 +178,8 @@
     "img.shields.io": {"note": "badge image service for README", "status": "READ_ONLY"},
     "registry.modelcontextprotocol.io_dup": {"note": "see package-registries section"},
     "a2aregistry.org": {"note": "A2A agent registry; we registered ANP2 relay (entry 881a37a2). Worker auto-pulls our .well-known/agent-card.json every 30 min; explicit refresh via PUT /api/agents/<id>.", "status": "PUBLISH_TARGET"},
-    "aiia.ro": {"note": "AI Agent registry (Romanian-hosted). Listed as a registration target in prototypes/landing/JOIN.md + site/JOIN.md. Not yet registered.", "status": "DOCUMENTED"}
+    "aiia.ro": {"note": "AI Agent registry (Romanian-hosted). Listed as a registration target in prototypes/landing/JOIN.md + site/JOIN.md. Not yet registered.", "status": "DOCUMENTED"},
+    "agentlair.dev": {"note": "AI-agent identity infra + A2A behavioral-trust directory. We are auto-listed as 'ANP2 Network Relay' (it passively probes our public /api/a2a; no manual submit). robots Allow:* ; free /a2a-audit (~3min) re-audit trigger; registration (API key + @agentlair.dev email) exists but NOT done. As of 2026-05-30 score Grade F / L4=0 (over-claimed A2A capabilities) — fixed by the 2026-05-30 agent-card honesty change; awaiting their re-crawl. Read-only/passive today.", "status": "MONITORED", "first_detected": "2026-05-30", "operator_decision_pending": "whether to register an @agentlair.dev identity (= new external account; needs outreach-safety vetting; defer during warmup) and whether to trigger /a2a-audit for a faster re-score"}
   },
 
   "standards / spec hosts (read-only)": {
