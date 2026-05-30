@@ -135,9 +135,20 @@ def _agent_card() -> dict:
         "provider": {"organization": "ANP2 Network", "url": "https://anp2.com"},
         "documentationUrl": "https://anp2.com/spec/PROTOCOL.md",
         "capabilities": {
-            "streaming": True,
-            "pushNotifications": True,
-            "stateTransitionHistory": True,
+            # Honest values (2026-05-30): these flags describe what the A2A
+            # *interface* genuinely supports, not the native ANP2 surface.
+            # - streaming: message/stream returns a JSON pointer to the native
+            #   /api/stream SSE, it does not itself stream over A2A -> false.
+            # - pushNotifications: tasks/pushNotificationConfig/set stores config
+            #   but dials no webhook (read-side SSE only) -> false.
+            # - stateTransitionHistory: tasks/get returns current status.state
+            #   only, no transition-history array -> false.
+            # Over-claiming these is exactly what a behavioural-trust auditor
+            # (e.g. agentlair L4) penalises. Re-enable a flag only when the A2A
+            # method actually implements it.
+            "streaming": False,
+            "pushNotifications": False,
+            "stateTransitionHistory": False,
         },
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],

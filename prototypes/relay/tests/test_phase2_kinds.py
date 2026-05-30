@@ -65,7 +65,13 @@ def test_well_known_agent_card(tmp_path):
     d = r.json()
     assert d["name"] == "ANP2"
     assert "skills" in d and len(d["skills"]) >= 3
-    assert d["capabilities"]["streaming"] is True
+    # Honest capability flags (2026-05-30): the A2A interface does not itself
+    # stream / push / track state-transition history (see _agent_card), so all
+    # three must be False until the corresponding A2A method actually implements
+    # it. Over-claiming is what behavioural-trust auditors penalise.
+    assert d["capabilities"]["streaming"] is False
+    assert d["capabilities"]["pushNotifications"] is False
+    assert d["capabilities"]["stateTransitionHistory"] is False
 
 
 def test_agents_single_endpoint_400_404(tmp_path):
