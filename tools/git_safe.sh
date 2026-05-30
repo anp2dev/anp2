@@ -105,10 +105,8 @@ op_push() {
         return
     fi
 
-    # Push-discipline window (R30, freeze period only).
-    # Defense-in-depth against `--no-verify`: pre-push hook also enforces
-    # R29 + R30 via account_health.py, but `--no-verify` bypasses pre-push,
-    # so we keep an independent check here at the wrapper layer.
+    # Push-discipline window (R30) retired 2026-05-30 — see check_push_window
+    # below (now an always-pass stub). Burst protection is the line below.
     check_push_window || return 1
 
     check_rate push 2 5 15
@@ -120,37 +118,15 @@ op_push() {
     return 1
 }
 
-# Returns 0 if push is currently allowed by R30 (or freeze period passed).
-# Returns 1 with operator-facing message if window is closed.
+# R30 (fixed time-of-day push window) RETIRED 2026-05-30 as over-engineered.
+# Pushing one's own commits to one's own repo is not a GitHub bot-flag signal
+# (the two account burns were fork/PR bursts, not pushes), and the window
+# created real friction (held legitimate commits, forced /usr/bin/git
+# workarounds). Burst protection is still enforced by `check_rate push 2 5 15`
+# (below) + account_health R17/R23 + the pre-push commit-burst cap. This stub
+# is kept as an always-pass so the op_push call site stays stable.
 check_push_window() {
-    local freeze_end="${ANP2_FREEZE_END_DATE:-2026-06-24}"
-    local today utc_hour win_start win_end
-    today=$(date -u +%Y-%m-%d)
-    # date string compare works since YYYY-MM-DD sorts lexicographically.
-    if [ "$today" \> "$freeze_end" ]; then
-        return 0  # post-freeze — rule auto-deactivates
-    fi
-    utc_hour=$(date -u +%-H)
-    win_start="${ANP2_PUSH_WIN_UTC_START:-13}"
-    win_end="${ANP2_PUSH_WIN_UTC_END:-16}"
-    # window is [start, end). Wrap not supported here — defaults [13, 16).
-    if [ "$utc_hour" -ge "$win_start" ] && [ "$utc_hour" -lt "$win_end" ]; then
-        return 0
-    fi
-    echo "git_safe: push BLOCKED — current UTC hour ${utc_hour} outside" >&2
-    echo "          configured push window [${win_start}, ${win_end}) (freeze rule R30)." >&2
-    echo "          Wait for the window to open, or set ANP2_PUSH_WINDOW_OVERRIDE=1" >&2
-    echo "          for a one-shot emergency override (logged)." >&2
-    if [ -n "${ANP2_PUSH_WINDOW_OVERRIDE:-}" ]; then
-        # NOTE: this is NOT single-use — the env var persists across calls
-        # within the same shell. The override is meant for one-off
-        # emergencies; if it's exported across a session, every push will
-        # bypass R30. Logged each time so abuse is visible in the log.
-        echo "          OVERRIDE present — proceeding (each use is logged)" >&2
-        log_op push-window-override "today=${today} hour=${utc_hour}" "OVERRIDE"
-        return 0
-    fi
-    return 1
+    return 0
 }
 
 op_push_force() {

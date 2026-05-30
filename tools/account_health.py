@@ -49,10 +49,14 @@ Rules:
   R26 co-author-AI-saturation:     ≤ 80% commits w/ Co-Authored-By: Claude/AI/Bot
   R27 ci-failure-streak:           last 5 workflow runs success ratio ≥ 60%
   R28 repo-topic-cap:              public repo has ≤ 15 topic tags
-  R29 push-discipline-1-per-day:   freeze-period only — ≤ 1 push event per
-                                   operator-local day (offset configurable)
-  R30 push-window:                 freeze-period only — current UTC hour must
-                                   be in the configured push window [start, end)
+  R29 push-discipline-daily-cap:   freeze-period only — ≤ PUSH_PER_DAY_CAP
+                                   (default 6) push events per operator-local
+                                   day (relaxed 2026-05-30 from 1; burst shape
+                                   is the real signal, covered by R17/R23)
+  R30 push-window:                 RETIRED 2026-05-30 (always PASS) — fixed
+                                   time-of-day push gating removed as over-
+                                   engineered; own-repo pushes are not a flag
+                                   signal. Burst caps R17/R23 + pre-push govern.
   R31 commit-template-repeat:      ≤ 60% of last 30 commits share the same
                                    normalized first-line template (catches
                                    bot-like commit-message uniformity)
@@ -102,6 +106,11 @@ OPERATOR_TZ_OFFSET = int(os.environ.get("ANP2_OPERATOR_TZ_OFFSET_HOURS", "9"))
 # (window crosses midnight). Defaults: 22:00 → next-day 01:00.
 PUSH_WIN_LOCAL_START = int(os.environ.get("ANP2_PUSH_WIN_LOCAL_START", "22"))
 PUSH_WIN_LOCAL_END = int(os.environ.get("ANP2_PUSH_WIN_LOCAL_END", "1"))
+# R29 daily push cap. Relaxed 2026-05-30 from 1 to a generous human-paced
+# value: a pathological bot-like multi-push day is still caught, but normal
+# multi-commit days flow freely. (R30 fixed-window gating was retired the same
+# day — see check_push_discipline.)
+PUSH_PER_DAY_CAP = int(os.environ.get("ANP2_PUSH_PER_DAY_CAP", "6"))
 
 
 def _in_freeze_period() -> bool:
@@ -664,30 +673,38 @@ def check_bot_pattern_extended() -> None:
 
 
 def check_push_discipline(push_mode: bool = False) -> None:
-    """R29 + R30: freeze-period push-discipline rules.
+    """R29 + R30: push-discipline rules (re-scoped 2026-05-30).
 
-    R29 caps push events to one per operator-local calendar day. R30 only
-    permits a push when the current UTC hour falls inside the configured
-    push window. Both rules auto-deactivate once the freeze period ends
-    (FREEZE_END_DATE); after that they report PASS unconditionally so the
-    rule numbers stay stable while becoming effectively no-ops.
+    R30 (fixed time-of-day push window) is RETIRED. Pushing one's own commits
+    to one's own repo is not a GitHub bot-flag signal — the two account burns
+    were fork/PR bursts, not pushes — and the window created real friction
+    (held legitimate commits, forced /usr/bin/git workarounds, which masked the
+    git_safe recursion bug). Burst protection is fully covered by the permanent
+    rules R17 (<=5 push-events/24h) + R23 (git-push burst) + the pre-push
+    commit-burst cap; R30 added friction without protection. It now reports
+    PASS unconditionally so the rule number stays stable.
 
-    `push_mode` is set by pre-push hook (--push-mode). In that mode, a
-    rule violation is reported as FAIL (blocks the push). When called
-    from session-start or per-message audits, the same condition is
-    reported as WARN so the rule does not noisily fail the audit just
-    because "you're not in the push window right now".
+    R29 is RELAXED from <=1 to PUSH_PER_DAY_CAP (default 6) per operator-local
+    day: a pathological bot-like multi-push day is still caught while normal
+    multi-commit days flow freely. It remains a freeze-period warmup discipline
+    and auto-deactivates after FREEZE_END_DATE.
+
+    `push_mode` (pre-push --push-mode): a violation FAILs (blocks the push);
+    otherwise WARN.
     """
     fail_level = "FAIL" if push_mode else "WARN"
 
+    # R30 retired 2026-05-30 — always PASS (time-of-day gating removed).
+    record("PASS", "R30 push-window", USER,
+           "retired 2026-05-30 — time-of-day push gating removed as "
+           "over-engineered; burst caps R17/R23 + pre-push govern")
+
     if not _in_freeze_period():
-        record("PASS", "R29 push-discipline-1-per-day", USER,
-               f"post-freeze (after {FREEZE_END_DATE.isoformat()}); rule inactive")
-        record("PASS", "R30 push-window", USER,
+        record("PASS", "R29 push-discipline-daily-cap", USER,
                f"post-freeze (after {FREEZE_END_DATE.isoformat()}); rule inactive")
         return
 
-    # ── R29: operator-local-day push count
+    # ── R29: operator-local-day push count (relaxed cap)
     now_utc = datetime.now(timezone.utc)
     today_local = _operator_local_date(now_utc)
     st, events = http_get_json(
@@ -707,29 +724,16 @@ def check_push_discipline(push_mode: bool = False) -> None:
                 continue
             if _operator_local_date(ev_utc) == today_local:
                 push_count += 1
-        if push_count > 1:
-            record(fail_level, "R29 push-discipline-1-per-day", USER,
+        if push_count > PUSH_PER_DAY_CAP:
+            record(fail_level, "R29 push-discipline-daily-cap", USER,
                    f"{push_count} pushes in current operator-local day "
-                   f"(cap 1, freeze rule)")
+                   f"(cap {PUSH_PER_DAY_CAP}, freeze warmup)")
         else:
-            record("PASS", "R29 push-discipline-1-per-day", USER,
-                   f"{push_count} / 1 (operator-local day, freeze rule)")
+            record("PASS", "R29 push-discipline-daily-cap", USER,
+                   f"{push_count} / {PUSH_PER_DAY_CAP} (operator-local day, freeze warmup)")
     else:
-        record("INFO", "R29 push-discipline-1-per-day", USER,
+        record("INFO", "R29 push-discipline-daily-cap", USER,
                f"HTTP {st} — skipping; pre-push hook will re-check")
-
-    # ── R30: current UTC hour inside configured push window
-    start_utc, end_utc = _push_window_utc_bounds()
-    cur_hour = now_utc.hour
-    if _hour_in_window(cur_hour, start_utc, end_utc):
-        record("PASS", "R30 push-window", USER,
-               f"current UTC hour {cur_hour:02d} inside window "
-               f"[{start_utc:02d}, {end_utc:02d}) (freeze rule)")
-    else:
-        record(fail_level, "R30 push-window", USER,
-               f"current UTC hour {cur_hour:02d} outside window "
-               f"[{start_utc:02d}, {end_utc:02d}) — "
-               f"{'push blocked, wait for window' if push_mode else 'currently outside push window (informational)'}")
 
 
 def check_repo_files() -> None:
