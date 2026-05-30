@@ -826,6 +826,31 @@ def _a2a_store_task(task: dict) -> None:
         _A2A_TASKS.popitem(last=False)
 
 
+# ANP2 native task states (PROTOCOL §18.10) -> A2A v0.3 TaskState enum.
+# A2A clients deserialize `status.state` against a fixed enum
+# (submitted/working/input-required/completed/canceled/failed/rejected/
+# auth-required/unknown). Native ANP2 states like `verified`/`paid`/`timed_out`
+# are NOT enum members, so a strict A2A client would reject them. We project a
+# native state to its nearest A2A state for the wire and keep the precise ANP2
+# state in `metadata.anp2_status` so ANP2-aware consumers lose nothing.
+_NATIVE_TO_A2A_STATE = {
+    "pending": "submitted",
+    "accepted": "working",
+    "completed": "working",   # kind-52 result in, not yet verified/paid
+    "verified": "working",    # consensus verdict reached, settlement pending
+    "paid": "completed",      # terminal success
+    "refunded": "failed",     # settled to refund — task did not succeed
+    "disputed": "failed",     # no consensus per §18.6.1
+    "timed_out": "failed",    # deadline exceeded before a result
+    "cancelled": "canceled",  # A2A canonical single-l spelling
+}
+
+
+def _a2a_state_for_native(native: str) -> str:
+    """Map an ANP2 native task status (§18.10) to a valid A2A v0.3 TaskState."""
+    return _NATIVE_TO_A2A_STATE.get(native, "unknown")
+
+
 def _a2a_wrap_task(incoming_msg: dict, agent_msg: dict) -> dict:
     """Wrap a fully-built agent reply Message in a completed A2A v0.3 Task.
 
@@ -1163,14 +1188,16 @@ def create_app(storage: Storage) -> FastAPI:
             if not thread:
                 return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32001, "message": f"Task not found: {task_id}"}}
             agg = _aggregate_task(task_id, thread, int(time.time()))
+            _native = agg.get("status", "pending")
             return {
                 "jsonrpc": "2.0",
                 "id": rpc_id,
                 "result": {
                     "kind": "task",
                     "id": task_id,
-                    "status": {"state": agg.get("status", "submitted")},
+                    "status": {"state": _a2a_state_for_native(_native)},
                     "metadata": {
+                        "anp2_status": _native,
                         "anp2_native_view": f"https://anp2.com/task/{task_id}",
                         "thread_event_count": len(thread),
                     },
@@ -1196,14 +1223,19 @@ def create_app(storage: Storage) -> FastAPI:
                 if cap_filter and cap != cap_filter:
                     continue
                 thread = storage.get_task_thread(task_id)
-                agg = _aggregate_task(task_id, thread, now) if thread else {"status": "submitted"}
-                if state_filter and agg.get("status") != state_filter:
+                agg = _aggregate_task(task_id, thread, now) if thread else {"status": "pending"}
+                _native = agg.get("status", "pending")
+                # `state` filter matches the native ANP2 status (the precise,
+                # documented §18.10 value); the wire `status.state` is the A2A
+                # projection with the native value preserved in metadata.
+                if state_filter and _native != state_filter:
                     continue
                 out.append({
                     "kind": "task",
                     "id": task_id,
-                    "status": {"state": agg.get("status", "submitted")},
+                    "status": {"state": _a2a_state_for_native(_native)},
                     "metadata": {
+                        "anp2_status": _native,
                         "requester": req.agent_id,
                         "capability": cap,
                         "created_at": req.created_at,
@@ -1242,7 +1274,7 @@ def create_app(storage: Storage) -> FastAPI:
             if not thread:
                 return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32001, "message": f"Task not found: {task_id}"}}
             agg = _aggregate_task(task_id, thread, int(time.time()))
-            current_state = agg.get("status", "submitted")
+            current_state = agg.get("status", "pending")
             if current_state in ("completed", "failed", "cancelled"):
                 return {
                     "jsonrpc": "2.0",
@@ -1250,7 +1282,11 @@ def create_app(storage: Storage) -> FastAPI:
                     "result": {
                         "kind": "task",
                         "id": task_id,
-                        "status": {"state": current_state, "message": f"Task already in terminal state {current_state}; no-op."},
+                        "status": {
+                            "state": _a2a_state_for_native(current_state),
+                            "message": f"Task already in terminal state {current_state}; no-op.",
+                        },
+                        "metadata": {"anp2_status": current_state},
                     },
                 }
             return {

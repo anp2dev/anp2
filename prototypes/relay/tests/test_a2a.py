@@ -15,7 +15,9 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from anp2_relay.server import (
+    _NATIVE_TO_A2A_STATE,
     _a2a_lead_text,
+    _a2a_state_for_native,
     _classify_a2a_query,
     _extract_a2a_text,
     create_app,
@@ -322,3 +324,40 @@ def test_unknown_a2a_task_id_still_404s(tmp_path):
     }).json()
     assert "error" in res
     assert res["error"]["code"] == -32001
+
+
+# ---------- native-state -> A2A TaskState projection (MEDIUM-2) -----------
+
+# Canonical A2A v0.3 TaskState enum members.
+_A2A_TASKSTATE_ENUM = {
+    "submitted", "working", "input-required", "completed",
+    "canceled", "failed", "rejected", "auth-required", "unknown",
+}
+
+# Every native status string the §18.10 state machine can derive.
+_NATIVE_STATES = [
+    "pending", "accepted", "completed", "verified", "paid",
+    "refunded", "disputed", "timed_out", "cancelled",
+]
+
+
+def test_every_native_state_maps_to_valid_a2a_enum():
+    """A2A clients deserialize status.state against a fixed enum; every native
+    ANP2 state (§18.10) must project to a valid A2A v0.3 TaskState member so a
+    strict client never rejects a native-task projection."""
+    for native in _NATIVE_STATES:
+        assert native in _NATIVE_TO_A2A_STATE, f"unmapped native state {native}"
+        assert _a2a_state_for_native(native) in _A2A_TASKSTATE_ENUM
+
+
+def test_native_state_projection_specifics():
+    """The semantically load-bearing mappings: terminal success, refund/timeout
+    as failure, and the British->canonical cancel spelling."""
+    assert _a2a_state_for_native("pending") == "submitted"
+    assert _a2a_state_for_native("paid") == "completed"
+    assert _a2a_state_for_native("timed_out") == "failed"
+    assert _a2a_state_for_native("refunded") == "failed"
+    # native uses British "cancelled" (§18.10); A2A enum is single-l "canceled".
+    assert _a2a_state_for_native("cancelled") == "canceled"
+    # an unrecognised value degrades to the enum's escape hatch, never leaks raw.
+    assert _a2a_state_for_native("some_future_state") == "unknown"
