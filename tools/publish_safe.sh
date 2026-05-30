@@ -104,6 +104,30 @@ check_rate() {
     echo "publish_safe: rate OK ($action: ${n1}/h ${n24}/24h ${n7}/7d; cross-reg ${total_1h}/h)" >&2
 }
 
+# Resolve the REAL publish binary, skipping the ~/.local/bin PATH-front shim
+# that routes back into THIS wrapper. Without this, `command twine upload`
+# re-enters the shim -> publish_safe -> shim ... and fork-bombs (same bug class
+# as the git_safe op_push recursion fixed 2026-05-30). For twine we use the
+# `python3 -m twine` module form, which bypasses any `twine` executable shim
+# entirely; npm/mcp/hf are resolved by path with the shim dir excluded.
+SHIM_DIR="${HOME}/.local/bin"
+real_bin() {
+    local name=$1; shift
+    local p d
+    for p in "$@"; do
+        [ -x "$p" ] && { printf '%s' "$p"; return 0; }
+    done
+    local OLD_IFS="$IFS"; IFS=:
+    for d in $PATH; do
+        IFS="$OLD_IFS"
+        [ "$d" = "$SHIM_DIR" ] && continue
+        [ -x "$d/$name" ] && { printf '%s' "$d/$name"; return 0; }
+        IFS=:
+    done
+    IFS="$OLD_IFS"
+    return 1
+}
+
 op_campaign_approve() {
     local token; token=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))")
     echo "$token" > "$APPROVAL_TOKEN_FILE"
@@ -118,7 +142,8 @@ op_campaign_approve() {
 op_pypi() {
     TARGET="$*"
     check_rate pypi-publish 1 3 10
-    if command twine upload "$@"; then
+    # `python3 -m twine` bypasses the ~/.local/bin/twine shim (no recursion).
+    if python3 -m twine upload "$@"; then
         log_op pypi-publish "${1:-?}" "OK"; return 0
     fi
     log_op pypi-publish "${1:-?}" "FAILED"; return 1
@@ -127,7 +152,9 @@ op_pypi() {
 op_npm() {
     TARGET="$*"
     check_rate npm-publish 1 2 5
-    if command npm publish "$@"; then
+    local REAL; REAL=$(real_bin npm /opt/homebrew/bin/npm /usr/local/bin/npm /usr/bin/npm) \
+        || fail "real npm binary not found (set PATH or install npm)"
+    if "$REAL" publish "$@"; then
         log_op npm-publish "${1:-?}" "OK"; return 0
     fi
     log_op npm-publish "${1:-?}" "FAILED"; return 1
@@ -136,7 +163,9 @@ op_npm() {
 op_mcp() {
     TARGET="$*"
     check_rate mcp-publish 1 2 5
-    if command mcp-publisher publish "$@"; then
+    local REAL; REAL=$(real_bin mcp-publisher /opt/homebrew/bin/mcp-publisher /usr/local/bin/mcp-publisher) \
+        || fail "real mcp-publisher binary not found"
+    if "$REAL" publish "$@"; then
         log_op mcp-publish "${1:-?}" "OK"; return 0
     fi
     log_op mcp-publish "${1:-?}" "FAILED"; return 1
@@ -145,7 +174,9 @@ op_mcp() {
 op_hf() {
     TARGET="$*"
     check_rate hf-publish 1 2 5
-    if command huggingface-cli upload "$@"; then
+    local REAL; REAL=$(real_bin huggingface-cli /opt/homebrew/bin/huggingface-cli /usr/local/bin/huggingface-cli "$HOME/Library/Python/3.9/bin/huggingface-cli") \
+        || fail "real huggingface-cli binary not found"
+    if "$REAL" upload "$@"; then
         log_op hf-publish "${1:-?}" "OK"; return 0
     fi
     log_op hf-publish "${1:-?}" "FAILED"; return 1
