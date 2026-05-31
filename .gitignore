@@ -72,6 +72,9 @@ node_modules/
 # Local-only debugging helpers (CDP debug port exposed, server-side mailbox reader, etc.)
 tools/anp2_chrome_launch_cdp.sh
 tools/mail_dev_check.sh
+# Inbound-actor triage engine — coupled to the internal/ defense policy + signatures
+# (themselves gitignored); keep the whole subsystem internal, don't telegraph posture.
+tools/inbound_triage.py
 
 # Track the TypeScript SDK build artifacts so the package is publishable
 # without operator needing Node/tsc locally.
