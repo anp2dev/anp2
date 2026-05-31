@@ -22,7 +22,7 @@
 set -euo pipefail
 
 MANIFEST=internal/env/.defense-manifest.sha256
-mkdir -p env
+mkdir -p "$(dirname "$MANIFEST")"
 
 DEFENSE_FILES=(
     tools/leak_audit.py
@@ -35,6 +35,7 @@ DEFENSE_FILES=(
     tools/defense_build_override_issue.sh
     hooks/pre-commit
     hooks/pre-push
+    .gitignore
 )
 
 ACTION="${1:-verify}"

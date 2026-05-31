@@ -1,9 +1,49 @@
-# ANP2 internal-only — never tracked publicly. Everything under internal/
-# is private (credentials, memory, research notes, operator-only docs).
-internal/
+# ============================================================================
+# ALLOWLIST MODEL (default-deny) — adopted 2026-05-31
+# ----------------------------------------------------------------------------
+# DEFAULT: ignore EVERYTHING. Only the paths explicitly un-ignored below are
+# trackable / pushable. A stray file or directory at the repo root (env/, a new
+# internal note, an accidentally-saved secret) is ignored BY DEFAULT and CANNOT
+# leak — even if no one remembers to add an ignore rule. This inverts the old
+# "track everything unless ignored" blocklist that let root env/ slip through.
+#
+# Paired enforcement: hooks/pre-push refuses any push that includes a file
+# outside the allowlisted top-level paths (belt-and-braces, in case a rule here
+# is mis-edited). To publish a NEW top-level path, add it to BOTH places.
+# ============================================================================
 
-# Belt-and-braces: keep these secret-file globs even if internal/ rule
-# above somehow gets edited.
+# --- deny everything at the root by default ---
+/*
+
+# --- ALLOW: the publishable top-level paths (the ONLY things that can be pushed) ---
+!/.gitignore
+!/.github/
+!/.envrc.template
+!/CHANGELOG.md
+!/CODE_OF_CONDUCT.md
+!/CONCEPT.md
+!/CONTRIBUTING.md
+!/LICENSE
+!/README.md
+!/SECURITY.md
+!/STATUS.md
+!/datasets/
+!/docs/
+!/hooks/
+!/logo/
+!/prototypes/
+!/server-config/
+!/site/
+!/spec/
+!/tools/
+
+# ============================================================================
+# Within-allowed re-ignores: internal / build / cache / secret files that live
+# UNDER an allowed directory must still be excluded. (These also act as a second
+# net even though /* already denies the root.)
+# ============================================================================
+
+# Secret-file globs (anywhere) — never track credentials even under a pub dir
 .secrets/
 *.pem
 *.key
@@ -12,81 +52,69 @@ internal/
 *.pfx
 .env
 .env.*
+*.env
+*.env.*
 .envrc
+*.envrc
 secrets.*
 credentials.*
 *_credentials.*
 *_secret.*
 *_secrets.*
 
-# Python
+# Python build / venv / cache (anywhere)
 __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
 .venv/
 venv/
+.venv-pw/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 build/
 dist/
 
-# DB
+# Databases
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
 
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.idea/
-.vscode/
-
-# MCP / tooling artifacts
-.playwright-mcp/
-
-# Local notebook outputs
-*.ipynb_checkpoints
-
-# Legacy nested subrepo (remote: anp2dev/anp2 = flagged 2026-05-19).
-# Cleanup deferred — see internal/memory/project-ai-net-public-subrepo-stale.md.
-# Current discovery-surface source-of-truth is site/ (tracked).
-public/
-
-# Claude Code project-config (auto-loaded from repo root; private to operator).
-.claude/
-
-# Playwright debugging screenshots (root dir)
-*.jpeg
-*.playwright-screenshot.png
+# Node
 node_modules/
 
-# Local Python venv for Playwright-driven setup tasks (anp2dev Day-0 work etc.)
-.venv-pw/
+# OS / IDE / tooling artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
 .playwright-mcp/
+*.ipynb_checkpoints
+*.jpeg
+*.playwright-screenshot.png
 
-# Local-only debugging helpers (CDP debug port exposed, server-side mailbox reader, etc.)
+# Local-only helper tools that live under tools/ (allowed dir) but are internal
 tools/anp2_chrome_launch_cdp.sh
 tools/mail_dev_check.sh
-# Inbound-actor triage engine — coupled to the internal/ defense policy + signatures
-# (themselves gitignored); keep the whole subsystem internal, don't telegraph posture.
+# Inbound-actor triage engine — coupled to the gitignored internal/ defense
+# policy + signatures; keep the whole subsystem internal, don't telegraph posture.
 tools/inbound_triage.py
 
-# Track the TypeScript SDK build artifacts so the package is publishable
-# without operator needing Node/tsc locally.
+# HuggingFace dataset binaries (separate HF repo via LFS). Metadata under
+# datasets/ stays tracked; only the large snapshots are excluded.
+datasets/anp2-events/anp2-events.parquet
+datasets/anp2-events/anp2-events.jsonl
+
+# Exception: ship the TypeScript SDK build artifacts so the npm package is
+# publishable without the operator needing Node/tsc locally. (Overrides dist/.)
 !prototypes/anp2-client-js/dist/
 !prototypes/anp2-client-js/dist/**
 
-# HuggingFace dataset folder is a separate HF git repo (anp2dev/anp2-events).
-# Large binary snapshots go to HF via LFS, not into main repo. Metadata (README,
-# PUBLISH, .gitattributes, stats.json) is OK to track if explicitly added.
-datasets/anp2-events/anp2-events.parquet
-datasets/anp2-events/anp2-events.jsonl
-CLAUDE.md
-
-# Stray root-level env/ (push.sh historically mis-wrote its log here); internal-only
-env/
+# ============================================================================
+# NOT listed above (therefore ignored by the /* default-deny) and intentionally
+# kept OUT of the public repo: internal/  env/  CLAUDE.md  .claude/  public/
+# node_modules/  and anything else newly dropped at the root. Do NOT add !rules
+# for these.
+# ============================================================================

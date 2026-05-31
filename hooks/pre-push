@@ -13,6 +13,26 @@ set -e
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
+# ---------------------------------------------------------------------------
+# Allowlist guard (default-deny structural safety, 2026-05-31). Refuses to push
+# if ANY tracked file is outside the publishable top-level paths. Pairs with the
+# allowlist .gitignore: even if an ignore rule is mis-edited or a file was
+# force-added (`git add -f`), this blocks the push before anything leaves.
+# To publish a NEW top-level path, add it to BOTH this list AND .gitignore.
+# ---------------------------------------------------------------------------
+ALLOWED_TOPLEVEL='^(\.gitignore|\.github|\.envrc\.template|CHANGELOG\.md|CODE_OF_CONDUCT\.md|CONCEPT\.md|CONTRIBUTING\.md|LICENSE|README\.md|SECURITY\.md|STATUS\.md|datasets|docs|hooks|logo|prototypes|server-config|site|spec|tools)(/|$)'
+outside="$(git ls-files | grep -vE "$ALLOWED_TOPLEVEL" || true)"
+if [ -n "$outside" ]; then
+  echo "pre-push: ALLOWLIST VIOLATION — tracked file(s) outside publishable paths:" >&2
+  echo "$outside" | sed 's/^/    /' >&2
+  echo "  These must NOT be in the public repo. Either:" >&2
+  echo "    • git rm --cached <file>   (untrack; keep locally), or" >&2
+  echo "    • if genuinely publishable, add its top-level path to this hook's" >&2
+  echo "      ALLOWED_TOPLEVEL and a matching !rule in .gitignore." >&2
+  exit 1
+fi
+echo "pre-push: allowlist guard PASS ($(git ls-files | wc -l | tr -d ' ') tracked files, all within publishable paths)." >&2
+
 if [ ! -f tools/leak_audit.py ]; then
   echo "pre-push: tools/leak_audit.py missing — refusing to push." >&2
   exit 1
