@@ -79,7 +79,7 @@ if ! ANP2_INCOMING_COMMITS=$count python3 tools/account_health.py >/dev/null; th
 fi
 
 # Persist a local push log (gitignored; for post-incident audit)
-LOG="$root/env/.push-log.jsonl"
+LOG="$root/internal/env/.push-log.jsonl"
 mkdir -p "$(dirname "$LOG")"
 python3 - <<PY >> "$LOG"
 import json, time

@@ -87,3 +87,6 @@ tools/inbound_triage.py
 datasets/anp2-events/anp2-events.parquet
 datasets/anp2-events/anp2-events.jsonl
 CLAUDE.md
+
+# Stray root-level env/ (push.sh historically mis-wrote its log here); internal-only
+env/
