@@ -28,7 +28,7 @@ shift || true
 
 LOG=internal/env/.publish-activity-log.jsonl
 APPROVAL_TOKEN_FILE=internal/env/.publish-campaign-token
-mkdir -p env
+mkdir -p internal/env
 touch "$LOG"
 
 now_unix() { date +%s; }

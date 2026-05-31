@@ -24,7 +24,7 @@ ACTION="${1:-}"
 shift || true
 
 LOG=internal/env/.scrape-activity-log.jsonl
-mkdir -p env
+mkdir -p internal/env
 touch "$LOG"
 
 USER_AGENT='Mozilla/5.0 (compatible; ANP2-Bot/0.2; +https://anp2.com)'

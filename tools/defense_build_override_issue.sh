@@ -8,7 +8,7 @@
 #
 # Token is single-use and consumed on first successful commit.
 set -euo pipefail
-mkdir -p env
+mkdir -p internal/env
 token=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))")
 echo "$token" > internal/env/.flag-risk-commit-override
 echo ""

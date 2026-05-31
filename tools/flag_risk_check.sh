@@ -13,7 +13,7 @@
 #   1. anonymous GET https://github.com/<USER>            (R1)
 #   2. anonymous GET https://github.com/<USER>/<REPO>     (R2)
 #   3. fork-rate-1h from internal/env/.gh-activity-log.jsonl       (R18 lite)
-#   4. push-rate-1h from internal/env/.git-activity-log.jsonl      (R23 lite)
+#   4. push-rate-4h from internal/env/.git-activity-log.jsonl      (R23 lite)
 #
 # Exit code: 0=OK or WARN, 1=FAIL (so it can be used in `&&` chains).
 # Set ANP2_FLAG_RISK_VERBOSE=1 to print all rule lines, not just the verdict.
@@ -92,11 +92,12 @@ case ":$PATH:" in
     *) shim_path_ok=0 ;;
 esac
 
-# ── R23-lite: push in last 1h ───────────────────────────────────────
+# ── R23-lite: push in last 4h (cap 2) ───────────────────────────────
+# Window tightened 2026-05-31 (operator): push is not frequent — ≤2 per 4h.
 if [ -r "internal/env/.git-activity-log.jsonl" ]; then
     n=$(python3 -c "
 import json,time
-cutoff=time.time()-3600
+cutoff=time.time()-14400
 n=0
 try:
     for line in open('internal/env/.git-activity-log.jsonl'):
@@ -107,9 +108,9 @@ except: print(0)
 " 2>/dev/null || echo 0)
     if [ "$n" -gt "2" ]; then
         escalate FAIL
-        vlog "R23-lite FAIL: $n pushes in last 1h"
+        vlog "R23-lite FAIL: $n pushes in last 4h (cap 2)"
     else
-        vlog "R23-lite OK ($n/1h)"
+        vlog "R23-lite OK ($n/4h)"
     fi
 fi
 

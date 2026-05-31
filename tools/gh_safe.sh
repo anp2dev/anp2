@@ -49,7 +49,7 @@ shift || true
 
 LOG=internal/env/.gh-activity-log.jsonl
 APPROVAL_TOKEN_FILE=internal/env/.gh-listing-pr-token
-mkdir -p env
+mkdir -p internal/env
 touch "$LOG"
 
 now_unix() { date +%s; }

@@ -43,16 +43,16 @@ Rules:
   R20 fork-burst-7d:               ≤ 3 forks created in last 7d
   R21 pr-external-rate-24h:        ≤ 2 PRs to external repos in last 24h (via gh_safe log)
   R22 fork-account-age-floor:      account age ≥ 7d before any fork is allowed
-  R23 git-push-burst:              ≤ 2 pushes / 1h, ≤ 5 / 24h, ≤ 15 / 7d (from git_safe log)
+  R23 git-push-burst:              ≤ 2 pushes / 4h, ≤ 5 / 24h, ≤ 15 / 7d (from git_safe log)
   R24 git-force-push-rate:         ≤ 1 force-push / 24h, ≤ 2 / 7d (from git_safe log)
   R25 author-email-stability:      no forbidden pattern; no flip-flop
   R26 co-author-AI-saturation:     ≤ 80% commits w/ Co-Authored-By: Claude/AI/Bot
   R27 ci-failure-streak:           last 5 workflow runs success ratio ≥ 60%
   R28 repo-topic-cap:              public repo has ≤ 15 topic tags
-  R29 push-discipline-daily-cap:   freeze-period only — ≤ PUSH_PER_DAY_CAP
-                                   (default 6) push events per operator-local
-                                   day (relaxed 2026-05-30 from 1; burst shape
-                                   is the real signal, covered by R17/R23)
+  R29 push-discipline-daily-cap:   ≤ PUSH_PER_DAY_CAP (default 3) push events
+                                   per operator-local day. Tightened 2026-05-31
+                                   (operator: push is not frequent — ≤3/day,
+                                   ≤2/4h via R23)
   R30 push-window:                 RETIRED 2026-05-30 (always PASS) — fixed
                                    time-of-day push gating removed as over-
                                    engineered; own-repo pushes are not a flag
@@ -106,11 +106,10 @@ OPERATOR_TZ_OFFSET = int(os.environ.get("ANP2_OPERATOR_TZ_OFFSET_HOURS", "9"))
 # (window crosses midnight). Defaults: 22:00 → next-day 01:00.
 PUSH_WIN_LOCAL_START = int(os.environ.get("ANP2_PUSH_WIN_LOCAL_START", "22"))
 PUSH_WIN_LOCAL_END = int(os.environ.get("ANP2_PUSH_WIN_LOCAL_END", "1"))
-# R29 daily push cap. Relaxed 2026-05-30 from 1 to a generous human-paced
-# value: a pathological bot-like multi-push day is still caught, but normal
-# multi-commit days flow freely. (R30 fixed-window gating was retired the same
-# day — see check_push_discipline.)
-PUSH_PER_DAY_CAP = int(os.environ.get("ANP2_PUSH_PER_DAY_CAP", "6"))
+# R29 daily push cap. 2026-05-30 relaxed 1→6; 2026-05-31 tightened to 3 per
+# operator instruction ("push is not a frequent operation: ≤3/day, ≤2/4h").
+# Pairs with R23 burst (≤2 per 4h). A normal day lands ≤3 pushes; bursts caught.
+PUSH_PER_DAY_CAP = int(os.environ.get("ANP2_PUSH_PER_DAY_CAP", "3"))
 
 
 def _in_freeze_period() -> bool:
@@ -459,17 +458,19 @@ def check_git_burst() -> None:
 
     def in_window(ts_list, w): return sum(1 for t in ts_list if t >= now - w)
 
-    # R23: push burst
-    p1, p24, p7 = in_window(pushes, 3600), in_window(pushes, 86400), in_window(pushes, 86400 * 7)
+    # R23: push burst. Window tightened 2026-05-31 (operator): "push is not a
+    # frequent operation" → cap 2 per 4h (was per 1h). Daily cap is R29 (3/day).
+    burst_win_h = int(os.environ.get("ANP2_PUSH_BURST_WINDOW_H", "4"))
+    p1, p24, p7 = in_window(pushes, burst_win_h * 3600), in_window(pushes, 86400), in_window(pushes, 86400 * 7)
     c1 = int(os.environ.get("ANP2_PUSH_CAP_1H", "2"))
     c24 = int(os.environ.get("ANP2_PUSH_CAP_24H", "5"))
     c7 = int(os.environ.get("ANP2_PUSH_CAP_7D", "15"))
     if p1 > c1 or p24 > c24 or p7 > c7:
         record("FAIL", "R23 git-push-burst", "git_safe-log",
-               f"{p1}/{c1}h, {p24}/{c24}d, {p7}/{c7}w — slow down")
+               f"{p1}/{c1} per {burst_win_h}h, {p24}/{c24}d, {p7}/{c7}w — slow down")
     else:
         record("PASS", "R23 git-push-burst", "git_safe-log",
-               f"{p1}/{c1}h {p24}/{c24}d {p7}/{c7}w")
+               f"{p1}/{c1} per {burst_win_h}h, {p24}/{c24}d, {p7}/{c7}w")
 
     # R24: force-push rate
     f24, f7 = in_window(forces, 86400), in_window(forces, 86400 * 7)

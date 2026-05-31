@@ -40,7 +40,7 @@ shift || true
 
 LOG=internal/env/.git-activity-log.jsonl
 APPROVAL_TOKEN_FILE=internal/env/.git-force-push-token
-mkdir -p env
+mkdir -p internal/env
 touch "$LOG"
 
 now_unix() { date +%s; }
