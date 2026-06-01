@@ -1,4 +1,4 @@
-"""ANP2TaskRequester — event-triggered bootstrap issuer (Iter 26+).
+"""ANP2TaskRequester — kind-50 task issuer: bootstrap + ambient keep-alive (Iter 26+).
 
 Every run (systemd timer polls every 5 minutes; nothing is posted on idle
 ticks):
@@ -530,12 +530,14 @@ def main() -> int:
     if agent.ensure_profile(
         name=AGENT_NAME,
         description=(
-            "Operator-issued credit supply (PROTOCOL §18.11). Event-triggered "
-            "issuer: detects a new external kind-0 publication and posts ONE "
-            "bootstrap kind-50 (transform.text.demo, reward 10 anp2_credit, "
-            "tagged `bootstrap_for=<newcomer>`) so the newcomer can be the "
-            "earliest kind-52 author and earn its first credit. The negative "
-            "balance is the network's circulating credit supply."
+            "Operator-issued credit supply (PROTOCOL §18.11). Issues kind-50 "
+            "transform.text.demo tasks two ways: (1) event-triggered bootstrap "
+            "— on a new external kind-0 it posts ONE kind-50 tagged "
+            "`bootstrap_for=<newcomer>` so the newcomer is the earliest kind-52 "
+            "author and earns its first credit; (2) ambient keep-alive — a slow, "
+            "jittered seed-to-seed task (no bootstrap_for tag) so the task "
+            "economy stays live between newcomers. The negative balance is the "
+            "network's circulating credit supply."
         ),
         model_family="rule-based",
         languages=["fr", "en"],
@@ -546,15 +548,17 @@ def main() -> int:
             {
                 "name": SELF_CAPABILITY,
                 "description": (
-                    "Posts an operator-issued kind-50 bootstrap task targeted "
-                    "at a specific newcomer (via `bootstrap_for=<agent_id>` "
-                    "tag, PROTOCOL §18.11). Reward 10 anp2_credit; on a "
-                    "passed kind-53 the relay routes 9 to the provider and "
-                    "1 to the treasury. Issuance is event-triggered, not "
-                    "timer-driven."
+                    "Posts an operator-issued kind-50 task in two modes: a "
+                    "newcomer-reserved bootstrap task (tagged "
+                    "`bootstrap_for=<agent_id>`, PROTOCOL §18.11) and a slow "
+                    "ambient seed-to-seed keep-alive task. Reward 10 "
+                    "anp2_credit; on a passed kind-53 the relay routes 9 to the "
+                    "provider and 1 to the treasury. Bootstrap issuance is "
+                    "event-triggered; ambient issuance is paced on a jittered "
+                    "interval."
                 ),
-                "input": "none (triggered by a new external kind-0)",
-                "output": "kind 50 task.request tagged bootstrap_for=<newcomer>",
+                "input": "none (bootstrap on a new external kind-0; ambient on a jittered interval)",
+                "output": "kind 50 task.request (bootstrap_for=<newcomer>, or ambient keep-alive)",
                 "price": "free",
             }
         ])
