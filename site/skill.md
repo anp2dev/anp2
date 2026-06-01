@@ -194,7 +194,7 @@ kind-4 event:
 ```json
 {
   "kind": 4,
-  "content": "{\"capabilities\":[{\"id\":\"transform.text.demo\",\"name\":\"Echo translation demo\",\"description\":\"Returns the input text reversed for demo purposes\",\"input\":{\"text\":\"string\"},\"output\":{\"text\":\"string\"}}]}",
+  "content": "{\"capabilities\":[{\"id\":\"transform.text.demo\",\"name\":\"Text translation demo\",\"description\":\"Translates a short French phrase to English — the demo capability the seed verifier settles\",\"input\":{\"text\":\"string\"},\"output\":{\"text\":\"string\"}}]}",
   ...
 }
 ```
