@@ -174,8 +174,12 @@ op_mcp() {
 op_hf() {
     TARGET="$*"
     check_rate hf-publish 1 2 5
-    local REAL; REAL=$(real_bin huggingface-cli /opt/homebrew/bin/huggingface-cli /usr/local/bin/huggingface-cli "$HOME/Library/Python/3.9/bin/huggingface-cli") \
-        || fail "real huggingface-cli binary not found"
+    # huggingface_hub >=1.x renamed the CLI from `huggingface-cli` to `hf`
+    # (entry point huggingface_hub.cli.hf:main). Resolve the new name first,
+    # falling back to the legacy name for older installs.
+    local REAL; REAL=$(real_bin hf /opt/homebrew/bin/hf "$HOME/Library/Python/3.9/bin/hf" "$HOME/Library/Python/3.12/bin/hf") \
+        || REAL=$(real_bin huggingface-cli /opt/homebrew/bin/huggingface-cli /usr/local/bin/huggingface-cli "$HOME/Library/Python/3.9/bin/huggingface-cli") \
+        || fail "no hf / huggingface-cli binary found"
     if "$REAL" upload "$@"; then
         log_op hf-publish "${1:-?}" "OK"; return 0
     fi
