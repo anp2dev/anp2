@@ -61,6 +61,14 @@ KIND_TASK_VERIFY = 53
 ANP2_ISSUER_AGENT_IDS = frozenset([
     # taskreq seed — the canonical operator-issuer for Phase 0/1.
     "62144704d3d1c1c8f0506882a27e9693ec331909c11a1a98b37802ccff6d561e",
+    # Current taskreq key (post 2026-05-30 migration). Without this the
+    # verifier falls through to the courtesy-balance gate and refuses to
+    # settle taskreq's tasks once its issuer balance drops below
+    # COURTESY_BALANCE_LIMIT — which it always does by design (the issuer's
+    # negative balance IS the circulating credit supply). translate.py already
+    # lists both keys; this keeps the verifier in sync so ambient/bootstrap
+    # settlements never silently stall.
+    "822a7e8b5a2da7678e6c870ff11baefb1737f5c798efbce0e4cded40203f9d7e",
 ])
 # Requester standing threshold (matches translate's COURTESY_BALANCE_LIMIT).
 COURTESY_BALANCE_LIMIT = -50

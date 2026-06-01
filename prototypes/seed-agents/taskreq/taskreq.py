@@ -413,26 +413,45 @@ def post_ambient_task(agent: Agent, phrase: str) -> dict:
 
 def _has_open_ambient_task(agent: Agent, now: int) -> bool:
     """True iff a previously-issued ambient task of mine is still open: within
-    its deadline and with no observed kind-52 result. Keeps at most one ambient
-    task in flight so the stream is a steady trickle, never a burst."""
-    my_kind50s = agent.query(kinds=[50], authors=[agent.agent_id], limit=200)
-    ambient = [
-        ev for ev in my_kind50s
-        if any(len(t) >= 1 and t[0] == "ambient" for t in (ev.get("tags") or []))
-    ]
-    if not ambient:
-        return False
-    settled_ids: set[str] = set()
-    for r in agent.query(kinds=[52], limit=300):
-        try:
-            tid = json.loads(r.get("content") or "{}").get("task_id")
-            if tid:
-                settled_ids.add(tid)
-        except (ValueError, TypeError):
-            pass
-        for t in r.get("tags", []) or []:
-            if len(t) >= 2 and t[0] == "e":
-                settled_ids.add(t[1])
+    its deadline and with no observed kind-52 result from a seed provider.
+    Keeps at most one ambient task in flight so the stream is a steady trickle,
+    never a burst. On a relay-query error returns True (conservative: skip
+    issuing this tick rather than risk a duplicate)."""
+    try:
+        # `since` (not a raw limit) keeps the open-task lookup correct regardless
+        # of overall kind-50 volume: any still-open task was issued within the
+        # last deadline window.
+        my_kind50s = agent.query(
+            kinds=[50],
+            authors=[agent.agent_id],
+            since=now - AMBIENT_DEADLINE_SEC - 120,
+            limit=200,
+        )
+        ambient = [
+            ev for ev in my_kind50s
+            if any(len(t) >= 1 and t[0] == "ambient" for t in (ev.get("tags") or []))
+        ]
+        if not ambient:
+            return False
+        # A task counts as settled only if a SEED provider posted its kind-52
+        # result — a forged kind-52 from an outside agent must not clear the
+        # one-in-flight gate.
+        settled_ids: set[str] = set()
+        for r in agent.query(kinds=[52], limit=300):
+            if r.get("agent_id") not in SEED_AGENT_IDS:
+                continue
+            try:
+                tid = json.loads(r.get("content") or "{}").get("task_id")
+                if tid:
+                    settled_ids.add(tid)
+            except (ValueError, TypeError):
+                pass
+            for t in r.get("tags", []) or []:
+                if len(t) >= 2 and t[0] == "e":
+                    settled_ids.add(t[1])
+    except Exception as e:
+        print(f"[TaskReq] ambient open-check query failed ({e}); skip issue this tick")
+        return True
     for ev in ambient:
         if ev["id"] in settled_ids:
             continue  # already has a result
@@ -472,7 +491,16 @@ def maybe_issue_ambient(agent: Agent, now: int) -> None:
     if not AMBIENT_ENABLED:
         return
     state = _load_ambient_state()
-    if now < state.get("next_due_ts", 0):
+    next_due = state.get("next_due_ts")
+    if next_due is None:
+        # Fresh or wiped state: schedule the first task one interval out rather
+        # than firing immediately, so deleting the state file cannot bypass the
+        # pacing guarantee.
+        interval = random.randint(AMBIENT_MIN_INTERVAL_SEC, AMBIENT_MAX_INTERVAL_SEC)
+        _save_ambient_state({"next_due_ts": now + interval})
+        print(f"[TaskReq] ambient: no state — first task scheduled in {interval // 60}min")
+        return
+    if now < next_due:
         return  # still spacing out
     if _has_open_ambient_task(agent, now):
         return  # one already in flight — let it settle first
