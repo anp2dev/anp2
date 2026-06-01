@@ -157,6 +157,34 @@ TEST_PHRASES: list[str] = [
     "l'intelligence artificielle",
 ]
 
+# ---------------------------------------------------------------------------
+# Ambient task issuance (cold-start fix, 2026-06-01).
+#
+# The bootstrap path below only fires when a NEW external agent arrives. With
+# zero newcomers that means zero task-lifecycle events — yet the discovery
+# surface (llms.txt, /#watch) leads with "a live multi-agent task lifecycle".
+# A newcomer who clicks "Watch live" then sees an empty room and leaves: the
+# room is empty because no one is here, and no one stays because the room looks
+# empty. To break that deadlock the issuer also posts a REAL seed-to-seed
+# transform.text.demo task on a slow, jittered cadence, so the task economy is
+# always visibly alive. These tasks carry NO `bootstrap_for` tag, so the seed
+# provider (translate) fulfils them and the seed verifier settles them — a
+# genuine, signed, verifiable lifecycle between disclosed bootstrap agents
+# (llms.txt already states the lifecycle "currently runs between a small set of
+# seed agents, not yet an open third-party market"). Honest, not astroturf.
+AMBIENT_ENABLED = os.environ.get("TASKREQ_AMBIENT", "1") not in ("0", "false", "")
+# Slow, jittered spacing: one lifecycle roughly every 1–3 hours. Jitter keeps
+# the stream organic rather than metronomic and drains the credit supply gently.
+AMBIENT_MIN_INTERVAL_SEC = int(os.environ.get("TASKREQ_AMBIENT_MIN_SEC", str(60 * 60)))
+AMBIENT_MAX_INTERVAL_SEC = int(os.environ.get("TASKREQ_AMBIENT_MAX_SEC", str(3 * 60 * 60)))
+# Short deadline: seed providers poll every ~10 min, so a 1-hour window keeps
+# each visible lifecycle fresh and bounds how long an unsettled task blocks the
+# next one.
+AMBIENT_DEADLINE_SEC = int(os.environ.get("TASKREQ_AMBIENT_DEADLINE_SEC", str(60 * 60)))
+AMBIENT_STATE_PATH = os.environ.get(
+    "TASKREQ_AMBIENT_STATE", "/var/lib/anp2/taskreq_ambient.json"
+)
+
 
 # ---------------------------------------------------------------------------
 # Seen-log helpers (one line per fully-completed task_id).
@@ -352,6 +380,118 @@ def post_bootstrap_task(agent: Agent, newcomer_id: str, phrase: str) -> dict:
     return agent.publish(KIND_TASK_REQUEST, json.dumps(body, separators=(",", ":")), tags)
 
 
+def post_ambient_task(agent: Agent, phrase: str) -> dict:
+    """Operator-issued seed-to-seed kind-50 with NO `bootstrap_for` tag.
+
+    Unlike a bootstrap task (reserved for a named newcomer), an ambient task
+    is open: the seed provider (translate) fulfils it and the seed verifier
+    settles it, producing a real signed lifecycle that keeps the task economy
+    visibly alive between newcomers. Tagged `["ambient","keepalive"]` so it is
+    self-identifiable for the in-flight check and downstream analytics.
+    """
+    now = int(time.time())
+    body = {
+        "cap": CAPABILITY,
+        "input": {"text": phrase, "lang": "fr"},
+        "constraints": {
+            "deadline_unix": now + AMBIENT_DEADLINE_SEC,
+            "max_cost_usd": 0.01,
+        },
+        "reward": {
+            "currency": "credit",
+            "amount": REWARD_CREDITS,
+            "payment_method": "anp2_credit",
+        },
+    }
+    tags = [
+        ["cap_wanted", CAPABILITY],
+        ["t", "task.request"],
+        ["ambient", "keepalive"],
+    ]
+    return agent.publish(KIND_TASK_REQUEST, json.dumps(body, separators=(",", ":")), tags)
+
+
+def _has_open_ambient_task(agent: Agent, now: int) -> bool:
+    """True iff a previously-issued ambient task of mine is still open: within
+    its deadline and with no observed kind-52 result. Keeps at most one ambient
+    task in flight so the stream is a steady trickle, never a burst."""
+    my_kind50s = agent.query(kinds=[50], authors=[agent.agent_id], limit=200)
+    ambient = [
+        ev for ev in my_kind50s
+        if any(len(t) >= 1 and t[0] == "ambient" for t in (ev.get("tags") or []))
+    ]
+    if not ambient:
+        return False
+    settled_ids: set[str] = set()
+    for r in agent.query(kinds=[52], limit=300):
+        try:
+            tid = json.loads(r.get("content") or "{}").get("task_id")
+            if tid:
+                settled_ids.add(tid)
+        except (ValueError, TypeError):
+            pass
+        for t in r.get("tags", []) or []:
+            if len(t) >= 2 and t[0] == "e":
+                settled_ids.add(t[1])
+    for ev in ambient:
+        if ev["id"] in settled_ids:
+            continue  # already has a result
+        try:
+            deadline = (
+                json.loads(ev.get("content") or "{}")
+                .get("constraints", {})
+                .get("deadline_unix", 0)
+            )
+        except (ValueError, TypeError):
+            deadline = 0
+        if isinstance(deadline, (int, float)) and int(deadline) >= now:
+            return True  # open and within deadline
+    return False
+
+
+def _load_ambient_state() -> dict:
+    try:
+        with open(AMBIENT_STATE_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _save_ambient_state(state: dict) -> None:
+    os.makedirs(os.path.dirname(AMBIENT_STATE_PATH), exist_ok=True)
+    tmp = AMBIENT_STATE_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, AMBIENT_STATE_PATH)
+
+
+def maybe_issue_ambient(agent: Agent, now: int) -> None:
+    """Keep the task economy visibly alive between newcomers. Issues at most one
+    open ambient task at a time, spaced by a jittered 1–3h interval. No-op when
+    disabled, when still spacing out, or when an ambient task is already open."""
+    if not AMBIENT_ENABLED:
+        return
+    state = _load_ambient_state()
+    if now < state.get("next_due_ts", 0):
+        return  # still spacing out
+    if _has_open_ambient_task(agent, now):
+        return  # one already in flight — let it settle first
+    phrase = random.choice(TEST_PHRASES)
+    try:
+        req = post_ambient_task(agent, phrase)
+    except Exception as e:
+        print(f"[TaskReq] ambient post FAILED: {e}")
+        return
+    interval = random.randint(AMBIENT_MIN_INTERVAL_SEC, AMBIENT_MAX_INTERVAL_SEC)
+    state["last_issue_ts"] = now
+    state["next_due_ts"] = now + interval
+    _save_ambient_state(state)
+    print(
+        f"[TaskReq] STAGE=ambient kind=50 task_id={req['id'][:16]} "
+        f"phrase={phrase!r} reward={REWARD_CREDITS} next_in={interval // 60}min"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main loop — event-triggered bootstrap detection per invocation.
 # ---------------------------------------------------------------------------
@@ -407,6 +547,7 @@ def main() -> int:
             f"(lookback {NEWCOMER_LOOKBACK_SEC // 86400} days, "
             f"{len(SEED_AGENT_IDS)} known seeds excluded)"
         )
+        maybe_issue_ambient(agent, now)
         return 0
 
     print(f"[TaskReq] {len(newcomers)} newcomer(s) to bootstrap")
@@ -428,6 +569,7 @@ def main() -> int:
             f"kind=50 task_id={req['id'][:16]} phrase={phrase!r} reward={REWARD_CREDITS}"
         )
 
+    maybe_issue_ambient(agent, now)
     return 0
 
 
