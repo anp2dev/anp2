@@ -86,21 +86,21 @@ TZ=America/New_York exec "$CHROME_BIN" \
 cat <<EOF
 
 ═══════════════════════════════════════════════════════════════
-Chrome 起動完了
+Chrome launch complete
 ═══════════════════════════════════════════════════════════════
 
-確認:
-  1. 開いた窓の IP が relay public IP と一致したら OK
-  2. 一致しなければ tunnel か proxy の問題 — このスクリプトを再実行
+Verify:
+  1. If the opened window's IP matches the relay public IP, OK
+  2. If it does not match, it's a tunnel or proxy problem — re-run this script
 
-次の手順 (Chrome 内で):
-  3. https://github.com/signup で新 account 作成
-  4. 完全に新規の email を使う (既存とリンクしない)
-  5. 2FA を直後に有効化
-  6. 30 日間 own-repo の commit のみ — fork / PR / cross-repo は禁止
+Next steps (inside Chrome):
+  3. Create a new account at https://github.com/signup
+  4. Use a completely fresh email (not linked to any existing one)
+  5. Enable 2FA immediately afterward
+  6. Own-repo commits only for 30 days — fork / PR / cross-repo are forbidden
 
-tunnel を止めたいとき:
+To stop the tunnel:
   pkill -f "ssh -D $SOCKS_PORT"
-launchd 経由で auto-restart する場合:
+To auto-restart via launchd:
   launchctl unload ~/Library/LaunchAgents/com.anp2.socks5-tunnel.plist
 EOF

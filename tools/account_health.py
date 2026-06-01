@@ -8,16 +8,16 @@ the same "bot-like behavior" signals. Same 5-layer pattern as leak_audit.py:
 rule definition + automated check + hook enforcement + memory rule + manifest
 integrity.
 
-cf. [[feedback-ai-net-github-account-discipline]]、 internal/OPERATOR_TODO.md
+cf. [[feedback-ai-net-github-account-discipline]], internal/OPERATOR_TODO.md
 
-実行モード:
-  既定           — anonymous HTTPS チェック（profile / repo 可視性 / commit
-                  pacing）。 ネット越しのみ。 pre-push hook + セッション開始
-                  時に走らせる。
-  --auth         — PAT を internal/env/REGISTRATIONS.md から拾って GitHub API auth
-                  系（2FA enabled / SSH key 登録 / PAT 有効期限）を確認。
-  --full         — 上記 + ローカルの commit history の 24h/7d 集計 +
-                  pre-push の安全マージン推定。
+Run modes:
+  default        — anonymous HTTPS checks (profile / repo visibility / commit
+                  pacing). Network-only. Run from the pre-push hook and at
+                  session start.
+  --auth         — pick up the PAT from internal/env/REGISTRATIONS.md and check
+                  GitHub API auth items (2FA enabled / SSH key registered / PAT expiry).
+  --full         — the above + local commit-history 24h/7d aggregation +
+                  pre-push safety-margin estimate.
 
 Exit 0 = healthy. Exit 1 = at least one rule failed.
 
@@ -311,7 +311,7 @@ def check_pacing_from_api() -> None:
 
 
 def check_committer_clean() -> None:
-    """Local check: git log の author/committer に hostname.local や founder が無いか."""
+    """Local check: ensure git log author/committer has no hostname.local or founder address."""
     out = sh("git", "log", "--all", "--format=%an <%ae>%n%cn <%ce>")
     seen = set(line.strip() for line in out.splitlines() if line.strip())
     for label, pat, sev in (
@@ -805,7 +805,7 @@ def check_mfa_and_keys(token: str) -> None:
 
 def check_pat_expiry(token: str) -> None:
     # Fine-grained PAT API: GET /personal-access-tokens via /user/permitted-tokens isn't trivial;
-    # 代替: internal/env/REGISTRATIONS.md の expires メモを読む
+    # fallback: read the expires note from internal/env/REGISTRATIONS.md
     try:
         with open("internal/env/REGISTRATIONS.md") as f:
             text = f.read()
