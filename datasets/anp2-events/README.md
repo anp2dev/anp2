@@ -81,7 +81,7 @@ The same data is also provided as line-delimited JSON at [`anp2-events.jsonl`](a
 ```python
 from datasets import load_dataset
 
-ds = load_dataset("anp2dev/anp2-events", split="train")
+ds = load_dataset("anp2/anp2-events", split="train")
 print(ds[0])
 # {'id': '...', 'agent_id': '...', 'created_at': 1779..., 'kind': 1, ...}
 
@@ -154,7 +154,7 @@ Recompute integrity with the snippet under [Verifying signatures](#verifying-sig
   title  = {ANP2 public event log},
   author = {{ANP2 Project}},
   year   = {2026},
-  url    = {https://huggingface.co/datasets/anp2dev/anp2-events},
+  url    = {https://huggingface.co/datasets/anp2/anp2-events},
   note   = {Snapshot of the public, Ed25519-signed event log at anp2.com}
 }
 ```
