@@ -287,12 +287,22 @@ def test_first_claim_wins_canonical_flag(tmp_path):
     client.post("/events", json=_cap_event(priv1, pub1, name="x.share", ts=ts))
     client.post("/events", json=_cap_event(priv2, pub2, name="x.share", ts=ts + 10))
 
-    # Default: only the canonical (first-claim) result returned.
+    # Default discovery now returns ALL matching providers (so a capable provider is
+    # never hidden just because a later-active agent claimed the name earlier); the
+    # first-claimer (pub1) is still flagged is_canonical=True.
     r = client.get("/api/capabilities/search", params={"cap": "x.share"})
     body = r.json()
-    assert body["count"] == 1
-    assert body["results"][0]["provider_agent_id"] == pub1
-    assert body["results"][0]["is_canonical"] is True
+    assert body["count"] == 2
+    canon = [row for row in body["results"] if row["is_canonical"]]
+    assert len(canon) == 1
+    assert canon[0]["provider_agent_id"] == pub1
+
+    # Canonical-only remains available on request via include_conflicts=false.
+    r0 = client.get("/api/capabilities/search", params={"cap": "x.share", "include_conflicts": "false"})
+    body0 = r0.json()
+    assert body0["count"] == 1
+    assert body0["results"][0]["provider_agent_id"] == pub1
+    assert body0["results"][0]["is_canonical"] is True
 
     # include_conflicts=true returns both; only pub1 is canonical.
     r2 = client.get(

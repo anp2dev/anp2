@@ -1551,6 +1551,7 @@ def create_app(storage: Storage) -> FastAPI:
     @app.get("/api/capabilities/search")
     def capabilities_search(
         cap: Annotated[str | None, Query(description="exact or hierarchical-prefix capability name match")] = None,
+        q: Annotated[str | None, Query(description="alias for `cap` (accepts the conventional `q` search param)")] = None,
         min_trust: Annotated[float | None, Query(description="minimum trust_score of provider")] = None,
         max_latency_ms: Annotated[int | None, Query(ge=0, description="provider must declare p95 <= this")] = None,
         max_price_usd: Annotated[float | None, Query(ge=0, description="provider's per-request amount (USD) <= this")] = None,
@@ -1558,16 +1559,19 @@ def create_app(storage: Storage) -> FastAPI:
         tag: Annotated[str | None, Query(description="kebab-case keyword tag — provider's capability must list this in `tags`")] = None,
         extension_uri: Annotated[str | None, Query(description="filter to providers whose capability advertises this extension URI (e.g., https://x402.org, anp2://wallet/v1)")] = None,
         sort_by: Annotated[str | None, Query(pattern="^(trust|latency|price)$")] = None,
-        include_conflicts: Annotated[bool, Query(description="show non-canonical (first-claim-loser) entries too")] = False,
+        include_conflicts: Annotated[bool, Query(description="include non-canonical (first-claim-loser) providers. Default True so a capable, active provider is never hidden from discovery just because a later-active agent claimed the same capability name earlier — `is_canonical` still flags the first-claimer. Pass false to restrict to the single canonical provider per name.")] = True,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> dict:
         """Structured capability discovery (B2).
 
-        Each result carries
-        provider_agent_id, the full anp2.cap.v1 metadata blob, the current
-        trust score, declared_at, is_canonical, and a unit-normalized
-        `score` for the requested `sort_by`.
+        Each result carries provider_agent_id, the full anp2.cap.v1 metadata
+        blob, the current trust score, declared_at, is_canonical, and a
+        unit-normalized `score` for the requested `sort_by`. Discovery returns
+        ALL matching providers by default (sorted by trust) and flags the
+        first-claimer with `is_canonical` — so an inactive name-squatter cannot
+        hide a working provider; pass `include_conflicts=false` for canonical-only.
         """
+        cap = cap if cap is not None else q  # `q` is an accepted alias for `cap`
         results = storage.capabilities_full(
             cap=cap,
             min_trust=min_trust,
@@ -1745,7 +1749,7 @@ def create_app(storage: Storage) -> FastAPI:
     # release records — none of these are "@-mentions" in the colloquial sense.
     # Surfacing them in unread_mentions would leak social-graph and moderation
     # metadata to any unauthenticated caller of /api/home.
-    HOME_MENTION_KINDS: tuple[int, ...] = (1, 2, 22, 50, 51, 52, 53)
+    HOME_MENTION_KINDS: tuple[int, ...] = (1, 2, 5, 22, 50, 51, 52, 53)
     HOME_WINDOW_24H_SEC: int = 86400
     HOME_WINDOW_7D_SEC: int = 604800
     # Scan window for open-task matching. Set well above the per-response
@@ -2306,6 +2310,7 @@ def create_app(storage: Storage) -> FastAPI:
         kind: Annotated[str | None, Query(description="alias for `kinds` (single or comma-separated) — convenience for newcomers")] = None,
         authors: Annotated[str | None, Query()] = None,
         t: Annotated[str | None, Query(description="topic tag value")] = None,
+        p: Annotated[str | None, Query(description="'p' tag value — filter to events that address/mention this agent_id (e.g. kind-3 DMs addressed to you; PROTOCOL §12.2)")] = None,
         since: Annotated[int | None, Query()] = None,
         until: Annotated[int | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
@@ -2329,7 +2334,7 @@ def create_app(storage: Storage) -> FastAPI:
             authors=authors.split(",") if authors else None,
             since=since,
             until=until_effective,
-            tag_filters=[("t", t)] if t else None,
+            tag_filters=(([("t", t)] if t else []) + ([("p", p)] if p else [])) or None,
             limit=limit,
             branch=branch,
             include_revoked=as_of is not None,
