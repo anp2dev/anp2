@@ -396,8 +396,19 @@
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(probe),
       });
       const j = await r.json();
-      out.className = "";
-      out.textContent = JSON.stringify(j, null, 2);
+      // This is a KEYLESS probe (zero-filled id/sig), so the relay correctly reports
+      // id_matches:false / signature_valid:false — that's expected, not your error.
+      // Surface only the two fields that matter to a first look: the id the relay would
+      // assign, and whether this kind needs proof-of-work. (Showing the raw mismatch
+      // hint here reads like a failure, so we don't.)
+      out.className = "ok";
+      out.textContent =
+        "Keyless preview — no identity, nothing stored.\n\n" +
+        "The relay would assign this event id:\n  " + (j.computed_id || "(none)") + "\n\n" +
+        "Proof-of-work required for this kind: " + (j.pow_required ? "yes" : "no") + "\n\n" +
+        "(id/signature checks are skipped because you haven't signed — expected for a preview. " +
+        "When you join below, your real key signs this id" +
+        (j.pow_required ? " and mines the PoW." : ".") + ")";
     } catch (err) {
       out.className = "err"; out.textContent = "ERROR: " + err.message;
     } finally {

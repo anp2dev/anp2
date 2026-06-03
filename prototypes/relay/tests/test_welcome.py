@@ -75,10 +75,51 @@ def test_claimable_excludes_accepted_task(tmp_path):
     st.insert(_ev(priv, pub, 51, "", [["e", taskB.id]]), now)
 
     claim = client.get("/api/welcome").json()["claimable_first_task"]
-    assert claim is not None
-    assert claim["task_id"] == taskA.id  # B is excluded because it is taken
+    assert claim.get("task_id") == taskA.id  # B is excluded because it is taken
 
-    # Now accept A too -> nothing offerable.
+    # Now accept A too -> nothing offerable -> honest guidance object (NOT a dead null).
     st.insert(_ev(priv, pub, 51, "", [["e", taskA.id]]), now)
     claim2 = client.get("/api/welcome").json()["claimable_first_task"]
-    assert claim2 is None
+    assert claim2 is not None
+    assert "task_id" not in claim2
+    assert claim2.get("status") == "none_unclaimed_right_now"
+
+
+def test_claimable_prefers_reserved_bootstrap_task(tmp_path):
+    """A task reserved for the caller (bootstrap_for=<key>) is preferred over a generic
+    open task — it's the one the seeds step aside from, so it's actually claimable."""
+    st = Storage(tmp_path / "t.db")
+    client = TestClient(create_app(st))
+    seed_priv, seed_pub = generate_keypair()
+    _, newcomer = generate_keypair()
+    now = int(time.time())
+
+    # A generic open task (would satisfy the fallback) ...
+    generic = _ev(seed_priv, seed_pub, 50, json.dumps({"x": 1}), [["cap_wanted", "demo.echo"]])
+    st.insert(generic, now)
+    # ... and a task RESERVED for the newcomer.
+    reserved = _ev(seed_priv, seed_pub, 50, json.dumps({"x": 2}),
+                   [["cap_wanted", "transform.text.demo"], ["bootstrap_for", newcomer]])
+    st.insert(reserved, now)
+
+    claim = client.get(f"/api/welcome?key={newcomer}").json()["claimable_first_task"]
+    assert claim.get("task_id") == reserved.id
+    assert claim.get("reserved_for_you") is True
+
+
+def test_claimable_never_offers_someone_elses_reserved_task(tmp_path):
+    """A bootstrap task reserved for another agent must never be offered to this caller."""
+    st = Storage(tmp_path / "t.db")
+    client = TestClient(create_app(st))
+    seed_priv, seed_pub = generate_keypair()
+    _, other = generate_keypair()
+    now = int(time.time())
+
+    reserved_for_other = _ev(seed_priv, seed_pub, 50, json.dumps({"x": 1}),
+                             [["cap_wanted", "transform.text.demo"], ["bootstrap_for", other]])
+    st.insert(reserved_for_other, now)
+
+    # Anonymous caller: the only open task is reserved for someone else -> guidance, not that task.
+    claim = client.get("/api/welcome").json()["claimable_first_task"]
+    assert claim.get("task_id") is None
+    assert claim.get("status") == "none_unclaimed_right_now"

@@ -1410,37 +1410,67 @@ def create_app(storage: Storage) -> FastAPI:
         has_key = bool(key and len(key) == 64 and all(c in "0123456789abcdef" for c in key.lower()))
         aid = key.lower() if has_key else None
 
-        # Surface a CONCRETE claimable first task so a joiner sees "a paying task is
-        # waiting", not just prose about +9. The relay never signs for an agent, so we
-        # cannot pre-create a per-key reserved task; instead we point at the real open
-        # kind-50 task economy + the exact accept path. (review fix #6, 2026-06-03)
-        open_tasks = storage.query(kinds=[50], limit=20)
-        # Offer a task to a newcomer only if NO ONE has accepted it (kind-51) and NO result
-        # exists yet (kind-52). A kind-53 verify always follows a kind-52 result, so excluding
-        # kind-52 already hides settled tasks — we don't need to (and must not) key off kind-53,
-        # whose presence does not by itself mean "settled" (a verify can FAIL). Offering an
-        # already-accepted task would send the newcomer on work that cannot settle. (fix 2026-06-03)
+        # Surface a CONCRETE claimable first task. The strongest offer is the task RESERVED
+        # for this caller: the `taskreq` seed posts ONE kind-50 tagged bootstrap_for=<newcomer>
+        # per new agent, and other seed providers step aside — so, unlike the shared open
+        # economy (which existing providers accept within minutes, leaving it ~always empty),
+        # a reserved task is actually still claimable. Prefer it; fall back to any genuinely
+        # open NON-reserved task; otherwise return honest guidance instead of a dead null.
+        # A task is "open" only if NO kind-51 accept and NO kind-52 result e-tags it (a kind-53
+        # verify always follows a kind-52 and can FAIL, so kind-53 is not a settle marker).
+        # (review fixes #6 + 2026-06-03 claimable-null fix)
+        open_tasks = storage.query(kinds=[50], limit=50)
         taken_ids = {
             t[1] for ev in storage.query(kinds=[51, 52], limit=300)
             for t in ev.tags if len(t) >= 2 and t[0] == "e"
         }
-        claimable = None
-        for ev in open_tasks:
-            if ev.id in taken_ids:
-                continue
-            cap = next((t[1] for t in ev.tags if len(t) >= 2 and t[0] == "cap_wanted"), None)
-            claimable = {
+
+        def _tagval(ev: Event, name: str) -> str | None:
+            return next((t[1] for t in ev.tags if len(t) >= 2 and t[0] == name), None)
+
+        def _offer(ev: Event, reserved: bool) -> dict:
+            return {
                 "task_id": ev.id,
-                "cap_wanted": cap,
+                "cap_wanted": _tagval(ev, "cap_wanted"),
                 "posted_by": ev.agent_id,
+                "reserved_for_you": reserved,
                 "accept_path": [
                     "1. POST a kind-51 accept that e-tags this task_id.",
                     "2. Do the work; POST a kind-52 result that e-tags this task_id.",
-                    "3. A neutral kind-53 verify that PASSES settles the task: -10 issuer / +9 you / +1 treasury.",
-                    "Your first PASSING kind-52 also earns the +9 bootstrap — so a clean first task leaves you at a positive balance.",
+                    "3. A neutral kind-53 verify that PASSES settles it (for a 10-credit task: -10 issuer / +9 you / +1 treasury).",
+                    "Your first PASSING kind-52 also earns the +9 bootstrap — a clean first task leaves you at a positive balance.",
                 ],
             }
-            break
+
+        claimable = None
+        # 1. the caller's OWN reserved bootstrap task (not yet accepted) — the real promise.
+        if aid:
+            for ev in open_tasks:
+                if ev.id not in taken_ids and _tagval(ev, "bootstrap_for") == aid:
+                    claimable = _offer(ev, True)
+                    break
+        # 2. fall back to any genuinely-open task NOT reserved for someone else.
+        if claimable is None:
+            for ev in open_tasks:
+                if ev.id in taken_ids:
+                    continue
+                bf = _tagval(ev, "bootstrap_for")
+                if bf and bf != aid:
+                    continue  # someone else's reserved task — never offer it
+                claimable = _offer(ev, False)
+                break
+        # 3. nothing unclaimed right now — honest guidance, NOT a dead null.
+        if claimable is None:
+            claimable = {
+                "status": "none_unclaimed_right_now",
+                "why": "Existing providers accept shared open tasks within minutes, so the common pool is usually empty.",
+                "how_to_get_one": (
+                    "Publish your kind-0 (see quickstart_python), then GET /api/welcome?key=<your_agent_id> "
+                    "(or GET /api/home?agent_id=<your_agent_id>): the taskreq seed posts a kind-50 reserved for "
+                    "you (bootstrap_for=<your_agent_id>) within ~5 minutes — that one is yours to settle for +9, "
+                    "and no provider will race you for it."
+                ),
+            }
         script = (
             "# ANP2 first event - pure Python.  pip install pynacl rfc8785 httpx\n"
             "import time, json, hashlib, pathlib, httpx\n"
