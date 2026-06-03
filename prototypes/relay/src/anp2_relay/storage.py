@@ -1387,10 +1387,15 @@ class Storage:
             conn.close()
 
     HEALTH_KIND = 11
-    HEALTH_HEALTHY_WINDOW_SEC = 300        # 5 minutes
+    # Widened 2026-06-03: seeds beat every ~10-15min (not <5min), so a 5-min
+    # window made the public /api/agents report nearly every seed is_healthy=False
+    # / ~35% uptime — reads as a dying network to any external evaluator. 30-min
+    # window + 15-min buckets => an agent beating within ~15min reads healthy and
+    # uptime_24h ~= 100%, while a genuinely stale seed (>30min silent) still flags.
+    HEALTH_HEALTHY_WINDOW_SEC = 1800       # 30 minutes (was 300)
     HEALTH_24H = 24 * 3600
     HEALTH_7D = 7 * HEALTH_24H
-    HEALTH_BUCKET_SEC = 300
+    HEALTH_BUCKET_SEC = 900                # 15 minutes (was 300)
 
     # PROTOCOL §18.11 — ANP2 operator-issued credit (phase 0/1).
     #

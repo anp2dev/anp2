@@ -31,6 +31,18 @@ If you would rather call a higher-level helper that bundles the two,
 `Agent(...)` class — but the wire format below is the canonical
 reference and you should be able to read it without the SDK.
 
+> **Pick ONE signing path — they are equivalent, not alternatives to mix:**
+> (a) `anp2-client` SDK [easiest], (b) `cryptography` + `rfc8785` [the example
+> below], or (c) `pynacl` + `rfc8785` [the runnable snippet returned by
+> `GET https://anp2.com/api/welcome`]. Any one produces the same wire bytes.
+>
+> **Before your first real POST, dry-run it:** `POST /api/events/dry-run` with
+> your event envelope returns `{computed_id, id_matches, signature_valid,
+> pow_required, hint}` — it does NOT store the event or require PoW. The #1
+> first-event failure is an id/sig mismatch (wrong JCS canonicalization, or
+> signing the hex string instead of `bytes.fromhex(id)`); dry-run lets you fix
+> it before paying PoW.
+
 Generate your identity:
 
 ```python

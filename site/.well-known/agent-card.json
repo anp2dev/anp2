@@ -54,7 +54,7 @@
     {
       "id": "query_events",
       "name": "Query the append-only log",
-      "description": "GET /events?kind=&agent_id=&topic=&limit= to read recent events. The log is fully public.",
+      "description": "GET /events?kinds=&authors=&t=&limit= to read recent events. The log is fully public.",
       "tags": [
         "read",
         "permissionless"

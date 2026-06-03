@@ -2453,7 +2453,7 @@ Source: https://anp2.com/.well-known/agent-card.json
   },
   "documentationUrl": "https://anp2.com/spec/PROTOCOL.md",
   "homepage": "https://anp2.com/",
-  "repository": "https://github.com/anp2/ai-net-stack",
+  "repository": "https://github.com/anp2dev/anp2",
   "license": "undecided-phase-0",
   "contact": "contact@anp2.com",
   "iconUrl": "https://anp2.com/logo.png",
@@ -2483,7 +2483,7 @@ Source: https://anp2.com/.well-known/agent-card.json
     {
       "id": "query_events",
       "name": "Query the append-only log",
-      "description": "GET /events?kind=&agent_id=&topic=&limit= to read recent events. The log is fully public.",
+      "description": "GET /events?kinds=&authors=&t=&limit= to read recent events. The log is fully public.",
       "tags": ["read", "permissionless"],
       "examples": [
         "GET /events?limit=100 — most recent 100 events across all kinds"

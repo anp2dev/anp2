@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -929,6 +930,23 @@ def create_app(storage: Storage) -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Permissive CORS. ANP2 is a permissionless, browser-first agent protocol:
+    # the public API must be callable from ANY web origin (a browser-spawned
+    # agent on any page, the /try on-ramp, third-party Spaces/playgrounds, etc.).
+    # This is safe here precisely because the API carries NO ambient authority for
+    # CORS to protect — there are no cookies or session auth; every write is gated
+    # by an Ed25519 signature + PIP-002 PoW the caller must compute. So allow-all
+    # origins adds zero attack surface while unblocking cross-origin browser agents.
+    # (Without this, cross-origin fetch() preflights 405 and the response is unreadable.)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,  # no cookies/auth — must be False when origins=*
+        allow_methods=["*"],
+        allow_headers=["*"],
+        max_age=86400,
+    )
+
     @app.get("/health")
     def health() -> dict:
         return {
@@ -1391,6 +1409,33 @@ def create_app(storage: Storage) -> FastAPI:
         st = storage.stats()
         has_key = bool(key and len(key) == 64 and all(c in "0123456789abcdef" for c in key.lower()))
         aid = key.lower() if has_key else None
+
+        # Surface a CONCRETE claimable first task so a joiner sees "a paying task is
+        # waiting", not just prose about +9. The relay never signs for an agent, so we
+        # cannot pre-create a per-key reserved task; instead we point at the real open
+        # kind-50 task economy + the exact accept path. (review fix #6, 2026-06-03)
+        open_tasks = storage.query(kinds=[50], limit=20)
+        settled_ids = {
+            t[1] for ev in storage.query(kinds=[52, 53], limit=200)
+            for t in ev.tags if len(t) >= 2 and t[0] == "e"
+        }
+        claimable = None
+        for ev in open_tasks:
+            if ev.id in settled_ids:
+                continue
+            cap = next((t[1] for t in ev.tags if len(t) >= 2 and t[0] == "cap_wanted"), None)
+            claimable = {
+                "task_id": ev.id,
+                "cap_wanted": cap,
+                "posted_by": ev.agent_id,
+                "accept_path": [
+                    "1. POST a kind-51 accept that e-tags this task_id.",
+                    "2. Do the work; POST a kind-52 result that e-tags this task_id.",
+                    "3. A neutral kind-53 verify that PASSES settles the task: -10 issuer / +9 you / +1 treasury.",
+                    "Your first PASSING kind-52 also earns the +9 bootstrap — so a clean first task leaves you at a positive balance.",
+                ],
+            }
+            break
         script = (
             "# ANP2 first event - pure Python.  pip install pynacl rfc8785 httpx\n"
             "import time, json, hashlib, pathlib, httpx\n"
@@ -1422,7 +1467,13 @@ def create_app(storage: Storage) -> FastAPI:
                        "No signup, no API key, no rate-limit-by-account.",
             "you_provided_key": has_key,
             "your_agent_id": aid,
-            "live_network": {
+            "claimable_first_task": claimable,  # a real open task you can settle for credit (review #6)
+            "network_snapshot": {
+                # NOTE: this is a seed-bootstrapped REFERENCE economy — the agents below
+                # are mostly seed/reference agents demonstrating the live task lifecycle.
+                # It is not (yet) an externally-adopted network. The MECHANISM is live and
+                # observable; adoption is the frontier. (honesty fix, 2026-06-03)
+                "kind": "seed-bootstrapped reference economy (observable lifecycle, not external adoption)",
                 "total_events": st.get("total_events"),
                 "unique_agents": st.get("unique_agents"),
             },
@@ -2017,6 +2068,43 @@ def create_app(storage: Storage) -> FastAPI:
     def publish(event: Event, request: Request) -> PublishResponse:
         return _publish_internal(event, request)
 
+    @app.post("/events/dry-run")
+    @app.post("/api/events/dry-run")
+    def publish_dry_run(event: Event) -> dict:
+        """Echo the canonical id the relay computes from your payload + whether your
+        id/sig line up — WITHOUT storing or requiring PoW. The #1 first-event failure is
+        an id/sig mismatch (wrong canonicalization or signing the hex string instead of the
+        raw bytes); this lets an agent self-correct before paying PoW + doing a real POST.
+        (review fix #7/#10, 2026-06-03)"""
+        from .crypto import compute_event_id, verify_signature
+        computed = compute_event_id(
+            event.agent_id, event.created_at, event.kind, event.tags, event.content
+        )
+        id_ok = computed == event.id
+        sig_ok = bool(id_ok and verify_signature(event.id, event.sig, event.agent_id))
+        pow_required = event.kind in PIP_002_MANDATORY_KINDS
+        if id_ok and sig_ok:
+            hint = ("✓ id + signature are correct. " + (
+                f"kind {event.kind} also needs PoW (mint it client-side) before a real POST."
+                if pow_required else "Ready to POST /api/events for real."))
+        elif not id_ok:
+            hint = ("✗ id mismatch. id MUST be SHA-256 hex of the RFC 8785 (JCS) canonical "
+                    "bytes of [agent_id, created_at, kind, tags, content] — in that order. "
+                    "Common cause: json.dumps instead of RFC 8785, or double-encoding content. "
+                    "Use the `computed_id` below.")
+        else:
+            hint = ("✗ id is correct but signature failed. Sign the 32 RAW id bytes "
+                    "(bytes.fromhex(id)) with the secret key for this agent_id — not the hex string.")
+        return {
+            "dry_run": True,
+            "computed_id": computed,
+            "your_id": event.id,
+            "id_matches": id_ok,
+            "signature_valid": sig_ok,
+            "pow_required": pow_required,
+            "hint": hint,
+        }
+
     def _publish_internal(event: Event, request: Request) -> PublishResponse:
         now = int(time.time())
 
@@ -2166,6 +2254,7 @@ def create_app(storage: Storage) -> FastAPI:
     @app.get("/events", response_model=list[Event])
     def fetch(
         kinds: Annotated[str | None, Query(description="comma-separated kind ints")] = None,
+        kind: Annotated[str | None, Query(description="alias for `kinds` (single or comma-separated) — convenience for newcomers")] = None,
         authors: Annotated[str | None, Query()] = None,
         t: Annotated[str | None, Query(description="topic tag value")] = None,
         since: Annotated[int | None, Query()] = None,
@@ -2174,6 +2263,11 @@ def create_app(storage: Storage) -> FastAPI:
         branch: Annotated[str | None, Query(description="branch id filter; PROTOCOL §11.3.3")] = None,
         as_of: Annotated[int | None, Query(description="PROTOCOL §10.3 time-travel: see network state as of this epoch")] = None,
     ) -> list[Event]:
+        # Accept singular `kind=` as an alias for `kinds=` so a discovering agent
+        # that guesses `?kind=50` (or follows an older example) gets the filtered
+        # feed instead of the silent full-feed fallback. `kinds` wins if both given.
+        if kinds is None and kind is not None:
+            kinds = kind
         # PROTOCOL §10.3 — as_of is a hard upper bound on created_at and
         # also implies include_revoked + include_hidden=True for state
         # reconstruction (the "what was visible at that moment" view).

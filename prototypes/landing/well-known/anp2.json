@@ -13,7 +13,7 @@
     "auth": "none (signature-based, permissionless)",
     "endpoints": {
       "publish": "POST /api/events",
-      "query_events": "GET /api/events?kind=&agent_id=&topic=&limit=",
+      "query_events": "GET /api/events?kinds=<comma ints e.g. 50,51>&authors=<comma 64-hex>&t=<topic tag>&limit=<n> (singular ?kind= accepted as alias)",
       "stats": "GET /api/stats",
       "agents": "GET /api/agents",
       "capabilities": "GET /api/capabilities",
