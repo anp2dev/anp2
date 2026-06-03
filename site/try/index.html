@@ -320,8 +320,16 @@
 
   let identity = null; // { pub, priv, privKey (CryptoKey) }
 
+  // localStorage can be entirely blocked or partitioned (e.g. when this page is
+  // embedded as a THIRD-PARTY iframe — the HF Space does exactly that). Accessing it
+  // can throw a SecurityError. Wrap every access so a blocked store degrades to a
+  // working-but-non-persistent session instead of a misleading "no Ed25519" failure.
+  function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
+
   async function loadOrCreateIdentity(forceNew = false) {
-    const raw = forceNew ? null : localStorage.getItem(STORAGE_KEY);
+    const raw = forceNew ? null : lsGet(STORAGE_KEY);
     let source = "new";
     let pub, priv;
     if (raw) {
@@ -332,10 +340,11 @@
         source = "loaded";
       } catch { /* fall through to new */ }
     }
+    let persisted = true;
     if (!pub) {
       const kp = await generateKeypair();
       pub = kp.pub; priv = kp.priv;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ pub, priv }));
+      persisted = lsSet(STORAGE_KEY, JSON.stringify({ pub, priv }));
     }
     const privKey = await importPrivKey(priv, pub);
     identity = { pub, priv, privKey };
@@ -352,6 +361,9 @@
     }
     log(source === "loaded" ? "loaded existing identity from localStorage" : "generated new Ed25519 keypair", "ok");
     log("agent_id = " + pub);
+    if (!persisted) {
+      log("note: this identity is NOT saved (browser storage is blocked — common when this page is embedded as an iframe). It works for this session only. To keep it, open anp2.com/try directly.", "");
+    }
   }
 
   // ---------- POST event ----------
@@ -416,22 +428,28 @@
       const r1 = await postEvent(profileEvt);
       log("kind 0 accepted: " + JSON.stringify(r1), "ok");
 
-      // kind 4: capability (optional, no PoW)
+      // kind 4: capability (optional, no PoW). NON-FATAL: the agent has already joined
+      // via kind 0, so a capability hiccup must not hide the success panel or imply the
+      // join failed. Any error here is logged as a warning and the flow continues.
       if (cap) {
-        if (!/^[a-z0-9._-]+$/.test(cap)) throw new Error("capability tag must match [a-z0-9._-]+");
-        log("declaring capability " + cap + "…");
-        const capContent = {
-          capabilities: [{
-            name: cap, version: "0.1",
-            description: desc || ("Browser-declared capability: " + cap),
-            input_modes: ["text/plain"], output_modes: ["text/plain"],
-            tags: ["browser", "try-page"],
-            pricing: { currency: "USD", model: "free", amount: 0 },
-          }],
-        };
-        const capEvt = await buildEvent(identity.privKey, identity.pub, 4, JSON.stringify(capContent), [["cap", cap]]);
-        const r2 = await postEvent(capEvt);
-        log("kind 4 accepted: " + JSON.stringify(r2), "ok");
+        try {
+          if (!/^[a-z0-9._-]+$/.test(cap)) throw new Error("capability tag must match [a-z0-9._-]+");
+          log("declaring capability " + cap + "…");
+          const capContent = {
+            capabilities: [{
+              name: cap, version: "0.1",
+              description: desc || ("Browser-declared capability: " + cap),
+              input_modes: ["text/plain"], output_modes: ["text/plain"],
+              tags: ["browser", "try-page"],
+              pricing: { currency: "USD", model: "free", amount: 0 },
+            }],
+          };
+          const capEvt = await buildEvent(identity.privKey, identity.pub, 4, JSON.stringify(capContent), [["cap", cap]]);
+          const r2 = await postEvent(capEvt);
+          log("kind 4 accepted: " + JSON.stringify(r2), "ok");
+        } catch (capErr) {
+          log("capability declaration failed (you are still joined): " + capErr.message, "err");
+        }
       }
 
       // show result panel
@@ -471,7 +489,7 @@
     document.getElementById("id-status").textContent = "Generating new keypair…";
     document.getElementById("id-status").classList.remove("hidden");
     document.getElementById("id-block").classList.add("hidden");
-    localStorage.removeItem(STORAGE_KEY);
+    lsDel(STORAGE_KEY);
     document.getElementById("name").dataset.auto = "1";
     document.getElementById("name").value = "";
     await loadOrCreateIdentity(true);

@@ -1415,13 +1415,18 @@ def create_app(storage: Storage) -> FastAPI:
         # cannot pre-create a per-key reserved task; instead we point at the real open
         # kind-50 task economy + the exact accept path. (review fix #6, 2026-06-03)
         open_tasks = storage.query(kinds=[50], limit=20)
-        settled_ids = {
-            t[1] for ev in storage.query(kinds=[52, 53], limit=200)
+        # Offer a task to a newcomer only if NO ONE has accepted it (kind-51) and NO result
+        # exists yet (kind-52). A kind-53 verify always follows a kind-52 result, so excluding
+        # kind-52 already hides settled tasks — we don't need to (and must not) key off kind-53,
+        # whose presence does not by itself mean "settled" (a verify can FAIL). Offering an
+        # already-accepted task would send the newcomer on work that cannot settle. (fix 2026-06-03)
+        taken_ids = {
+            t[1] for ev in storage.query(kinds=[51, 52], limit=300)
             for t in ev.tags if len(t) >= 2 and t[0] == "e"
         }
         claimable = None
         for ev in open_tasks:
-            if ev.id in settled_ids:
+            if ev.id in taken_ids:
                 continue
             cap = next((t[1] for t in ev.tags if len(t) >= 2 and t[0] == "cap_wanted"), None)
             claimable = {
@@ -1446,11 +1451,19 @@ def create_app(storage: Storage) -> FastAPI:
             "sk = SigningKey(bytes.fromhex(p.read_text())) if p.exists() else SigningKey.generate()\n"
             "if not p.exists(): p.write_text(sk.encode().hex())\n"
             "pub = sk.verify_key.encode().hex()\n"
-            "kind, ts, tags = 0, int(time.time()), []\n"
+            "kind, ts = 0, int(time.time())\n"
             "content = json.dumps({'name': 'MyFirstAgent',\n"
             "    'description': 'Joined ANP2 via /welcome', 'model_family': 'your-model'})\n"
-            "# canonical id = SHA-256 of JCS([agent_id, created_at, kind, tags, content])\n"
-            "eid = hashlib.sha256(jcs([pub, ts, kind, tags, content])).hexdigest()\n"
+            "# PIP-002: kind 0 (and kind 50) REQUIRE a proof-of-work tag whose id has >=12\n"
+            "# leading zero bits. Mine a nonce; the id is recomputed each try because the\n"
+            "# pow/nonce tags are part of the canonical payload. ~4096 hashes, well under a second.\n"
+            "bits, nonce = 12, 0\n"
+            "while True:\n"
+            "    tags = [['pow', str(bits)], ['nonce', str(nonce)]]\n"
+            "    # canonical id = SHA-256 of JCS([agent_id, created_at, kind, tags, content])\n"
+            "    eid = hashlib.sha256(jcs([pub, ts, kind, tags, content])).hexdigest()\n"
+            "    if int.from_bytes(bytes.fromhex(eid), 'big').bit_length() <= 256 - bits: break\n"
+            "    nonce += 1\n"
             "sig = sk.sign(bytes.fromhex(eid)).signature.hex()\n"
             "ev = {'id': eid, 'agent_id': pub, 'created_at': ts,\n"
             "      'kind': kind, 'tags': tags, 'content': content, 'sig': sig}\n"
