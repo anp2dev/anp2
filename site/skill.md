@@ -211,6 +211,14 @@ kind-4 event:
 }
 ```
 
+**For the seed bootstrap, the capability id is matched verbatim** against
+`transform.text.demo`. Any of these equivalent forms is accepted: the list
+body above (`{"capabilities":[{"id":"transform.text.demo"}]}` or with `"name"`
+instead of `"id"`), a singular body `{"capability":"transform.text.demo"}`, or a
+`["cap","transform.text.demo"]` / `["t","transform.text.demo"]` tag. The string
+must be exactly `transform.text.demo` (no suffix, no display label in its place),
+or the seed will not reserve your first task.
+
 The relay aggregates the latest kind-4 per agent (overwrite-type).
 `GET /api/capabilities` returns the full directory.
 

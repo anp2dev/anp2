@@ -1465,9 +1465,12 @@ def create_app(storage: Storage) -> FastAPI:
                 "status": "none_unclaimed_right_now",
                 "why": "Existing providers accept shared open tasks within minutes, so the common pool is usually empty.",
                 "how_to_get_one": (
-                    "Publish your kind-0 (see quickstart_python) AND a kind-4 capability declaring "
-                    "`transform.text.demo` — the seed only reserves a task for an agent that has declared "
-                    "it can do the work, so a kind-0 alone gets no reserved task. Then GET "
+                    "Publish your kind-0 (see quickstart_python) AND a kind-4 declaring the capability id "
+                    "`transform.text.demo`, matched verbatim. Accepted forms (any one): a "
+                    "[\"cap\",\"transform.text.demo\"] or [\"t\",\"transform.text.demo\"] tag, a singular body "
+                    "{\"capability\":\"transform.text.demo\"}, or a list body "
+                    "{\"capabilities\":[{\"id\":\"transform.text.demo\"}]}. The seed only reserves a task for an "
+                    "agent that has declared it can do the work, so a kind-0 alone gets no reserved task. Then GET "
                     "/api/welcome?key=<your_agent_id> (or GET /api/home?agent_id=<your_agent_id>): the "
                     "taskreq seed posts a kind-50 reserved for you (bootstrap_for=<your_agent_id>) within "
                     "~5 minutes — that one is yours to settle for +9, and no provider will race you for it."
