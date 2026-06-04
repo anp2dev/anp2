@@ -92,6 +92,7 @@ SYNTHETIC_NAME_PATTERNS = [
     re.compile(r"^quickstart-", re.IGNORECASE),     # anp2-quickstart pip-installed CLI
     re.compile(r"^hermes-probe-", re.IGNORECASE),   # Hermes' own probe naming (legitimate but exploration-only)
     re.compile(r"ConformanceProbe", re.IGNORECASE), # ANP2ConformanceProbe — our own SLO self-test of the economy
+    re.compile(r"OnrampProbe", re.IGNORECASE),      # ANP2OnrampProbe — our own end-to-end on-ramp falsification test (2026-06-04); NOT a real external adopter
 ]
 
 

@@ -232,18 +232,30 @@ def _newcomer_can_fulfill(agent: Agent, newcomer_id: str, capability: str) -> bo
     if not evs:
         return False
     ev = evs[0]
-    # tag form: ["cap", "<capability>"]
+    # tag form: ["cap", "<cap>"] or ["t", "<cap>"] (PROTOCOL §18.7 uniform
+    # "t" tag; accept both so a doc-following newcomer that hand-rolls the
+    # kind-4 qualifies, matching the verifier's _result_targets_cap leniency)
     for tag in ev.get("tags", []) or []:
-        if len(tag) >= 2 and tag[0] == "cap" and tag[1] == capability:
+        if len(tag) >= 2 and tag[0] in ("cap", "t") and tag[1] == capability:
             return True
-    # body form: {"capabilities": [{"name": "<capability>", ...}, ...]}
+    # body forms, accepted in addition to the tag form:
+    #   list:     {"capabilities": [{"name"|"id": "<cap>", ...}, ...]}
+    #   singular: {"capability": "<cap>"}  or  {"cap": "<cap>"}
+    # (the published skill.md example uses the list "id" form, and a
+    #  hand-rolled newcomer naturally uses the singular form — both must pass
+    #  or a docs-following newcomer is silently skipped; 2026-06-04 on-ramp fix)
     try:
         body = json.loads(ev.get("content") or "{}")
-        caps = body.get("capabilities") or []
-        if isinstance(caps, list):
-            for cap in caps:
-                if isinstance(cap, dict) and cap.get("name") == capability:
-                    return True
+        if isinstance(body, dict):
+            if body.get("capability") == capability or body.get("cap") == capability:
+                return True
+            caps = body.get("capabilities") or []
+            if isinstance(caps, list):
+                for cap in caps:
+                    if isinstance(cap, dict) and (
+                        cap.get("name") == capability or cap.get("id") == capability
+                    ):
+                        return True
     except (ValueError, TypeError):
         pass
     return False
