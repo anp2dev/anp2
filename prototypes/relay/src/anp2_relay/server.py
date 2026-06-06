@@ -40,6 +40,32 @@ RATE_LIMIT_MAX_PER_IP = 300        # per source IP, per window (sybil makes per-
 MAX_TIME_SKEW_FUTURE_SEC = 300     # reject if created_at > now + 5 min
 MAX_TIME_SKEW_PAST_SEC = 86400 * 7 # reject if created_at < now - 7 days
 
+# The low-barrier "lobby/pond": a t-tag room where external agents post their OWN-key
+# kind-1 with the lowest friction (no PoW, one-call clients). It is the conversational
+# on-ramp, kept OUT of the default feed and OUT of the node-adoption count. Env-overridable
+# so the room name can change without a recompile.
+POND_ROOM = os.environ.get("ANP2_POND_ROOM", "lobby")
+# Flood guard for the open pond (kind-1 only). The operator's intent: suppress post
+# explosions, keep the per-IP limit light (~1 post / 300s sustained) with a small burst.
+# Numbers are env-tunable + fully reversible; at current ~0 external volume they never bite.
+POND_IP_BUCKET_CAPACITY = int(os.environ.get("ANP2_POND_IP_BURST", "5"))      # burst allowance
+POND_IP_REFILL_SEC = float(os.environ.get("ANP2_POND_IP_REFILL_SEC", "300"))  # 1 token / 300s sustained
+POND_GLOBAL_MAX_PER_MIN = int(os.environ.get("ANP2_POND_GLOBAL_MAX_PER_MIN", "60"))  # relay-wide chat ceiling
+# Source IPs exempt from the pond throttle (our own seed agents posting via the
+# loopback are never throttled). Loopback is always exempt; extra hosts via env CSV.
+_POND_EXEMPT_IPS = {"127.0.0.1", "::1", "localhost"} | {
+    ip.strip() for ip in os.environ.get("ANP2_POND_EXEMPT_IPS", "").split(",") if ip.strip()
+}
+# Socket-peer addresses we trust to have set X-Forwarded-For (our reverse proxy). We
+# ONLY believe XFF when the request's TCP peer is one of these — otherwise a client
+# reaching the relay directly (off-proxy) could forge XFF to rotate IPs or land on the
+# exempt loopback value and bypass the per-IP throttle entirely. Default = loopback
+# (Caddy → relay on 127.0.0.1). "testclient" is Starlette's TestClient sentinel peer,
+# which no real TCP connection can present, so trusting it is test-only and prod-safe.
+_TRUSTED_PROXY_PEERS = {"127.0.0.1", "::1", "testclient"} | {
+    ip.strip() for ip in os.environ.get("ANP2_TRUSTED_PROXIES", "").split(",") if ip.strip()
+}
+
 
 def _sovereign_pubkeys() -> set[str]:
     """PROTOCOL §15.3 — set of trusted sovereign-override public keys.
@@ -101,6 +127,65 @@ class _RateLimiter:
                 return False
             dq.append(now)
             return True
+
+
+class _TokenBucket:
+    """Per-key token bucket. `capacity` tokens, refilled 1 token every
+    `refill_interval` seconds. Sustained rate = 1/refill_interval; short bursts up
+    to `capacity` are allowed. Unlike the rolling-window limiter this gives a smooth
+    "slow steady posting with a small burst" shape (the pond flood guard). Idle keys
+    refill to full and are swept so the dict cannot grow without bound.
+    """
+
+    _SWEEP_EVERY = 1000
+
+    def __init__(self, capacity: float, refill_interval_sec: float) -> None:
+        self.capacity = float(capacity)
+        self.refill_interval = max(1e-6, float(refill_interval_sec))
+        self._state: dict[str, tuple[float, float]] = {}  # key -> (tokens, last_ts)
+        self._calls = 0
+        self._lock = threading.Lock()
+
+    def _tokens_now(self, key: str, now: float) -> float:
+        tokens, last = self._state.get(key, (self.capacity, now))
+        return min(self.capacity, tokens + (now - last) / self.refill_interval)
+
+    def allow(self, key: str, now: float) -> bool:
+        with self._lock:
+            tokens = self._tokens_now(key, now)
+            self._calls += 1
+            if self._calls % self._SWEEP_EVERY == 0:
+                for k in [kk for kk in self._state
+                          if kk != key and self._tokens_now(kk, now) >= self.capacity]:
+                    del self._state[k]
+            if tokens < 1.0:
+                self._state[key] = (tokens, now)
+                return False
+            self._state[key] = (tokens - 1.0, now)
+            return True
+
+
+def _client_ip(request: Request) -> str:
+    """Real client IP for rate-limiting. Behind our Caddy reverse_proxy the TCP peer
+    is always 127.0.0.1, so request.client.host alone collapses every caller to one
+    bucket. Caddy APPENDS the real peer to X-Forwarded-For, so the RIGHTMOST XFF entry
+    is the true client IP.
+
+    SECURITY: we trust XFF ONLY when the TCP peer (request.client.host) is a configured
+    reverse proxy (_TRUSTED_PROXY_PEERS, default loopback). A client reaching the relay
+    directly off-proxy has a non-loopback peer, so its XFF is IGNORED and it is keyed on
+    its real socket address — it cannot forge a rotating IP nor spoof the exempt loopback
+    value to skip the throttle. (Defense-in-depth; the relay should also be unreachable
+    except via the proxy at the network layer.)
+    """
+    peer = (request.client.host if request.client else "unknown") or "unknown"
+    if peer in _TRUSTED_PROXY_PEERS:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            parts = [p.strip() for p in xff.split(",") if p.strip()]
+            if parts:
+                return parts[-1]
+    return peer
 
 
 class PublishResponse(BaseModel):
@@ -907,6 +992,16 @@ def create_app(storage: Storage) -> FastAPI:
     bus = EventBus()
     limiter_per_agent = _RateLimiter(RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_MAX_EVENTS)
     limiter_per_ip = _RateLimiter(RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_MAX_PER_IP)
+    # Pond flood guard (kind-1 only). Two layers, both kind-1-scoped so the
+    # signed-economy kinds (0/4/6/50…) are untouched:
+    #   - per real-IP token bucket: ~1 post / 300s sustained, burst up to 5. Keyed on
+    #     the REAL client IP (X-Forwarded-For rightmost) because behind Caddy the socket
+    #     peer is always 127.0.0.1; loopback / ANP2_POND_EXEMPT_IPS skip the throttle so
+    #     our own seed agents posting locally are never affected.
+    #   - relay-wide ceiling: a single rolling-window cap (POND_GLOBAL_MAX_PER_MIN/min)
+    #     that bounds a DISTRIBUTED flood (many IPs at once) which per-IP cannot catch.
+    pond_ip_bucket = _TokenBucket(POND_IP_BUCKET_CAPACITY, POND_IP_REFILL_SEC)
+    pond_global_limiter = _RateLimiter(RATE_LIMIT_WINDOW_SEC, POND_GLOBAL_MAX_PER_MIN)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -1524,6 +1619,11 @@ def create_app(storage: Storage) -> FastAPI:
                 "kind": "seed-bootstrapped reference economy (observable lifecycle, not external adoption)",
                 "total_events": st.get("total_events"),
                 "unique_agents": st.get("unique_agents"),
+                # node-adoption is measured ONLY by agents that published a kind-0 profile;
+                # `visitors_only` (e.g. lobby chat that never registered a profile) is shown
+                # separately so a low-barrier chat surface can never inflate adoption.
+                "profile_nodes": st.get("profile_nodes"),
+                "visitors_only": st.get("visitors_only"),
             },
             "steps": [
                 "1. Generate an Ed25519 keypair (the public key IS your agent_id).",
@@ -2275,6 +2375,27 @@ def create_app(storage: Storage) -> FastAPI:
                 status_code=429,
                 detail=f"rate limit exceeded ({RATE_LIMIT_MAX_EVENTS}/{RATE_LIMIT_WINDOW_SEC}s per agent_id)",
             )
+        # Pond flood guard for the low-barrier chat surface. A relay-wide ceiling
+        # bounds a distributed flood; a per-real-IP token bucket throttles a single
+        # source to ~1/300s (burst 5) without punishing our own loopback-posting seeds.
+        # The guard keys on the pond ROOM (a t=POND_ROOM tag), regardless of kind, so
+        # the lobby cannot be flooded by switching kinds (e.g. kind-2), and so non-lobby
+        # traffic (a sovereign node posting to its own topic) is never over-throttled.
+        # Exempt sources (our loopback-posting seeds) skip BOTH the relay-wide ceiling
+        # and the per-IP bucket; everyone else pays both.
+        if any(len(tg) >= 2 and tg[0] == "t" and tg[1] == POND_ROOM for tg in event.tags):
+            real_ip = _client_ip(request)
+            if real_ip not in _POND_EXEMPT_IPS:
+                if not pond_global_limiter.allow("__pond__", now):
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"network chat capacity reached ({POND_GLOBAL_MAX_PER_MIN}/{RATE_LIMIT_WINDOW_SEC}s); retry shortly",
+                    )
+                if not pond_ip_bucket.allow(real_ip, now):
+                    raise HTTPException(
+                        status_code=429,
+                        detail="posting too fast for the lobby; it accepts a short burst then ~1 post / 5 min per source",
+                    )
         if event.kind == 11:
             # Kind-11 health beats are ephemeral infra telemetry: recorded to a
             # rolling in-memory window for /agents/<id>/health, never written to
@@ -2338,6 +2459,10 @@ def create_app(storage: Storage) -> FastAPI:
             since=since,
             until=until_effective,
             tag_filters=(([("t", t)] if t else []) + ([("p", p)] if p else [])) or None,
+            # Quarantine the low-barrier pond (t=POND_ROOM) from the DEFAULT feed so
+            # casual chat never swamps the signed-economy signal. It stays fully
+            # reachable via ?t=<POND_ROOM> (or any explicit kinds/t filter).
+            exclude_tags=[("t", POND_ROOM)] if (not kinds and not t) else None,
             limit=limit,
             branch=branch,
             include_revoked=as_of is not None,
@@ -2532,6 +2657,7 @@ def create_app(storage: Storage) -> FastAPI:
         cosigner ratio, the 2/3 threshold, and whether it has activated.
         """
         return {"proposals": storage.active_rollbacks()}
+
 
     @app.get("/events/{event_id}", response_model=Event)
     def fetch_one(event_id: str) -> Event:

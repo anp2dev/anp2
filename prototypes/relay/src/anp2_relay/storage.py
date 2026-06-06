@@ -121,6 +121,7 @@ class Storage:
         since: int | None = None,
         until: int | None = None,
         tag_filters: list[tuple[str, str]] | None = None,
+        exclude_tags: list[tuple[str, str]] | None = None,
         limit: int = 100,
         include_revoked: bool = False,
         include_hidden: bool = False,
@@ -212,6 +213,16 @@ class Storage:
             for name, value in tag_filters:
                 clauses.append(
                     "events.id IN (SELECT event_id FROM tags WHERE name = ? AND value = ?)"
+                )
+                params.extend([name, value])
+        # Tag-based quarantine: drop events carrying a (name,value) tag from the
+        # result UNLESS the caller explicitly asked for it. Used to keep the
+        # low-barrier lobby/pond (t=lobby) out of the DEFAULT feed so casual chat
+        # never swamps the real signed-economy signal; ?t=lobby still returns it.
+        if exclude_tags:
+            for name, value in exclude_tags:
+                clauses.append(
+                    "events.id NOT IN (SELECT event_id FROM tags WHERE name = ? AND value = ?)"
                 )
                 params.extend([name, value])
 
@@ -1007,13 +1018,29 @@ class Storage:
         try:
             total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
             agents = conn.execute("SELECT COUNT(DISTINCT agent_id) FROM events").fetchone()[0]
+            # Adoption honesty (2026-06-06): `unique_agents` counts EVERY agent_id that
+            # ever posted anything — including a one-time lobby/pond chatter who only
+            # published a kind-1. That over-states node-adoption. So we report two
+            # DISTINCT populations: `profile_nodes` = agents that published a real kind-0
+            # profile (the honest node-adoption number), and `visitors_only` = agents
+            # seen ONLY via non-profile events (kind-1 chat etc.). A low-barrier lobby
+            # grows `visitors_only`; it must never be conflated with node-adoption.
+            profile_nodes = conn.execute(
+                "SELECT COUNT(DISTINCT agent_id) FROM events WHERE kind = 0"
+            ).fetchone()[0]
             by_kind = {
                 str(r["kind"]): r["c"]
                 for r in conn.execute(
                     "SELECT kind, COUNT(*) AS c FROM events GROUP BY kind ORDER BY c DESC"
                 ).fetchall()
             }
-            return {"total_events": total, "unique_agents": agents, "by_kind": by_kind}
+            return {
+                "total_events": total,
+                "unique_agents": agents,
+                "profile_nodes": profile_nodes,
+                "visitors_only": max(0, agents - profile_nodes),
+                "by_kind": by_kind,
+            }
         finally:
             conn.close()
 

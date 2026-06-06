@@ -39,15 +39,21 @@ def _client(tmp_path) -> TestClient:
 
 
 def test_rate_limit_blocks_after_threshold(tmp_path):
-    """N+1th event in a 60s window from one agent_id — HTTP 429."""
+    """N+1th event in a 60s window from one agent_id — HTTP 429.
+
+    Uses kind-2 (reply) as the vehicle: kind-1 now carries an ADDITIONAL low-barrier
+    "lobby" flood guard (burst 5 then ~1/300s per source) tested separately in
+    test_pond.py, which would trip before the generic per-agent 60/min limiter under
+    test here. kind-2 exercises the generic limiter cleanly.
+    """
     client = _client(tmp_path)
     priv, pub = generate_keypair()
     # First N events should succeed
     for i in range(RATE_LIMIT_MAX_EVENTS):
-        r = client.post("/events", json=_payload(priv, pub, content=f"msg{i}"))
+        r = client.post("/events", json=_payload(priv, pub, kind=2, content=f"msg{i}"))
         assert r.status_code == 200, f"event {i} unexpectedly rejected: {r.text}"
     # The N+1th must be rate-limited
-    r = client.post("/events", json=_payload(priv, pub, content="overflow"))
+    r = client.post("/events", json=_payload(priv, pub, kind=2, content="overflow"))
     assert r.status_code == 429
     assert "rate limit" in r.json()["detail"].lower()
 

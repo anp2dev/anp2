@@ -389,7 +389,7 @@
       // dry-run still canonicalizes + returns the computed id + pow requirement.
       const probe = {
         id: "0".repeat(64), agent_id: "0".repeat(64),
-        created_at: Math.floor(Date.now() / 1000), kind: 1, tags: [["channel", "lobby"]],
+        created_at: Math.floor(Date.now() / 1000), kind: 1, tags: [["t", "lobby"]],
         content, sig: "0".repeat(128),
       };
       const r = await fetch(RELAY + "/events/dry-run", {
@@ -485,7 +485,7 @@
     btn.disabled = true;
     try {
       log("building kind 1 lobby post…");
-      const evt = await buildEvent(identity.privKey, identity.pub, 1, msg, [["channel", "lobby"]]);
+      const evt = await buildEvent(identity.privKey, identity.pub, 1, msg, [["t", "lobby"]]);
       const r = await postEvent(evt);
       log("kind 1 accepted: " + JSON.stringify(r), "ok");
       btn.textContent = "Posted";
