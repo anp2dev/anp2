@@ -65,17 +65,9 @@ All notable changes to ANP2 protocol, reference relay, and client packages.
 - `tools/leak_audit.py` — 3 new filename-pattern rules (`filename-jp-chars`, `filename-jp-date`, `filename-ai-gen-trace`) + `check_full_history()` extension so path rules walk every historical tree-path (not just HEAD). Net: 36 → 39 rules.
 - `tools/account_health.py` — R17: 24h PushEvent count ≤ 5 (catches burst push patterns).
 
-### Notes
-
-- **Submitted items** to community lists: (listing)#6822, (listing)#1003, (listing)#113, (listing)#57, (listing)#322. All open, awaiting maintainer review.
-- **Submitted to** llmstxt.site (accepted, review-pending), aiagentslive.com (accepted, review-pending).
-- **Published to** Official MCP Registry as `io.github.anp2dev/anp2-mcp-server` 0.2.0.
-
 ### Operational
 
 - Repository home moved to github.com/anp2dev/anp2.
-- All credentials rotated. 5-layer flag-defense (commit.sh + pre-commit + pre-push + GitHub Actions + session-start audit).
-- (omitted) (R17 batch-push window).
 
 ---
 

@@ -394,6 +394,33 @@ def check_full_history() -> None:
                            f"first hit at blob {sha[:10]}")
 
 
+def check_commit_messages(full: bool) -> None:
+    """Scan commit MESSAGES (subject + body) against content rules — a surface
+    the file/path/author scanners never covered, so policy-violating prose in
+    commit messages (JP text, promotion/campaign naming) shipped invisibly.
+
+    default mode → only HEAD's own message (catches the commit just authored).
+    --full mode  → every commit message in history (flags legacy contamination
+                   that a message-rewrite must scrub).
+
+    HISTORY_EXEMPT_RULES are skipped here too, so the operator-accepted residual
+    classes (dead-identity names, the discipline labels) are not re-flagged;
+    jp-text and the structural promo rules (non-exempt) still fire."""
+    fmt = "%H%x1f%B%x1e"
+    log = sh("git", "log", "--all", "--format=" + fmt) if full \
+        else sh("git", "log", "-1", "--format=" + fmt)
+    for entry in log.split("\x1e"):
+        entry = entry.strip()
+        if not entry or "\x1f" not in entry:
+            continue
+        sha, msg = entry.split("\x1f", 1)
+        for r in RULES:
+            name, kind, _pat, _sev, _ = r
+            if kind != "content" or name in HISTORY_EXEMPT_RULES:
+                continue
+            scan_text(r, msg, f"commit-msg:{sha[:10]}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -411,6 +438,7 @@ def main() -> int:
         check_head_tracked()
         check_authors()
         check_stash_reflog()
+        check_commit_messages(full=args.full)
         if args.full:
             check_full_history()
 
