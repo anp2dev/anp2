@@ -160,9 +160,9 @@ RULE_FILE_EXCLUDE: dict[str, set[str]] = {
     },
 }
 
-# Rules exempt from history-blob scanning (soft prose heuristics that can only
-# be remediated by a deliberate history rewrite). Populated from the denylist.
-HISTORY_EXEMPT_RULES: set[str] = set()
+# Rules exempt from history-blob scanning (soft/generic heuristics that match
+# their own rule definitions in historical blobs). Extended from the denylist.
+HISTORY_EXEMPT_RULES: set[str] = {"dotlocal-host"}
 
 
 def _load_denylist() -> None:
