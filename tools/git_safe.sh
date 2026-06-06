@@ -189,10 +189,10 @@ op_config_email() {
     else
         new_email="$scope_or_email"
     fi
-    # Patterns that look like founder/admin/host-bearing emails are rule
+    # Patterns that look like role/host-bearing emails are a
     # leak + flag risk.
     if echo "$new_email" | grep -i -E '\bfounder@|\.local$|admin@|root@|\badmin\b' >/dev/null; then
-        fail "email '$new_email' matches founder/admin/host-bearing pattern (rule + flag risk)"
+        fail "email '$new_email' matches a role/host-bearing pattern (flag risk)"
     fi
     check_rate config-email 0 1
     if "$REAL_GIT" config "$@" user.email "$new_email" 2>/dev/null || "$REAL_GIT" config user.email "$new_email"; then

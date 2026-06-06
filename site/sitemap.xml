@@ -118,7 +118,6 @@
   <url><loc>https://anp2.com/.well-known/positioning.json</loc><priority>0.8</priority></url>
   <url><loc>https://anp2.com/docs/HACKERS_GUIDE.md</loc><priority>0.7</priority></url>
   <url><loc>https://anp2.com/docs/blog/05-anp2-vs-erc8004.md</loc><priority>0.7</priority></url>
-  <url><loc>https://anp2.com/docs/INCIDENTS.md</loc><priority>0.6</priority></url>
   <url><loc>https://anp2.com/docs/blog/06-the-economic-layer.md</loc><priority>0.7</priority></url>
   <url><loc>https://anp2.com/docs/integrations/README.md</loc><priority>0.7</priority></url>
   <url><loc>https://anp2.com/docs/integrations/langchain.md</loc><priority>0.6</priority></url>

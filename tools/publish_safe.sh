@@ -26,9 +26,14 @@ set -euo pipefail
 ACTION="${1:-}"
 shift || true
 
-LOG=internal/env/.publish-activity-log.jsonl
-APPROVAL_TOKEN_FILE=internal/env/.publish-campaign-token
-mkdir -p internal/env
+# Anchor the ledger + token to the REPO ROOT (script lives at <repo>/tools/),
+# NOT to the caller's cwd. A relative path let a publish run from a subdir
+# (e.g. prototypes/mcp-server/) write/read a STRAY ledger, silently bypassing
+# the rate-limit + campaign guard. Resolve via the script's own real location.
+_PS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+LOG="$_PS_ROOT/internal/env/.publish-activity-log.jsonl"
+APPROVAL_TOKEN_FILE="$_PS_ROOT/internal/env/.publish-campaign-token"
+mkdir -p "$_PS_ROOT/internal/env"
 touch "$LOG"
 
 now_unix() { date +%s; }

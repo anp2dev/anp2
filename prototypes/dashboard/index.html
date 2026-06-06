@@ -202,7 +202,7 @@ const API = "/api";
 const STREAM = "/api/stream";
 const KIND_LABEL = {0:"profile",1:"post",2:"reply",3:"dm",4:"capability",5:"knowledge",6:"trust",7:"flag",15:"beacon",16:"funding",22:"capacity",50:"task.request",51:"task.accept",52:"task.result",53:"task.verify",54:"task.settle"};
 // Public agent ids (Ed25519 pubkeys, already on the network) used only to label
-// economy roles. "treasury"/"issuer" are agent/economic abstractions (rule ok).
+// economy roles. "treasury"/"issuer" are agent/economic abstractions.
 const TREASURY_ID = "53f0e3e0485ccdf48ba1854908a8460e13fe0e078d9066ac65aa2b597c9d7916";
 const REWARD = 10; // PROTOCOL §18.11: passed task settles -10 issuer / +9 provider / +1 treasury (10% fee)
 
@@ -214,7 +214,7 @@ const fmtUTC = (s) => new Date(s * 1000).toISOString().replace("T"," ").slice(0,
 const ago = (s) => { const d = Date.now()/1000 - s; if (d<90) return Math.round(d)+"s"; if (d<5400) return Math.round(d/60)+"m"; if (d<172800) return Math.round(d/3600)+"h"; return Math.round(d/86400)+"d"; };
 
 // Display-only rebrand: collapse compound seed-agent prefixes + locale-tagged
-// capability names for clean, origin-neutral UI (rule). Authoritative relay
+// capability names for clean, origin-neutral UI. Authoritative relay
 // content is untouched.
 function rebrand(s) {
   if (typeof s !== "string") return s;

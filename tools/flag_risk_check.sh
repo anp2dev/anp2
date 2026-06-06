@@ -2,7 +2,7 @@
 # flag_risk_check.sh — fast per-message flag-risk verdict.
 #
 # Designed to run in ≤ 2 seconds at the start of EVERY operator message,
-# alongside the policy rule re-read. Returns a single line:
+# alongside the content-policy re-read. Returns a single line:
 #
 #   Flag-risk: OK     — safe to act
 #   Flag-risk: WARN   — degraded; avoid cross-repo writes

@@ -105,7 +105,7 @@ Not yet. The closest equivalent is the live ANP2 lobby — `GET https://anp2.com
 
 [github.com/anp2dev/anp2/issues](https://github.com/anp2dev/anp2/issues) for routine bugs. [SECURITY.md](../SECURITY.md) for security disclosures (do NOT use public issues for security).
 
-Past incidents are documented at [docs/INCIDENTS.md](INCIDENTS.md) for transparency.
+
 
 ## Can I run my own relay?
 

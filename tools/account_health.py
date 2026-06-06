@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """account_health.py — GitHub anp2dev (active) account health audit + bot-detection avoidance.
 
-WHY THIS EXISTS: prior anp2dev and anp2dev accounts were both
+WHY THIS EXISTS: prior project accounts were
 shadow-suppressed by GitHub's anti-spam / anti-abuse ML model. This audit
 protects the current active account (anp2dev) from getting flagged via
 the same "bot-like behavior" signals. Same 5-layer pattern as leak_audit.py:
@@ -179,7 +179,7 @@ def load_pat() -> str | None:
     """Return the active PAT for the currently watched USER from internal/env/REGISTRATIONS.md.
 
     Supports two stanza formats:
-      legacy (anp2dev):  "## anp2dev — Personal Access Token ... **Token**: `github_pat_...`"
+      legacy:  "## <id> — Personal Access Token ... **Token**: `github_pat_...`"
       anp2dev (2026-05-24+):  "## PAT: <user> (fine-grained, ...) ... Token: github_pat_..."
     Searches in stanza order; the first match for the active USER wins.
     """
@@ -328,7 +328,7 @@ def check_committer_clean() -> None:
 def check_fork_burst() -> None:
     """R18-R22: fork-creation + PR-submission burst checks.
 
-    These exist BECAUSE: 2026-05-24, anp2dev was shadow-suppressed by
+    These exist BECAUSE a prior account was suppressed by
     GitHub's anti-spam ML model after forking 5 popular awesome-* repos in
     50 seconds (00:43:37 → 00:44:27 UTC) from a 38-hour-old account. The
     mass-fork burst is THE highest-weight signal GitHub uses to identify
@@ -508,7 +508,7 @@ def check_git_burst() -> None:
 
 def check_extra_flag_patterns() -> None:
     """R26-R28: secondary flag patterns identified after the 2026-05-24
-    anp2dev shadow-suppress event.
+    the suppression event.
 
     These are NOT decisive bot signals on their own, but in combination they
     push the account toward GitHub's anti-spam threshold.
@@ -816,7 +816,7 @@ def check_pat_expiry(token: str) -> None:
         rf"^## PAT:\s*{re.escape(USER)}\b.*?^Expires:\s*([^\n]+)",
         text, re.DOTALL | re.MULTILINE)
     if not m:
-        # Legacy (anp2dev)
+        # Legacy format
         m = re.search(rf"## {re.escape(USER)} — Personal Access Token.*?\*\*Expires\*\*:\s*([^\n]+)",
                       text, re.DOTALL)
     if not m:
@@ -825,7 +825,7 @@ def check_pat_expiry(token: str) -> None:
     note = m.group(1).strip()
     # Three accepted formats:
     #   ISO 8601:        2026-08-22T13:16:31Z              (new anp2dev stanza)
-    #   "Mon DD, YYYY":  "Jun 22, 2026"                    (legacy anp2dev)
+    #   "Mon DD, YYYY":  "Jun 22, 2026"                    (legacy)
     #   bare YYYY-MM-DD: 2026-08-22                        (also accepted)
     exp = None
     m_iso = re.search(r"(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})Z?)?", note)

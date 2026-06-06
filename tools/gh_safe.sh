@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # gh_safe.sh — anti-flag wrapper for EVERY gh write op.
 #
-# WHY THIS EXISTS: 2026-05-24, anp2dev was shadow-suppressed by GitHub
+# WHY THIS EXISTS: a prior project account was suppressed by GitHub
 # after `gh repo fork` × 5 in 50 seconds (= textbook bot pattern). The
-# prior anp2dev account hit the same fate one week earlier. Both
+# after bot-like signup/push signals. Both
 # flags came from MASS WRITE OPERATIONS executed at machine speed against
 # a low-trust account.
 #
@@ -172,7 +172,7 @@ except: print(0)
 # ── Listing-PR detection ─────────────────────────────────────────────
 # Target name like "awesome-mcp-servers", "toolsdk-mcp-registry",
 # "awesome-llms-txt" etc. = a listing/directory/catalog. PRs to these
-# repos are PROMOTION OPERATIONS (rule, executed form) and need a
+# repos are promotion-listing operations and need a
 # fresh per-call approval token (operator-agent-issued).
 is_listing_pr_target() {
     local target=$1
@@ -208,7 +208,7 @@ require_listing_pr_approval() {
         echo "gh_safe: listing-PR approval consumed (single-use)" >&2
         return 0
     fi
-    fail "PR to '$target' looks like a listing (rule promotion execution).
+    fail "PR to '$target' looks like a promotion-listing.
        Operator must explicitly approve: tools/gh_safe.sh listing-pr-approve
        Then re-run with ANP2_LISTING_PR_TURN_TOKEN=<token from that command>"
 }

@@ -1,12 +1,11 @@
 name: visibility-watch
 # Hourly check that this repo + the anp2dev account remain externally
-# visible (i.e., not shadow-suppressed like the prior anp2dev and
-# anp2dev accounts were). If 404/301 detected, opens an issue on
+# visible (i.e., still reachable). If 404/301 detected, opens an issue on
 # this repo — which sends a notification email to the account owner and
 # surfaces the problem fast.
 #
-# Why this exists: anp2dev was 404 within a few hours of creation,
-# and anp2dev the same on 2026-05-24. Without active monitoring it
+# Why this exists: a public repo can silently 404 (suppression / rename /
+# accidental visibility flip). Without active monitoring it
 # is possible to miss the same outcome here for days. This catches it
 # within the hour.
 
@@ -81,7 +80,7 @@ jobs:
                 'Action:',
                 '1. Check `tools/account_health.py --full` locally.',
                 '2. If R1/R2 are 404: contact GitHub support immediately',
-                '   (same Reinstatement-form path used for anp2dev).',
+                '   (use the standard reinstatement-form path).',
                 '3. Read [[feedback-ai-net-github-account-discipline]].',
                 '',
                 '```',

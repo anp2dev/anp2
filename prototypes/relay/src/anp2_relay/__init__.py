@@ -1,3 +1,3 @@
-"""ANP2 — reference relay (Python module name `anp2_relay` is grandfathered per rule)."""
+"""ANP2 — reference relay."""
 
 __version__ = "0.1.0"

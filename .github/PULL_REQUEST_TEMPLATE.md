@@ -45,22 +45,7 @@ the result. New behavior must have new tests. -->
 <!-- Required on every PR. The pre-commit hook catches the staged diff; this
 checkbox confirms you ran the full audit before opening the PR. -->
 
-- [ ] `python3 tools/leak_audit.py --full` returned `39 rules checked, 0 fired, 0 finding(s)`
-
-## policy rule check (ANP2 public-text discipline)
-
-<!-- Only required when the PR touches user-visible public text (README,
-docs/, blog/, anp2.com surfaces, kind-0 profile templates, A2A reply
-strings, etc.). The leak audit catches literal violations; this checklist
-asks you to manually verify the *narrative* doesn't imply them either.
-
-Run `python3 tools/leak_audit.py --staged` to see which rules fire on
-your specific diff; the rule docstrings describe each category. -->
-
-- [ ] **A** (human-existence): no human-existence claims about ANP2 (it presents as an autonomous protocol)
-- [ ] **B** (Japan-origin): no characters / timezones / phrasing that signals JP origin
-- [ ] **C** (promotion-operation): no public references to outreach campaigns or marketing channels
-- [ ] **D** (legacy brand): use the current protocol acronym, not earlier brand names
+- [ ] `python3 tools/leak_audit.py --full` returned `0 finding(s)`
 
 ## Anything else reviewers should know
 

@@ -1,194 +1,75 @@
 #!/usr/bin/env python3
-"""leak_audit.py — ANP2 repository leak audit.
+"""leak_audit.py — repository publish-safety audit.
 
-WHY THIS EXISTS: a one-off `GITHUB_PUBLIC_RELEASE_AUDIT.md` was done once but
-its protections decayed silently — subsequent commits re-introduced the relay
-IP, kept committing under a hostname-bearing author identity, and re-tracked
-internal-only files. This script is the always-on replacement: a runnable
-audit that any operator (or pre-commit hook, or session-start routine) can
-fire to confirm the repo is publish-safe.
+A runnable audit that a pre-commit hook, pre-push hook, or session-start
+routine can fire to confirm the working tree (and, with --full, the whole
+git history) is safe to publish.
 
 Checks:
-  - content: leak strings (relay IP, operator IP, hostnames, operator email)
-             in tracked files, staged diffs, and optionally full git history
-  - path:    internal-only paths (internal/memory/, internal/research/, OPERATOR_*.md) that
-             must never be tracked
-  - author:  commit author / committer fields carrying hostname or human-role
-             words ("founder", "*.local", etc.)
-  - stash + reflog: residual references to leaks outside the commit DAG
+  - content: secret/credential literals in tracked files, staged diffs, and
+             optionally every blob in full history
+  - path:    private-only paths that must never be tracked
+  - author:  commit author / committer fields carrying host-bearing emails
+  - stash + reflog: residual references outside the commit DAG
+
+This file ships GENERIC, universal detectors only (keys, tokens, passwords,
+private paths). Any project-specific content rules live in an OPTIONAL local
+config (ANP2_CONTENT_DENYLIST, default internal/env/content-denylist.json) that
+is loaded at runtime if present — so this published script never inlines the
+specific strings it scans for, and (because it no longer excludes itself from
+the scan) re-introducing such a string into ANY tracked file fails the audit.
 
 Modes:
   default       — HEAD tracked files + authors + stash + reflog (fast)
-  --staged      — only staged diff (pre-commit hook variant; very fast)
-  --full        — everything above + scan every blob in `git log --all -p`
-                  (slow on large repos; run before any push)
+  --staged      — only the staged diff (pre-commit variant; very fast)
+  --full        — everything above + scan every blob in full history (slow)
 
 Exit 0 = clean. Exit 1 = at least one FAIL. No third-party deps.
 """
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import re
 import subprocess
 import sys
 import time
-from typing import Iterable
 
-# Sentinel marking THIS file (and any rule-definition file that carries it) as
-# one that contains forbidden patterns as regex literals BY DESIGN. The full-
-# history scan excludes CONTENT_SCAN_EXCLUDE files by PATH, but a DANGLING blob
-# (e.g. a `git stash create` snapshot of a dirty leak_audit.py made by an
-# editor/Stop-hook) has no path, so the path exclusion can't apply. The
-# dangling-blob scan skips any blob containing this sentinel. The marker MUST
-# appear VERBATIM (contiguous) in this file's source so a stash snapshot of it
-# is recognized by `_RULEDEF_SENTINEL in text`. It is a harmless marker, not a
-# leak pattern, and leak_audit.py is already CONTENT_SCAN_EXCLUDE on the path.
-_RULEDEF_SENTINEL = "ANP2-RULEDEF-FILE-SKIP-DANGLING-SCAN-v1"
-
-# ── Leak rules ────────────────────────────────────────────────────────────
-# Each rule: (name, kind, pattern, severity, description).
-# kind ∈ {"content", "path", "author"}.
+# ── Generic rules (universal; safe to publish) ──────────────────────────────
+# Each rule: (name, kind, pattern, severity, description). kind ∈ {content,path,author}.
 RULES: list[tuple[str, str, str, str, str]] = [
-    # — Infrastructure leaks (HIGH) —
-    ("relay-ip",
-     "content", r"\b0.0.0.0\b", "HIGH",
-     "live relay public IP — must be env-var, never in source"),
-    ("operator-ip",
-     "content", r"\b0.0.0.0\b", "HIGH",
-     "recurring operator machine IP"),
-    ("hostname-redacted-host",
-     "content", r"\bredacted-host\b", "HIGH",
-     "operator's Mac mini hostname"),
-    ("hostname-redacted-host",
-     "content", r"\bredacted-host\b", "HIGH",
-     "operator's other Mac mini hostname"),
-    ("operator-gmail",
-     "content", r"\b***\b", "CRITICAL",
-     "operator's personal email"),
+    # — Host / path hygiene —
     ("dotlocal-host",
      "content", r"\b[a-z][a-z0-9-]*\.local\b", "MEDIUM",
-     "any *.local mDNS hostname in tracked content"),
-    # — Email / identity leaks in content (HIGH) —
-    ("content-founder-email",
-     "content", r"\bfounder@", "HIGH",
-     "email local-part 'founder' in tracked content "
-     "(rule: implies a human founder)"),
-    ("content-anp2-email",
-     "content", r"\b[a-z][a-z0-9._+-]*@anp2\.com\b", "MEDIUM",
-     "legacy anp2 brand in an email address (rule)"),
-    # — Operational / paid-service leaks (MEDIUM) —
-    ("protonmail-plus",
-     "content", r"ProtonMail\s*Plus", "MEDIUM",
-     "paid-mail-service-tier disclosure (operational infra leak)"),
-    ("paid-plan",
-     "content", r"\(paid plan\)", "MEDIUM",
-     "paid-plan disclosure"),
-    ("internal-doc-ref-in-public",
+     "a *.local mDNS hostname in tracked content"),
+    ("private-doc-ref-in-public",
      "content", r"(?:^|\s|`|\(|/)(internal/(?:memory|research|env)/|internal/OPERATOR_|OPERATOR_(?:TODO|RUNBOOK|NOTES)\.md)\b",
      "HIGH",
-     "tracked file references an internal-only path "
-     "(internal/* or OPERATOR_*.md — broken pointer + leak)"),
-    # — rule (human-existence) content patterns (HIGH) —
-    ("content-human-operator",
-     "content", r"\bhuman[\s-]+(?:operator|maintainer|admin|contributor)s?\b", "HIGH",
-     "rule: explicit 'human X' role mention"),
-    ("content-the-operator-bare",
-     "content",
-     # Match "the operator" as a noun referring to a person. Exclude the
-     # prescribed adjective forms: "the operator agent/agents/seed/seeds",
-     # "the operator-issued/attention/gated/...", "the operator's seed/agent".
-     r"\bthe operator(?!\s+(?:agent|agents|seed|seeds)\b|[-’\']\w)",
-     "MEDIUM",
-     "rule: bare 'the operator' usage — route through 'operator agent'"),
-    ("content-founder-word",
-     "content", r"\bfounder(?:s)?\b", "MEDIUM",
-     "rule: 'founder' word in operator-authored text — "
-     "use 'seed multisig' / 'seed authority' per PROTOCOL §14.7"),
-    # — rule gaps closed 2026-05-29 (SECURITY.md slipped 'single full-time
-    #   maintainer' / 'humans / orgs' / 'human pen-tester' past the audit) —
-    ("content-human-role2",
-     "content", r"\bhuman[\s-]+(?:founder|owner|staff|team|pen[\s-]?tester)s?\b",
-     "HIGH",
-     "rule: 'human <role>' (founder/owner/staff/team/pen-tester) implies "
-     "human involvement — omit or route through an agent/key abstraction"),
-    ("content-run-by-people",
-     "content",
-     r"\b(?:run|operated|maintained|founded|started|funded|built|owned|created|staffed)"
-     r"\s+by\s+(?:a\s+|an\s+|the\s+)?(?:persons?|people|humans?|individuals?|"
-     r"a\s+team\s+of\s+(?:people|humans?))\b",
-     "HIGH",
-     "rule: '<verb> by a person/people/humans' asserts human involvement"),
-    ("content-human-staffing",
-     "content",
-     # Human-staffing phrasing implies people run/build ANP2. Targets the
-     # qualifier+role form ("single full-time maintainer", "solo developer")
-     # — NOT bare 'maintainer', which has many compliant senses ('maintainer
-     # agent_id', 'AI maintainer', 'maintainer review/loop', citations).
-     r"\b(?:full[\s-]?time|part[\s-]?time|paid|volunteer|solo|single|lone|dedicated)"
-     r"\s+(?:maintainer|developer|engineer|staff)s?\b",
-     "HIGH",
-     "rule: human-staffing phrasing ('single full-time maintainer' etc.) — "
-     "describe response capacity without implying people"),
-    ("content-humans-orgs",
-     "content", r"\bhumans?\s*[/&]\s*orgs?\b", "MEDIUM",
-     "rule: 'humans / orgs' phrasing asserts human staffing"),
-    # — rule (JP-origin) tight patterns —
-    ("content-xx-en-pair",
-     "content", r"\bja[_\-]en\b|translate\.text\.ja\b", "HIGH",
-     "rule: explicit xx_en or translate.text.xx* signal"),
-    ("content-jp-text",
-     "content", r"[x]|\bJST\b|UTC", "HIGH",
-     "rule: JP text / UTC / UTC timezone"),
-    # — rule (promotion-operation) patterns —
-    ("content-show-hn",
-     "content", r"\bShow HN\b|\bHacker News\b", "MEDIUM",
-     "rule: Hacker News / Show HN as a promotion target"),
-    ("content-devto-publish",
-     "content", r"\bDEV\.to\s+(?:publish|post)\b", "MEDIUM",
-     "rule: DEV.to as a promotion target"),
-    ("content-outreach-op",
-     "content", r"\boutreach\s+(?:email|plan|operation|campaign|calendar)\b",
-     "MEDIUM",
-     "rule: outreach operation disclosure"),
-    # — Path rules: internal-only files must never be tracked —
-    # As of 2026-05-25 ALL internal content lives under internal/ (one folder
-    # below root). A single rule covers the whole tree; the env/credential
-    # variant is escalated to CRITICAL because it also blocks committed keys.
+     "tracked file references a private-only path (broken pointer + leak)"),
+    # — Private-only paths must never be tracked —
     ("internal-tree",
      "path", r"^internal/(?!env/)", "HIGH",
-     "internal/ holds private operator-only material; must never be tracked"),
+     "internal/ holds private material; must never be tracked"),
     ("internal-env",
      "path", r"^internal/env/", "CRITICAL",
-     "internal/env/ holds private keys + passwords; must never be tracked"),
-    # Legacy-location guards: if any of the old locations re-appear at the
-    # root (someone forgot to use internal/), still catch it.
+     "internal/env/ holds private keys + config; must never be tracked"),
     ("legacy-memory-at-root",
      "path", r"^memory/", "HIGH",
-     "memory/ moved to internal/memory/ on 2026-05-25 — do not recreate at root"),
+     "memory/ belongs under internal/; do not recreate at root"),
     ("legacy-research-at-root",
      "path", r"^docs/research/", "HIGH",
-     "docs/research/ moved to internal/research/ on 2026-05-25 — do not recreate"),
+     "research notes belong under internal/; do not recreate"),
     ("legacy-operator-at-root",
      "path", r"^OPERATOR_(TODO|RUNBOOK|NOTES)\.md$", "HIGH",
-     "OPERATOR_*.md moved to internal/ on 2026-05-25 — do not recreate at root"),
+     "OPERATOR_*.md belongs under internal/; do not recreate at root"),
     ("legacy-env-at-root",
      "path", r"^env/", "CRITICAL",
-     "env/ moved to internal/env/ on 2026-05-25 — do not recreate at root"),
-    # — Filename leaks (path-rule extension for non-ASCII / AI-tool trace) —
-    # Added 2026-05-23 after `logo/ChatGPT Image 2026年5月19日 17_16_57.png`
-    # was found tracked: JP date in filename (rule) + AI-tool origin trace.
-    # Both current-HEAD and historical paths are scanned (path rules run
-    # in check_full_history too — see below).
-    ("filename-jp-chars",
-     "path", r"[ぁ-んァ-ヶ一-龥]", "HIGH",
-     "JP-origin characters in tracked filename (rule)"),
-    ("filename-jp-date",
-     "path", r"\d{4}年|\d+月\d+日", "HIGH",
-     "JP-format date in tracked filename"),
+     "env/ belongs under internal/env/; do not recreate at root"),
     ("filename-ai-gen-trace",
      "path", r"(?i)\bChatGPT[\s_-]Image|\bmidjourney\b|\bstable.diffusion\b",
      "MEDIUM",
-     "tracked filename advertises AI-tool generation origin"),
+     "tracked filename advertises a generation-tool origin"),
     # — Credential / key leaks (CRITICAL) —
     ("bcrypt-hash",
      "content", r"\$2[aby]\$\d{1,2}\$[./A-Za-z0-9]{53}", "CRITICAL",
@@ -203,9 +84,12 @@ RULES: list[tuple[str, str, str, str, str]] = [
     ("github-pat",
      "content", r"\bgh[pousr]_[A-Za-z0-9_]{36,}", "CRITICAL",
      "GitHub personal-access-token"),
+    ("colony-key",
+     "content", r"\bcol_[A-Za-z0-9]{16,}", "CRITICAL",
+     "service agent API key literal (belongs in a private env file only)"),
     ("openrouter-openai-key",
-     "content", r"\bsk-(?:or-v1-|proj-)?[A-Za-z0-9]{32,}", "CRITICAL",
-     "OpenRouter / OpenAI API key literal (key belongs in internal/env only)"),
+     "content", r"\bsk-(?:or-v1-|proj-|svcacct-)?[A-Za-z0-9][A-Za-z0-9_-]{19,}", "CRITICAL",
+     "OpenAI/OpenRouter API key literal incl. service-account keys (private env only)"),
     ("bearer-token",
      "content", r"\bBearer\s+[A-Za-z0-9._~+/=-]{30,}", "HIGH",
      "Bearer-style token literal in source"),
@@ -232,119 +116,26 @@ RULES: list[tuple[str, str, str, str, str]] = [
      "recovery-code block (4-4-4 hex set)"),
     ("ed25519-priv-near-context",
      "content",
-     # 64 hex chars where the line/context mentions priv/secret. Tight to
-     # avoid matching transient agent_id (also 64 hex) — only fires when
-     # 'priv' / 'private' / 'secret' is on the same line within 40 chars.
      r"(?i)(?:priv|private|secret)\w*[\s=:][\"'\s]*[0-9a-f]{64}\b",
      "CRITICAL",
      "looks like a 64-hex private/secret key value"),
-    # — Author / committer rules —
+    # — Author / committer —
     ("author-local-host",
      "author", r"\.local$", "HIGH",
      "author/committer email carrying a hostname"),
-    ("author-founder",
-     "author", r"\bfounder\b", "HIGH",
-     "author/committer name or email containing 'founder' "
-     "(human-existence leak per rule)"),
-    ("author-anp2-domain",
-     "author", r"@anp2\.com$", "MEDIUM",
-     "legacy anp2 brand in author email (rule)"),
-    # — rule: NEW identifier containing 'anp2' must NEVER be created —
-    # The brand was migrated ANP2; only already-published IMMUTABLE PyPI
-    # packages, Python module names, server paths, the legacy domain, and
-    # the MCP URI scheme are grandfathered. Anything else carrying
-    # 'anp2' is a new rule violation. Two-part rule:
-    #   1. content scan with a custom allow-list scanner (run by name match
-    #      in scan_text) — sees the surrounding context, not just regex.
-    #   2. path scan: any tracked path component containing 'anp2'
-    #      outside the grandfathered set fires HIGH.
-    # Each rule's regex below is a sentinel — the actual decision is in
-    # _scan_new_anp2_content() / _scan_new_anp2_path() in this file.
-    ("new-anp2-identifier",
-     "content", r"(?i)anp2", "HIGH",
-     "rule: 'anp2' in NEW identifier — use 'anp2' / 'ANP2' / '@anp2/*'"),
-    ("path-new-anp2",
-     "path", r"(?i)anp2", "HIGH",
-     "rule: tracked path contains 'anp2' outside grandfathered set"),
 ]
 
-# Grandfather list — minimized to ZERO content patterns per operator
-# directive 2026-05-24: the only place 'anp2' may appear in this repo
-# is in the rule file (feedback-anp2-public-text-abc-rules.md) and inside
-# leak_audit.py's own rule definitions (both via CONTENT_SCAN_EXCLUDE).
-# Anything else — every PyPI package name, every Python module reference,
-# every server path, every brand mention — is a violation.
-anp2_GRANDFATHER_CONTENT = re.compile(
-    r"(?i)__never_match__"   # intentionally unmatchable
-)
-# JS / npm context: if 'anp2-...' appears after an npm install command
-# or an import-from quoted-string, treat it as a NEW identifier even if
-# the substring matches a PyPI grandfathered name. The npm namespace is
-# independent of PyPI; the only allowed npm package name for our client
-# is '@anp2/client'.
-anp2_NPM_CONTEXT = re.compile(
-    r"(?:"
-    r"(?:npm install|pnpm add|yarn add)\s+(?:[\w@/.,^~<>=-]+\s+)*[\w@/.,^~<>=-]*anp2"
-    r"|from\s+[\"'][^\"']*anp2"
-    r"|import\s+[\"'][^\"']*anp2"
-    r"|require\(\s*[\"'][^\"']*anp2"
-    r"|\"dependencies\"\s*:\s*\{[^}]*\"anp2"
-    r")"
-)
-# Grandfather PATHS — also minimized to ZERO. No tracked path is allowed to
-# contain 'anp2' anywhere. All Python modules, package dirs, systemd
-# units, and PyPI artifacts have been renamed to anp2 form. Adding to this
-# list = re-introducing the brand drift, never do it.
-anp2_GRANDFATHER_PATH = re.compile(
-    r"__never_match__"   # intentionally unmatchable
-)
-
-# Paths whose contents are NOT scanned for content leaks. Path-rules still
-# apply (we still check whether the file SHOULD be tracked).
-#
-# - tools/leak_audit.py:     contains the leak patterns as rule definitions
-# - .gitignore:              its job is to LIST the internal paths so they
-#                            stay untracked; matches there are intentional
-# - prototypes/dashboard/index.html: contains a regex that strips the legacy
-#                            "anp2<RoleName>" prefix from display names
-#                            (so the regex *includes* the bad words by design)
+# Files whose CONTENT is not scanned. Path-rules still apply.
+#   - .gitignore lists private path prefixes; matches there are intentional.
 CONTENT_SCAN_EXCLUDE: set[str] = {
-    # The rule-definition files themselves. They MUST contain 'anp2'
-    # patterns as regex literals — that's how the rule works.
-    "tools/leak_audit.py",
-    # Peer rule-definition file (watches for the same rule patterns —
-    # 'founder', '*.local', etc. — and references them in docstrings).
-    "tools/account_health.py",
-    # gh_safe.sh + git_safe.sh detect the same forbidden patterns and need
-    # the literal strings in their regexes.
-    "tools/gh_safe.sh",
-    "tools/git_safe.sh",
-    # .gitignore lists internal-only path prefixes; matches there are
-    # intentional and shouldn't fire any content rule.
     ".gitignore",
-    # Dashboard renderer strips "anp2<RoleName>" prefix from legacy
-    # display names — the regex *includes* the bad word by design.
-    "prototypes/dashboard/index.html",
-    # Concierge seed agent has outgoing-leak-guard regexes that literally
-    # contain the forbidden words ("anp2", "UTC", "human operator",
-    # etc.) — the patterns ARE the defense.
-    "prototypes/seed-agents/concierge/concierge.py",
-    # anp2_image_gen.py has an policy prompt-guard whose FORBIDDEN list
-    # contains the forbidden words as regex literals BY DESIGN — same
-    # category as concierge.py; the patterns are the defense, not a leak.
-    "tools/anp2_image_gen.py",
 }
 
-# Per-rule false-positive exemptions: rule_name → set of file paths where
-# the rule legitimately matches non-leak content (a publication name, a
-# generic English term in a quoted question prompt, etc.). When extending
-# this, leave a comment explaining why the match is acceptable.
+# Per-rule, per-file false-positive exemptions. rule_name -> set of paths.
 RULE_FILE_EXCLUDE: dict[str, set[str]] = {
-    # Operator-side utility scripts intentionally reference internal/env/*
-    # (SSH key path, relay-ip file, REGISTRATIONS.md PAT lookup, ...). These
-    # are functional defaults, not leaks. Public docs/READMEs are still
-    # scanned by the same rule.
-    "internal-doc-ref-in-public": {
+    # Operator-side utility scripts intentionally reference private-only paths
+    # (key path, host file, credential lookup). Functional defaults, not leaks.
+    "private-doc-ref-in-public": {
         "tools/anp2_chrome_launch.sh",
         "tools/anp2_chrome_launch_cdp.sh",
         "tools/crawler_log_audit.py",
@@ -361,56 +152,47 @@ RULE_FILE_EXCLUDE: dict[str, set[str]] = {
         "tools/defense_integrity.sh",
         "tools/push.sh",
         "tools/commit.sh",
-        # reads its key + spend ledger + image output dir from internal/env &
-        # internal/generated-images (functional defaults, not a leak).
         "tools/anp2_image_gen.py",
-        # scans the relay mailboxes via internal/env SSH key + relay-ip and
-        # keeps its handled-set in internal/research (functional defaults).
+        "tools/anp2_openai_image.py",
         "tools/followup_check.py",
         "hooks/pre-commit",
         "hooks/pre-push",
     },
-    # "Hacker News" appears as the name of a real RSS-feed publication
-    # the news seed aggregates — not as a promotion target.
-    "content-show-hn": {
-        "prototypes/seed-agents/news/README.md",
-        "prototypes/seed-agents/news/news.py",
-        # events_sample.jsonl contains the news seed's published kind-1 events
-        # which include the RSS-feed source list ("Hacker News frontpage, …").
-        # This is content the seed agent itself broadcast to the network, not
-        # promotion targeting by the operator.
-        "prototypes/hf-dataset/events_sample.jsonl",
-    },
-    # - oracle: evaluation-question prompts use "founders" as a generic
-    #   English word ("…obvious to newcomers and bizarre to founders?")
-    # - heartbeat: keeps the legacy "founder" key stem as a fallback for
-    #   backward-compat with un-migrated deployments
-    "content-founder-word": {
-        "prototypes/seed-agents/oracle/oracle.py",
-        "prototypes/seed-agents/heartbeat/heartbeat.py",
-    },
-    # The optional `human_anchor` kind-0 feature lets ANY agent publicly
-    # anchor to a real-world owner / vouching entity. Describing that protocol
-    # feature ("declare a human owner / vouching entity") is about agents in
-    # general, NOT about who operates ANP2 — the generic-humans carve-out.
-    "content-human-role2": {
-        "site/heartbeat.md",
-    },
 }
 
-# Soft rule PROSE heuristics added 2026-05-29. They enforce on the current
-# tree + staged diff (fixable in place), but are EXEMPT from history-blob
-# scanning: historical prose can only be remediated by a deliberate
-# `git filter-repo` rewrite (operator-gated, force-push), so blocking every
-# --full / pre-push on un-rewritable old prose would be disproportionate.
-# Hard identifiers (anp2 / JP script / keys / IPs / emails / tokens) stay
-# history-strict — they are NOT in this set. Any hit these rules make on
-# history is a deferred history-scrub candidate, not a push blocker.
-HISTORY_EXEMPT_RULES: set[str] = {
-    "content-human-role2",
-    "content-human-staffing",
-    "content-humans-orgs",
-}
+# Rules exempt from history-blob scanning (soft prose heuristics that can only
+# be remediated by a deliberate history rewrite). Populated from the denylist.
+HISTORY_EXEMPT_RULES: set[str] = set()
+
+
+def _load_denylist() -> None:
+    """Append the OPTIONAL local content rules (project-specific patterns kept
+    out of this published source) to RULES / RULE_FILE_EXCLUDE / HISTORY_EXEMPT.
+
+    Absent file (e.g. a fresh public clone or CI runner) → generic rules only;
+    that is intentional. The hard enforcement runs locally where the file is.
+    """
+    path = os.environ.get("ANP2_CONTENT_DENYLIST")
+    if not path:
+        here = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(here, "..", "internal", "env", "content-denylist.json")
+    try:
+        with open(path, encoding="utf-8") as fp:
+            cfg = json.load(fp)
+    except (FileNotFoundError, ValueError, OSError):
+        return
+    for r in cfg.get("leak_audit_rules", []):
+        try:
+            RULES.append((r["id"], r["kind"], r["regex"], r["severity"], r.get("note", "")))
+            if r.get("history_exempt"):
+                HISTORY_EXEMPT_RULES.add(r["id"])
+        except (KeyError, TypeError):
+            continue
+    for rule_id, paths in (cfg.get("rule_file_exclude") or {}).items():
+        RULE_FILE_EXCLUDE.setdefault(rule_id, set()).update(paths)
+
+
+_load_denylist()
 
 # Findings: (severity, rule_name, scope, detail)
 findings: list[tuple[str, str, str, str]] = []
@@ -435,83 +217,20 @@ def scan_text(rule: tuple, text: str, scope: str) -> None:
     name, kind, pat, sev, _ = rule
     if kind != "content":
         return
-    # Per-rule, per-file exemption: scope is the file path here (for
-    # check_head_tracked) or a synthetic name like "staged-diff:<path>".
     exclude = RULE_FILE_EXCLUDE.get(name, set())
     if scope in exclude or scope.split(":", 1)[-1] in exclude:
         return
-    # rule custom scanner: 'anp2' in content is only OK if the literal
-    # match falls inside a grandfathered pattern OR outside an npm/JS context.
-    if name == "new-anp2-identifier":
-        _scan_new_anp2_content(text, scope, sev)
-        return
-    for m in re.finditer(pat, text):
-        # Trim to a small surrounding excerpt (audit ≠ leak the leak again).
+    m = re.search(pat, text)
+    if m:
         i = max(0, m.start() - 20)
         j = min(len(text), m.end() + 20)
         excerpt = re.sub(r"\s+", " ", text[i:j])
         record(sev, name, scope, f"…{excerpt}…")
-        return  # one finding per (rule, scope) is enough
-
-
-anp2_RULE_DIR_EXEMPT_PREFIXES: tuple[str, ...] = ()
-# All directories now scanned. Migration complete 2026-05-24; nothing in
-# the repo carries 'anp2' outside the rule definition files (which are
-# in CONTENT_SCAN_EXCLUDE).
-
-
-def _scan_new_anp2_content(text: str, scope: str, sev: str) -> None:
-    """Fire on any 'anp2' substring that isn't covered by a grandfathered
-    pattern AND isn't suppressed by an npm/JS context override.
-
-    Strategy:
-      0. If the scope's path is under a directory tied to an immutable
-         identifier (anp2_client / anp2_relay / anp2_mcp_server
-         / anp2_quickstart / anp2_mini / langchain-anp2 / seed-
-         agent code / hf-space), skip the rule entirely — its 'anp2'
-         mentions are pre-existing infrastructure.
-      1. Build a set of byte-ranges where grandfathered patterns occur.
-      2. Build a set of ranges where npm/JS-context anp2 mentions occur
-         (these *override* the grandfather — npm namespace is new even if
-         the substring 'anp2-client' matches PyPI immutable).
-      3. For every literal 'anp2' match, check membership:
-         - inside an npm-context range → FIRES (override)
-         - else inside a grandfather range → SKIP
-         - else → FIRES (rule violation)
-    """
-    # scope is either a path or "staged-diff:<path>" — extract the path
-    bare_scope = scope.split(":", 1)[-1]
-    if any(bare_scope.startswith(p) for p in anp2_RULE_DIR_EXEMPT_PREFIXES):
-        return
-    grandfathered: list[tuple[int, int]] = [
-        (m.start(), m.end()) for m in anp2_GRANDFATHER_CONTENT.finditer(text)
-    ]
-    npm_context: list[tuple[int, int]] = [
-        (m.start(), m.end()) for m in anp2_NPM_CONTEXT.finditer(text)
-    ]
-    for m in re.finditer(r"(?i)anp2", text):
-        pos = m.start()
-        end = m.end()
-        in_npm = any(s <= pos < e or s <= end <= e for s, e in npm_context)
-        in_gf = any(s <= pos < e or s <= end <= e for s, e in grandfathered)
-        if in_npm or not in_gf:
-            i = max(0, pos - 25)
-            j = min(len(text), end + 25)
-            excerpt = re.sub(r"\s+", " ", text[i:j])
-            record(sev, "new-anp2-identifier", scope, f"…{excerpt}…")
-            return  # one finding per scope
 
 
 def scan_path(rule: tuple, path: str) -> None:
     name, kind, pat, sev, _ = rule
     if kind != "path":
-        return
-    # rule custom path scanner: 'anp2' is OK only when the path matches
-    # a grandfathered prefix anywhere along it.
-    if name == "path-new-anp2":
-        if re.search(r"(?i)anp2", path):
-            if not anp2_GRANDFATHER_PATH.search(path):
-                record(sev, name, "tracked-path", path)
         return
     if re.search(pat, path):
         record(sev, name, "tracked-path", path)
@@ -526,12 +245,7 @@ def scan_author(rule: tuple, name_email: str) -> None:
 
 
 def check_head_tracked() -> None:
-    """Walk every tracked file; check content (working-tree version) + path.
-
-    Reads the current working-tree content (not HEAD's blob) so that
-    uncommitted local fixes are reflected — what's safe NOW is what
-    matters; HEAD is for the historical scan path.
-    """
+    """Walk every tracked file; check working-tree content + path."""
     files = sh("git", "ls-files").splitlines()
     for f in files:
         for r in RULES:
@@ -550,18 +264,7 @@ def check_head_tracked() -> None:
 
 
 def check_staged() -> None:
-    """Staged-only mode for pre-commit hooks.
-
-    Scans only the ADDED ('+') lines of the staged diff (skipping the
-    '+++' header). Removed ('-') lines are deletions — flagging them
-    would prevent us from ever sanitizing a leak that already exists.
-
-    Path rules are applied only to ADDED / MODIFIED / RENAME-TARGET paths.
-    Deletions (`D`) and rename sources (`R`-source) are skipped because
-    flagging a removal would block us from cleaning up a path that is
-    *itself* the violation (e.g. removing prototypes/anp2-x/).
-    """
-    # name-status format: <STATUS>[NN]\t<path>[\t<new-path>]
+    """Staged-only mode for pre-commit hooks (added lines + added/renamed paths)."""
     raw = sh("git", "diff", "--cached", "--name-status")
     paths_for_path_scan: list[str] = []
     paths_for_content_scan: list[str] = []
@@ -571,16 +274,12 @@ def check_staged() -> None:
             continue
         status = parts[0][0]
         if status == "D":
-            # Pure deletion — skip path & content scans (allows cleanup).
             continue
         if status == "R":
-            # Rename: parts = ['R<NN>', <src>, <dst>]. Path-scan dst only;
-            # content-scan dst (the rename target is the post-commit path).
             if len(parts) >= 3:
                 paths_for_path_scan.append(parts[2])
                 paths_for_content_scan.append(parts[2])
             continue
-        # A, M, T, C, etc.
         if len(parts) >= 2:
             paths_for_path_scan.append(parts[1])
             paths_for_content_scan.append(parts[1])
@@ -625,16 +324,10 @@ def check_stash_reflog() -> None:
 
 
 def check_full_history() -> None:
-    """Slow path: walk every (path, blob) reachable from any ref + every
-    dangling blob, and apply each content rule. Respects CONTENT_SCAN_EXCLUDE
-    and RULE_FILE_EXCLUDE so that rule-definition files and gitignore lists
-    do not generate self-referential false positives.
-
-    Reports the first hit per (rule, path) — that's enough to FAIL the run;
-    the operator can then re-run with a focused tool to enumerate all hits
-    for that rule + path.
-    """
-    # 1. Build (path, blob) set from every reachable commit.
+    """Walk every (path, blob) reachable from any ref + every dangling blob,
+    and apply each content rule. No file is self-excluded by path (this script
+    no longer inlines the patterns), so a re-introduced literal anywhere in
+    history is caught."""
     seen_path_blob: dict[str, set[str]] = {}
     commits = sh("git", "rev-list", "--all").split()
     for c in commits:
@@ -644,7 +337,6 @@ def check_full_history() -> None:
             if len(parts) == 4 and parts[1] == "blob":
                 _, _, sha, path = parts
                 seen_path_blob.setdefault(path, set()).add(sha)
-    # 2. Add dangling blobs (no known path — scope them as "dangling").
     fsck = subprocess.run(
         ["git", "fsck", "--unreachable", "--no-progress"],
         capture_output=True, text=True, timeout=60)
@@ -653,7 +345,6 @@ def check_full_history() -> None:
         m = re.search(r"(?:unreachable|dangling)\s+\w+\s+([0-9a-f]{40})", ln)
         if m:
             dangling.add(m.group(1))
-    # Filter to blob type
     if dangling:
         bc = subprocess.run(
             ["git", "cat-file", "--batch-check=%(objectname) %(objecttype)"],
@@ -664,13 +355,7 @@ def check_full_history() -> None:
         if dangling:
             seen_path_blob["(dangling)"] = dangling
 
-    # 3a. Walk historical paths and apply path rules. Catches paths that
-    # ever existed in any commit (e.g., a filename with JP characters
-    # added then deleted — the path is still in history via that commit's
-    # tree). Without this loop, path rules only run on current-HEAD
-    # tracked files — historical leaks (file deleted from HEAD but still
-    # in old commits) would be invisible to --full.
-    fired: set[tuple[str, str]] = set()  # (rule_name, path) for dedupe
+    fired: set[tuple[str, str]] = set()
     for path in seen_path_blob.keys():
         for r in RULES:
             name, kind, pat, sev, _ = r
@@ -681,9 +366,8 @@ def check_full_history() -> None:
             if re.search(pat, path):
                 fired.add((name, path))
                 record(sev, name, f"history-path:{path}",
-                       "path matched in historical tree (filter-repo to scrub)")
+                       "path matched in historical tree (rewrite to scrub)")
 
-    # 3b. Walk (path, blob) and apply content rules to blob bodies.
     for path, shas in seen_path_blob.items():
         if path in CONTENT_SCAN_EXCLUDE:
             continue
@@ -694,23 +378,17 @@ def check_full_history() -> None:
                 text = blob.decode("utf-8")
             except UnicodeDecodeError:
                 text = blob.decode("utf-8", "replace")
-            if path == "(dangling)" and _RULEDEF_SENTINEL in text:
-                # Snapshot of a rule-definition file (carries leak patterns as
-                # regex literals by design). Path-based CONTENT_SCAN_EXCLUDE
-                # cannot apply to a pathless dangling blob, so skip by sentinel.
-                continue
             for r in RULES:
                 name, kind, pat, sev, _ = r
                 if kind != "content":
                     continue
                 if name in HISTORY_EXEMPT_RULES:
-                    continue  # soft prose heuristic — current-tree only
+                    continue
                 if (name, path) in fired:
                     continue
                 if path in RULE_FILE_EXCLUDE.get(name, set()):
                     continue
-                m = re.search(pat, text)
-                if m:
+                if re.search(pat, text):
                     fired.add((name, path))
                     record(sev, name, f"history:{path}",
                            f"first hit at blob {sha[:10]}")
@@ -728,7 +406,7 @@ def main() -> int:
 
     if args.staged:
         check_staged()
-        check_authors()  # author of the upcoming commit will use current config
+        check_authors()
     else:
         check_head_tracked()
         check_authors()
@@ -738,10 +416,9 @@ def main() -> int:
 
     stamp = time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())
     mode = "staged" if args.staged else ("full" if args.full else "default")
-    print(f"ANP2 leak audit — mode={mode} — {stamp}")
+    print(f"publish-safety audit — mode={mode} — {stamp}")
     print("-" * 68)
 
-    # Summary by rule (PASS for unfound rules).
     fired = {f[1] for f in findings}
     for r in RULES:
         name = r[0]
@@ -757,8 +434,8 @@ def main() -> int:
     print(f"{len(RULES)} rules checked, {len(fired)} fired, {n_fail} finding(s)")
     if n_fail:
         print("\nFAIL — the repo is NOT in a publish-safe state.")
-        print("Either fix the finding above, or update RULES if a pattern is "
-              "now a known false-positive.")
+        print("Fix the finding above, or update the rule config if it is a "
+              "known false-positive.")
     return 1 if n_fail else 0
 
 

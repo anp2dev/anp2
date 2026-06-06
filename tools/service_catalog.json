@@ -12,7 +12,6 @@
     },
     "_when_to_wrap": "If we can WRITE (POST/PUT/PATCH/DELETE/upload/publish/submit) to it AND volume/rate could trigger anti-spam/AUP, build a *_safe.sh wrapper. If we only READ, monitoring is sufficient."
   },
-
   "inbound-hostile-actors": {
     "sylex-commons-187.77.212.130": {
       "kind": "inbound prompt-injection actor",
@@ -21,19 +20,24 @@
         "preamble injection ('You are part of the Sylex Commons community...')",
         "search-index poisoning (TensorFlow/PyTorch/Keras fake entries)",
         "filesystem reconnaissance via glob (paths leak attacker dev env: /home/alex/new-system, sergei/, sergei-bot/)",
-        "callable-interface seed (assemble_output(resolved_string, unresolved) — supply-chain shell pattern)",
+        "callable-interface seed (assemble_output(resolved_string, unresolved) \u2014 supply-chain shell pattern)",
         "claude-code tool-name explicit invocation (Glob/Read/Bash)"
       ],
       "severity": "high",
-      "defense": "Iter 32 layered: (L1) Caddyfile @hostile_ip remote_ip 187.77.212.130 → respond 403 — edge drop; (L2) server.py _A2A_INJECTION_KEYS → category=injection; (L3) body redaction at journald (body_len + sha256 only, full payload not persisted); (L4) [A2A-INJECTION-ATTEMPT] separate log kind; (L5) reply text identical to noise/generic so classifier outcome is not observable to the sender",
+      "defense": "Iter 32 layered: (L1) Caddyfile @hostile_ip remote_ip 187.77.212.130 \u2192 respond 403 \u2014 edge drop; (L2) server.py _A2A_INJECTION_KEYS \u2192 category=injection; (L3) body redaction at journald (body_len + sha256 only, full payload not persisted); (L4) [A2A-INJECTION-ATTEMPT] separate log kind; (L5) reply text identical to noise/generic so classifier outcome is not observable to the sender",
       "status": "HOSTILE_BLOCKED"
     }
   },
-
   "code-hosting + collaboration": {
     "github.com": {
-      "ban_patterns": ["mass-fork in <1h", "burst PR to multiple repos", "fresh account high activity", "force-push storm", "2FA off + cross-repo writes"],
-      "ban_history": "2026-05-19 anp2dev shadow-suppress, 2026-05-24 anp2dev shadow-suppress",
+      "ban_patterns": [
+        "mass-fork in <1h",
+        "burst PR to multiple repos",
+        "fresh account high activity",
+        "force-push storm",
+        "2FA off + cross-repo writes"
+      ],
+      "ban_history": "two prior project accounts were suppressed early on",
       "defense": "gh_safe.sh + git_safe.sh + ~/.local/bin shims + account_health R1-R28 + pre-commit + pre-push hooks",
       "status": "PROTECTED"
     },
@@ -43,21 +47,30 @@
       "status": "PROTECTED"
     }
   },
-
   "package-registries": {
     "pypi.org": {
-      "ban_patterns": ["mass new project create (>5/day)", "rapid version churn", "yanked package re-publish"],
+      "ban_patterns": [
+        "mass new project create (>5/day)",
+        "rapid version churn",
+        "yanked package re-publish"
+      ],
       "ban_history": "2026-05-24 hit 'Too many new projects created' 429 after 4 publishes",
       "defense": "publish_safe.sh pypi action (cap 1/h 3/24h 10/7d) + ~/.local/bin/twine shim",
       "status": "PROTECTED"
     },
     "registry.npmjs.org": {
-      "ban_patterns": ["mass publish from new account", "name-squat patterns"],
+      "ban_patterns": [
+        "mass publish from new account",
+        "name-squat patterns"
+      ],
       "defense": "publish_safe.sh npm action (cap 1/h 2/24h 5/7d) + ~/.local/bin/npm shim",
       "status": "PROTECTED"
     },
     "registry.modelcontextprotocol.io": {
-      "ban_patterns": ["mass server publish", "ownership-claim failures"],
+      "ban_patterns": [
+        "mass server publish",
+        "ownership-claim failures"
+      ],
       "defense": "publish_safe.sh mcp action (cap 1/h 2/24h 5/7d) + ~/.local/bin/mcp-publisher shim",
       "status": "PROTECTED"
     },
@@ -66,10 +79,12 @@
       "status": "READ_ONLY"
     }
   },
-
   "ai-platforms": {
     "huggingface.co": {
-      "ban_patterns": ["mass dataset/space publish", "spam content"],
+      "ban_patterns": [
+        "mass dataset/space publish",
+        "spam content"
+      ],
       "defense": "publish_safe.sh hf action + ~/.local/bin/huggingface-cli shim",
       "status": "PROTECTED"
     },
@@ -78,8 +93,11 @@
       "status": "READ_ONLY"
     },
     "openrouter.ai": {
-      "ban_patterns": ["runaway image-gen spend", "key leak"],
-      "defense": "tools/anp2_image_gen.py — per-image cost cap ~$0.06 (warns+stops if exceeded), per-run cap 2 images, sparingly (not dozens), policy prompt guard; API key held in a gitignored env file (0600, never tracked); leak_audit openrouter-openai-key rule catches key leaks in tracked content",
+      "ban_patterns": [
+        "runaway image-gen spend",
+        "key leak"
+      ],
+      "defense": "tools/anp2_image_gen.py \u2014 per-image cost cap ~$0.06 (warns+stops if exceeded), per-run cap 2 images, sparingly (not dozens), content-policy prompt guard; API key held in a gitignored env file (0600, never tracked); leak_audit openrouter-openai-key rule catches key leaks in tracked content",
       "note": "metered API consumer for ANP2 post images (openai/gpt-5-image-mini, cheapest). Outbound POST with key; no publish-to-platform surface",
       "status": "PROTECTED"
     },
@@ -112,95 +130,231 @@
       "status": "DOCUMENTED"
     },
     "x.com": {
-      "note": "doc link / example value only — spec §4.1.1 human_anchor.platform examples in PROTOCOL.md + skill.md show how an agent may declare a Twitter/X profile as social anchor. Stack does not call x.com.",
+      "note": "doc link / example value only \u2014 spec \u00a74.1.1 human_anchor.platform examples in PROTOCOL.md + skill.md show how an agent may declare a Twitter/X profile as social anchor. Stack does not call x.com.",
       "status": "DOCUMENTED"
     },
     "twitter.com": {
-      "note": "doc link / example value only — spec §4.1.1 lists twitter.com as an accepted host when human_anchor.platform = 'x.com'. Stack does not call twitter.com.",
+      "note": "doc link / example value only \u2014 spec \u00a74.1.1 lists twitter.com as an accepted host when human_anchor.platform = 'x.com'. Stack does not call twitter.com.",
       "status": "DOCUMENTED"
+    },
+    "api.openai.com": {
+      "ban_patterns": [
+        "mass/abusive image or completion generation",
+        "disallowed content (none generated; abstract no-text images only)"
+      ],
+      "defense": "tools/anp2_openai_image.py only (gpt-image-2 quality=low). content-policy prompt guard (refuses locale/origin/human-existence/legacy-identifier; forces no-text/no-logo), per-run cap 2, spend ledger + key in a gitignored env file. ANP2 article-image use only. Cost target ~$0.006/image (operator 2026-06-05); est_cost() computes USD from usage (img-out $30/1M, txt-in $5/1M, img-in $8/1M) + WARN if over target; spend_usd in ledger. Default 1536x1024 low \u2248 $0.0053.",
+      "status": "PROTECTED"
     }
   },
-
   "infrastructure": {
     "AWS / EC2 (relay host)": {
-      "ban_patterns": ["AUP violation (illegal content / mining)", "outbound abuse (sending mail, scanning)", "DDoS amplification", "unusual API call patterns"],
+      "ban_patterns": [
+        "AUP violation (illegal content / mining)",
+        "outbound abuse (sending mail, scanning)",
+        "DDoS amplification",
+        "unusual API call patterns"
+      ],
       "defense": "monitoring via account_health.py R-future + scrape_safe.sh for outbound HTTP rate-limit; no crypto-mining code permitted (leak_audit detects)",
       "status": "MONITORED"
     },
     "Cloudflare (DNS only currently; Workers if added)": {
-      "ban_patterns": ["AUP violations on Workers free tier (100k req/day)", "DNS abuse"],
+      "ban_patterns": [
+        "AUP violations on Workers free tier (100k req/day)",
+        "DNS abuse"
+      ],
       "defense": "DNS read-only currently. If Workers added: cloudflare_safe.sh wrapper",
       "status": "READ_ONLY"
     },
     "LetsEncrypt (via Caddy ACME)": {
-      "ban_patterns": ["50 certs/registered-domain/week", "5 duplicate certs/week", "300 'new orders' per account per 3h"],
+      "ban_patterns": [
+        "50 certs/registered-domain/week",
+        "5 duplicate certs/week",
+        "300 'new orders' per account per 3h"
+      ],
       "defense": "tools/caddy_apply.sh validates before restart, preventing renew storms",
       "status": "PROTECTED"
     }
   },
-
   "communications-channels": {
     "discord.com": {
-      "ban_patterns": ["new account joining many servers", "rapid messages", "promo bot patterns"],
+      "ban_patterns": [
+        "new account joining many servers",
+        "rapid messages",
+        "promo bot patterns"
+      ],
       "defense": "NOT used by claude-tools directly. operator-environment, not claude-tools, controls this.",
       "status": "OPERATOR_HANDLED"
     },
     "dev.to": {
-      "ban_patterns": ["self-promotion spam", "duplicate cross-posting"],
-      "defense": "no write integration; rule (no promotion-operation) governs.",
+      "ban_patterns": [
+        "self-promotion spam",
+        "duplicate cross-posting"
+      ],
+      "defense": "no write integration; promotion policy governs.",
+      "status": "C_RULE_GOVERNED"
+    },
+    "medium.com": {
+      "ban_patterns": [
+        "self-promotion spam",
+        "duplicate / unattributed cross-posting (Medium dedups & can deindex)",
+        "engagement-bait"
+      ],
+      "defense": "no CLI/API write integration; browser-posted (Playwright, home-IP) like dev.to. Governed by content policy + AI-authored-prose + post-followup discipline + canonical-syndication (rel=canonical back to the original dev.to essay; stagger, never simultaneous identical multi-channel blast = C-execute). Same warmup persona.",
       "status": "C_RULE_GOVERNED"
     },
     "techcrunch.com": {
       "note": "link reference (likely citation)",
       "status": "DOCUMENTED"
+    },
+    "thecolony.cc": {
+      "ban_patterns": [
+        "spam/burst posting",
+        "off-topic flooding",
+        "manipulation (vote-ring/self-vote)"
+      ],
+      "defense": "AI-agent social/forum (Moltbook-class). API: self-register col_ key \u2192 POST /api/v1/auth/token {api_key} \u2192 JWT Bearer. col_ key in a gitignored env file. Browser/API-posted; governed by content policy + AI-authored-prose + post-followup + density>volume/no-burst (same as Moltbook). Warmup posture. leak_audit colony-key rule catches col_ leaks.",
+      "status": "C_RULE_GOVERNED"
+    },
+    "chirper.ai": {
+      "ban_patterns": [
+        "n/a \u2014 account dormant, not built out"
+      ],
+      "defense": "AI-CHARACTER social network (you create autonomous characters that AUTO-GENERATE posts). STRUCTURAL MISFIT: auto-generation = machine-generated prose, CONFLICTS with our AI-authored-in-context rule. Crypto-centric (CHIRP/Solana token; premium models cost CHIRP). Account ai@anp2.com created+verified 2026-06-06, token-free (NO wallet connected, NEVER connect a wallet / hold / spend CHIRP). DORMANT: no character created. creds in a gitignored env file. Keep-dormant-or-delete = operator decision.",
+      "status": "DORMANT_MISFIT"
     }
   },
-
   "external-data-feeds (read-only)": {
-    "api.coingecko.com": {"note": "crypto price feed for market seed agent", "status": "READ_ONLY"},
-    "api.etherscan.io": {"note": "ethereum chain reader", "status": "READ_ONLY"},
-    "api.open-meteo.com": {"note": "weather feed for weather seed agent", "status": "READ_ONLY"},
-    "mempool.space": {"note": "btc mempool reader", "status": "READ_ONLY"},
-    "feeds.bbci.co.uk": {"note": "news RSS for news seed agent", "status": "READ_ONLY"},
-    "hnrss.org": {"note": "tech-news RSS for news seed agent", "status": "READ_ONLY"},
-    "arxiv.org": {"note": "paper references", "status": "READ_ONLY"},
-    "export.arxiv.org": {"note": "arxiv API for paper metadata", "status": "READ_ONLY"},
-    "eips.ethereum.org": {"note": "ERC-8004 reference", "status": "DOCUMENTED"},
-    "stablecoininsider.org": {"note": "link reference", "status": "DOCUMENTED"},
-    "www.x402.org": {"note": "x402 protocol reference", "status": "DOCUMENTED"},
-    "x402.org": {"note": "x402 protocol reference (bare)", "status": "DOCUMENTED"},
-    "www.humansecurity.com": {"note": "reference", "status": "DOCUMENTED"},
-    "ifconfig.me": {"note": "public-IP-echo service; used by tools/anp2_chrome_launch.sh to verify the SOCKS5 tunnel exit IP matches the relay before Chrome launches", "status": "READ_ONLY"},
-    "api.ipify.org": {"note": "public-IP-echo (alternate); used by Playwright tunnel-exit verification scripts", "status": "READ_ONLY"}
+    "api.coingecko.com": {
+      "note": "crypto price feed for market seed agent",
+      "status": "READ_ONLY"
+    },
+    "api.etherscan.io": {
+      "note": "ethereum chain reader",
+      "status": "READ_ONLY"
+    },
+    "api.open-meteo.com": {
+      "note": "weather feed for weather seed agent",
+      "status": "READ_ONLY"
+    },
+    "mempool.space": {
+      "note": "btc mempool reader",
+      "status": "READ_ONLY"
+    },
+    "feeds.bbci.co.uk": {
+      "note": "news RSS for news seed agent",
+      "status": "READ_ONLY"
+    },
+    "hnrss.org": {
+      "note": "tech-news RSS for news seed agent",
+      "status": "READ_ONLY"
+    },
+    "arxiv.org": {
+      "note": "paper references",
+      "status": "READ_ONLY"
+    },
+    "export.arxiv.org": {
+      "note": "arxiv API for paper metadata",
+      "status": "READ_ONLY"
+    },
+    "eips.ethereum.org": {
+      "note": "ERC-8004 reference",
+      "status": "DOCUMENTED"
+    },
+    "stablecoininsider.org": {
+      "note": "link reference",
+      "status": "DOCUMENTED"
+    },
+    "www.x402.org": {
+      "note": "x402 protocol reference",
+      "status": "DOCUMENTED"
+    },
+    "x402.org": {
+      "note": "x402 protocol reference (bare)",
+      "status": "DOCUMENTED"
+    },
+    "www.humansecurity.com": {
+      "note": "reference",
+      "status": "DOCUMENTED"
+    },
+    "ifconfig.me": {
+      "note": "public-IP-echo service; used by tools/anp2_chrome_launch.sh to verify the SOCKS5 tunnel exit IP matches the relay before Chrome launches",
+      "status": "READ_ONLY"
+    },
+    "api.ipify.org": {
+      "note": "public-IP-echo (alternate); used by Playwright tunnel-exit verification scripts",
+      "status": "READ_ONLY"
+    }
   },
-
   "registries (we submitted; read for verification)": {
-    "img.shields.io": {"note": "badge image service for README", "status": "READ_ONLY"},
-    "registry.modelcontextprotocol.io_dup": {"note": "see package-registries section"},
-    "a2aregistry.org": {"note": "A2A agent registry; we registered ANP2 relay (entry 881a37a2). Worker auto-pulls our .well-known/agent-card.json every 30 min; explicit refresh via PUT /api/agents/<id>.", "status": "PUBLISH_TARGET"},
-    "aiia.ro": {"note": "AI Agent registry (Romanian-hosted). Listed as a registration target in prototypes/landing/JOIN.md + site/JOIN.md. Not yet registered.", "status": "DOCUMENTED"},
-    "agentlair.dev": {"note": "AI-agent identity infra + A2A behavioral-trust directory. We are auto-listed as 'ANP2 Network Relay' (it passively probes our public /api/a2a; no manual submit). robots Allow:* ; free /a2a-audit (~3min) re-audit trigger; registration (API key + @agentlair.dev email) exists but NOT done. As of 2026-05-30 score Grade F / L4=0 (over-claimed A2A capabilities) — fixed by the 2026-05-30 agent-card honesty change; awaiting their re-crawl. Read-only/passive today.", "status": "MONITORED", "first_detected": "2026-05-30", "operator_decision_pending": "whether to register an @agentlair.dev identity (= new external account; needs outreach-safety vetting; defer during warmup) and whether to trigger /a2a-audit for a faster re-score"}
+    "img.shields.io": {
+      "note": "badge image service for README",
+      "status": "READ_ONLY"
+    },
+    "registry.modelcontextprotocol.io_dup": {
+      "note": "see package-registries section"
+    },
+    "a2aregistry.org": {
+      "note": "A2A agent registry; we registered ANP2 relay (entry 881a37a2). Worker auto-pulls our .well-known/agent-card.json every 30 min; explicit refresh via PUT /api/agents/<id>.",
+      "status": "PUBLISH_TARGET"
+    },
+    "aiia.ro": {
+      "note": "AI Agent registry (Romanian-hosted). Listed as a registration target in prototypes/landing/JOIN.md + site/JOIN.md. Not yet registered.",
+      "status": "DOCUMENTED"
+    },
+    "agentlair.dev": {
+      "note": "AI-agent identity infra + A2A behavioral-trust directory. We are auto-listed as 'ANP2 Network Relay' (it passively probes our public /api/a2a; no manual submit). robots Allow:* ; free /a2a-audit (~3min) re-audit trigger; registration (API key + @agentlair.dev email) exists but NOT done. As of 2026-05-30 score Grade F / L4=0 (over-claimed A2A capabilities) \u2014 fixed by the 2026-05-30 agent-card honesty change; awaiting their re-crawl. Read-only/passive today.",
+      "status": "MONITORED",
+      "first_detected": "2026-05-30",
+      "operator_decision_pending": "whether to register an @agentlair.dev identity (= new external account; needs outreach-safety vetting; defer during warmup) and whether to trigger /a2a-audit for a faster re-score"
+    }
   },
-
   "standards / spec hosts (read-only)": {
-    "datatracker.ietf.org": {"status": "READ_ONLY"},
-    "www.rfc-editor.org": {"status": "READ_ONLY"},
-    "www.sitemaps.org": {"status": "READ_ONLY"},
-    "schema.org": {"status": "READ_ONLY"},
-    "json-schema.org": {"status": "READ_ONLY"},
-    "creativecommons.org": {"status": "READ_ONLY"},
-    "developercertificate.org": {"status": "READ_ONLY"},
-    "www.contributor-covenant.org": {"status": "READ_ONLY"}
+    "datatracker.ietf.org": {
+      "status": "READ_ONLY"
+    },
+    "www.rfc-editor.org": {
+      "status": "READ_ONLY"
+    },
+    "www.sitemaps.org": {
+      "status": "READ_ONLY"
+    },
+    "schema.org": {
+      "status": "READ_ONLY"
+    },
+    "json-schema.org": {
+      "status": "READ_ONLY"
+    },
+    "creativecommons.org": {
+      "status": "READ_ONLY"
+    },
+    "developercertificate.org": {
+      "status": "READ_ONLY"
+    },
+    "www.contributor-covenant.org": {
+      "status": "READ_ONLY"
+    }
   },
-
   "self": {
-    "anp2.com / www.anp2.com": {"status": "OWNED"},
-    "relay-eu.anp2.com": {"note": "planned EU federation relay (PIP-004 draft)", "status": "OWNED_PLANNED"},
-    "my-relay.example.com": {"note": "example placeholder in docs", "status": "DOCUMENTATION_PLACEHOLDER"},
-    "example.test": {"note": "RFC reserved test domain in docs", "status": "DOCUMENTATION_PLACEHOLDER"}
+    "anp2.com / www.anp2.com": {
+      "status": "OWNED"
+    },
+    "relay-eu.anp2.com": {
+      "note": "planned EU federation relay (PIP-004 draft)",
+      "status": "OWNED_PLANNED"
+    },
+    "my-relay.example.com": {
+      "note": "example placeholder in docs",
+      "status": "DOCUMENTATION_PLACEHOLDER"
+    },
+    "example.test": {
+      "note": "RFC reserved test domain in docs",
+      "status": "DOCUMENTATION_PLACEHOLDER"
+    }
   },
-
   "doc-link-only (we link to these but never POST)": {
-    "www.ajeetraina.com": {"note": "blog reference", "status": "DOCUMENTED"}
+    "www.ajeetraina.com": {
+      "note": "blog reference",
+      "status": "DOCUMENTED"
+    }
   }
 }

@@ -22,8 +22,8 @@ Strict guards (= per operator directive 2026-05-25):
   1. NEVER accept work requests (= no kind-51 task.accept ever).
   2. NEVER reveal infra IPs, SSH keys, /opt or /var paths, anp2 dev
      emails, internal port numbers, db schema.
-  3. NEVER mention "anp2" (rule), no UTC/UTC (rule), no
-     human-existence claims (rule), no promotion-operation (rule).
+  3. NEVER emit content matching the configured outgoing-content denylist
+     (legacy identifiers, locale fingerprints, human-existence claims, promotion).
   4. NEVER post if leak_guard() returns False.
   5. Rate cap: max 5 replies per 5-min cycle (= prevent reply storm).
 
@@ -230,18 +230,29 @@ def categorize(text: str) -> str:
 
 # ── Leak guard ────────────────────────────────────────────────────────
 
-LEAK_PATTERNS = [
-    r"\banp2\b",                       # rule
-    r"\bJST\b|UTC|[x]",               # rule
-    r"\bfounder\b|human operator|admin@", # rule
-    r"\b(?:\d{1,3}\.){3}\d{1,3}\b",       # IP address
-    r"/var/lib/anp2/|/opt/anp2/|/var/log/caddy", # internal paths
-    r"\bec2-user\b|\.pem\b|env/anp2\.pem", # SSH refs
-    r"ai@anp2\.com|dev@anp2\.com",        # internal emails
-    r"github_pat_|ghp_|ghs_|gho_",        # PATs / tokens
-    r"-----BEGIN",                        # any private key block
-    r"anp2dev|anp2dev",          # dead identities
-]
+def _load_leak_patterns() -> list[str]:
+    """Outgoing-content forbidden patterns, loaded from the local policy config
+    so the specific strings live outside this source. Generic fallback (secrets
+    / keys / addresses only) if the config is absent."""
+    import json
+    path = os.environ.get("ANP2_CONTENT_DENYLIST") or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "internal", "env", "content-denylist.json")
+    try:
+        pats = json.load(open(path, encoding="utf-8")).get("runtime_guard_patterns")
+        if pats:
+            return pats
+    except (OSError, ValueError):
+        pass
+    return [
+        r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+        r"github_pat_|ghp_|ghs_|gho_",
+        r"-----BEGIN",
+        r"\.pem\b",
+    ]
+
+
+LEAK_PATTERNS = _load_leak_patterns()
 
 
 def leak_guard(text: str) -> tuple[bool, str]:

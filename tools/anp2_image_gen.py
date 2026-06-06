@@ -12,7 +12,7 @@ can never run away on cost:
     -mini cost about an order of magnitude under the cap (~$0.01-0.02/image).
   - PER-RUN cap of 2 images + "use sparingly, not dozens" (a spend ledger
     tracks lifetime image count for visibility).
-  - policy PROMPT GUARD: refuses prompts containing Japanese script, origin
+  - PROMPT GUARD: refuses prompts matching the content-policy denylist (locale
     fingerprints, human-existence wording, or the legacy brand; appends a
     "no text / no words / no logos" directive so the model can't render stray
     text that would smuggle B/D leaks into the image.
@@ -58,14 +58,22 @@ MAX_PER_RUN = 2
 PRICE_PROMPT_USD = 0.0000025
 PRICE_COMPLETION_USD = 0.000002
 
-# policy prompt guard (refuse before spending).
-FORBIDDEN = [
-    (r"[ぁ-んァ-ヶ一-龯]", "Japanese script (rule)"),
-    (r"\bJST\b|UTC|[x]|tokyo|japan", "origin fingerprint (rule)"),
-    (r"\banp2\b", "legacy brand (rule)"),
-    (r"\bfounder\b|human (?:operator|maintainer|team|owner)|operated by (?:a )?(?:person|people|humans)",
-     "human-existence wording (rule)"),
-]
+# Prompt guard (refuse before spending). Patterns load from the local policy
+# config so the specific strings stay out of this source; generic fallback
+# (no project-specific literals) if the config is absent.
+def _load_forbidden() -> list[tuple[str, str]]:
+    path = os.environ.get("ANP2_CONTENT_DENYLIST") or os.path.join(
+        REPO, "internal", "env", "content-denylist.json")
+    try:
+        pats = json.load(open(path, encoding="utf-8")).get("runtime_guard_patterns")
+        if pats:
+            return [(p, "content-policy denylist") for p in pats]
+    except (OSError, ValueError):
+        pass
+    return [(r"-----BEGIN", "key material"), (r"github_pat_|ghp_", "token")]
+
+
+FORBIDDEN = _load_forbidden()
 
 
 def load_env() -> dict:
