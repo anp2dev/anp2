@@ -143,7 +143,7 @@ op_push_force() {
     rm -f "$APPROVAL_TOKEN_FILE"
     echo "git_safe: force-push approval consumed (single-use)" >&2
 
-    check_rate push-force 1 1 2
+    check_rate push-force "${ANP2_FORCE_PUSH_CAP_1H:-1}" "${ANP2_FORCE_PUSH_CAP_24H:-1}" "${ANP2_FORCE_PUSH_CAP_7D:-2}"
     if "$REAL_GIT" push "$@"; then
         log_op push-force "${TARGET:0:120}" "OK"
         return 0

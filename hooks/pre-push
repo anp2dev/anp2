@@ -70,6 +70,14 @@ while read local_ref local_sha remote_ref remote_sha; do
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
     continue   # deletion
   fi
+  # After a deliberate history rewrite + local prune, the old remote tip may
+  # no longer exist locally; a "$remote_sha..$local_sha" range would crash the
+  # hook (set -e). Treat an unresolvable remote_sha as a single rewrite event,
+  # same as an initial push — the ANP2_REWRITE_PUSH carve-out below governs R7/R8.
+  if [ "$remote_sha" != "0000000000000000000000000000000000000000" ] && \
+     ! git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+    remote_sha=0000000000000000000000000000000000000000
+  fi
   if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
     IS_INITIAL_PUSH=1
     n=$(git rev-list --count "$local_sha")
