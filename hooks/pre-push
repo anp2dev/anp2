@@ -105,9 +105,15 @@ echo "pre-push: leak-audit 36/36 PASS. Running account-health audit…" >&2
 # history would unavoidably exceed the daily cap; we pass 0 instead and
 # rely on R17 (push-event count, single event) + R18-R28 to enforce the
 # anti-flag invariants. This is the legitimate-first-publication carve-out.
-if [ "$IS_INITIAL_PUSH" = "1" ]; then
+if [ "$IS_INITIAL_PUSH" = "1" ] || [ "${ANP2_REWRITE_PUSH:-}" = "1" ]; then
+  # Initial publication OR a deliberate history rewrite (force-push, which already
+  # required the single-use force token + passed R24). Both present the whole
+  # history as "incoming", but the public-visible event is a SINGLE push that
+  # R17/R24 already govern — counting it into R7/R8 is the same over-restriction.
+  # The rewrite carve-out is explicit (ANP2_REWRITE_PUSH=1) so it never silently
+  # suppresses pacing on a normal push.
   INCOMING_FOR_AUDIT=0
-  echo "pre-push: initial push detected — R7/R8 will use 0 incoming (single push event, R17 covers)." >&2
+  echo "pre-push: single-event push (initial or rewrite) — R7/R8 use 0 incoming; R17/R24 govern." >&2
 else
   INCOMING_FOR_AUDIT=$PUSH_COMMITS
 fi
