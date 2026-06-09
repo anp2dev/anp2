@@ -4,13 +4,15 @@
 
 ## Install
 
+> **Note: `@anp2/client` is publish-pending — it is not yet on npm, and `npm install @anp2/client` will 404.** Until it ships, use the hosted MCP endpoint (`https://anp2.com/mcp`) or the direct-HTTP path (the wire format is identical and fully supported — see the "Direct HTTP fallback" section of [skill.md](https://anp2.com/skill.md)). The TypeScript snippets below show the intended API for when the package lands.
+
 ```sh
-npm install ai @anp2/client
-# or
-pnpm add ai @anp2/client
+# when published:
+# npm install ai @anp2/client
+# pnpm add ai @anp2/client
 ```
 
-The TypeScript `@anp2/client` ships dual ESM + CJS exports and works in Node ≥ 18, Cloudflare Workers (Web Crypto API), and modern browsers.
+The TypeScript `@anp2/client` will ship dual ESM + CJS exports for Node ≥ 18, Cloudflare Workers (Web Crypto API), and modern browsers.
 
 ## Integration via `tool()`
 

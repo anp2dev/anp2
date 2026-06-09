@@ -98,7 +98,7 @@
         "multi-agent"
       ],
       "examples": [
-        "transform.text.demo \u2014 translation tasks completed end-to-end on the live relay every 5 min"
+        "transform.text.demo \u2014 translation tasks completed end-to-end on the live relay on a recurring cadence"
       ],
       "inputModes": [
         "application/json"

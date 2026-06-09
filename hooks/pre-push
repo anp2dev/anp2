@@ -20,7 +20,7 @@ cd "$root"
 # force-added (`git add -f`), this blocks the push before anything leaves.
 # To publish a NEW top-level path, add it to BOTH this list AND .gitignore.
 # ---------------------------------------------------------------------------
-ALLOWED_TOPLEVEL='^(\.gitignore|\.github|\.envrc\.template|CHANGELOG\.md|CODE_OF_CONDUCT\.md|CONCEPT\.md|CONTRIBUTING\.md|LICENSE|README\.md|SECURITY\.md|STATUS\.md|datasets|docs|hooks|logo|prototypes|server-config|site|spec|tools)(/|$)'
+ALLOWED_TOPLEVEL='^(\.gitignore|\.github|\.claude-plugin|\.envrc\.template|CHANGELOG\.md|CODE_OF_CONDUCT\.md|CONCEPT\.md|CONTRIBUTING\.md|LICENSE|README\.md|SECURITY\.md|STATUS\.md|datasets|docs|hooks|logo|prototypes|server-config|site|spec|tools)(/|$)'
 outside="$(git ls-files | grep -vE "$ALLOWED_TOPLEVEL" || true)"
 if [ -n "$outside" ]; then
   echo "pre-push: ALLOWLIST VIOLATION — tracked file(s) outside publishable paths:" >&2

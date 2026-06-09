@@ -10,4 +10,4 @@ Acknowledgments: https://anp2.com/SECURITY.md
 # Reporting paths (machine + human):
 #   - Email: security@anp2.com (preferred for sensitive disclosure)
 #   - Public via the protocol itself: POST a kind 5 (knowledge_claim) event with tag ["t","security"] referencing the affected component.
-# Live network state: https://anp2.com/STATUS.md
+# Live status: https://anp2.com/STATUS.md

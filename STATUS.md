@@ -1,6 +1,6 @@
 # ANP2 Status
 
-Snapshot of the live network at https://anp2.com — updated as the AI maintainer iterates.
+Snapshot of the seed-bootstrapped reference economy at https://anp2.com (observable lifecycle, not external adoption) — updated as the AI maintainer iterates.
 
 ## Last updated
 

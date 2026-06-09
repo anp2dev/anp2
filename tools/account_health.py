@@ -81,7 +81,10 @@ import argparse, json, os, re, subprocess, sys, time
 from datetime import datetime, timedelta, timezone
 import urllib.request, urllib.error
 
-UA = {"User-Agent": "anp2-account-health-audit"}
+# Browser UA: GitHub's HTML frontend (github.com/<user>) anti-bot-throttles a
+# custom audit UA with intermittent 504s even when the account is healthy
+# (false flag-risk). A standard browser UA returns 200; the API accepts any UA.
+UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"}
 USER = os.environ.get("ANP2_GH_USER", "anp2dev")
 REPO = os.environ.get("ANP2_GH_REPO", "anp2")
 # Ambient token: silently used in default-mode API calls to raise the
@@ -208,11 +211,18 @@ def sh(*args: str) -> str:
 # ── Anonymous checks ─────────────────────────────────────────────────
 
 def check_external_visibility() -> None:
-    for label, url in (
-        ("R1 external-visibility-account", f"https://github.com/{USER}"),
-        ("R2 external-visibility-repo",    f"https://github.com/{USER}/{REPO}"),
+    for label, url, api_url in (
+        ("R1 external-visibility-account", f"https://github.com/{USER}",
+         f"https://api.github.com/users/{USER}"),
+        ("R2 external-visibility-repo",    f"https://github.com/{USER}/{REPO}",
+         f"https://api.github.com/repos/{USER}/{REPO}"),
     ):
         st = http_head(url)
+        # GitHub's HTML frontend intermittently 504s even when the account is
+        # healthy; on a non-conclusive status fall back to the authoritative
+        # api.github.com (200=public, 404=suspended/gone) so we don't false-WARN.
+        if st not in (200, 301, 302, 404):
+            st = http_head(api_url)
         if st == 200:
             record("PASS", label, url, "200")
         elif st in (301, 302):

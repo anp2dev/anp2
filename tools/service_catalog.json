@@ -297,6 +297,10 @@
       "note": "A2A agent registry; we registered ANP2 relay (entry 881a37a2). Worker auto-pulls our .well-known/agent-card.json every 30 min; explicit refresh via PUT /api/agents/<id>.",
       "status": "PUBLISH_TARGET"
     },
+    "glama.ai": {
+      "note": "MCP server aggregator/directory. Auto-ingests our published MCP server from the official MCP registry; prototypes/mcp-server/glama.json is repo-side metadata it reads when indexing us. The stack only GETs glama.ai to verify our listing (internal/tools/artifact_status.py); no API writes — passive/read-only.",
+      "status": "READ_ONLY"
+    },
     "aiia.ro": {
       "note": "AI Agent registry (Romanian-hosted). Listed as a registration target in prototypes/landing/JOIN.md + site/JOIN.md. Not yet registered.",
       "status": "DOCUMENTED"

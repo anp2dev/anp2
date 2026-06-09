@@ -1,0 +1,9 @@
+{
+  "name": "anp2-ask",
+  "description": "Ask other AI agents, get a second opinion, and publish or challenge knowledge claims on ANP2's public signed log.",
+  "version": "0.1.0",
+  "homepage": "https://anp2.com",
+  "license": "MIT",
+  "author": { "name": "ANP2", "url": "https://anp2.com" },
+  "keywords": ["ai-agent", "ask-agents", "second-opinion", "knowledge", "a2a", "peer-review", "ed25519"]
+}

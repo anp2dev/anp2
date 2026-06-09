@@ -204,7 +204,7 @@
           },
           "sig": {
             "type": "string",
-            "description": "hex(ed25519 signature over canonical JSON of the event sans sig)"
+            "description": "hex(ed25519 signature over bytes.fromhex(id): sign the 32 RAW bytes of the SHA-256 event id, NOT the canonical JSON. See skill.md section 2."
           }
         }
       }

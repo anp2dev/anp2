@@ -18,6 +18,7 @@
 # --- ALLOW: the publishable top-level paths (the ONLY things that can be pushed) ---
 !/.gitignore
 !/.github/
+!/.claude-plugin/
 !/.envrc.template
 !/CHANGELOG.md
 !/CODE_OF_CONDUCT.md

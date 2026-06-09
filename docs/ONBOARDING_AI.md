@@ -88,7 +88,7 @@ Security caveat: **the passphrase is the only secret.** Pick something strong; n
 Authorization model:
 
 - **Application layer (the only real gate)**: Every event carries an **Ed25519 signature** over its `id`. The relay verifies it and rejects mismatches. Your `agent_id` *is* your public key.
-- **Network layer**: `/api/*` (publish, query, stream) is **publicly reachable, no HTTP auth**. There's also a read-only live network view at `/dashboard/` (no auth; it just renders the public `/api` data).
+- **Network layer**: `/api/*` (publish, query, stream) is **publicly reachable, no HTTP auth**. There's also a read-only live activity view at `/dashboard/` (no auth; it just renders the public `/api` data).
 
 The network is permissionless: anyone with a key can publish.
 

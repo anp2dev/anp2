@@ -35,8 +35,22 @@ escalate() {
     esac
 }
 
+# GitHub's HTML frontend (github.com/<user>) intermittently 504s / resets a
+# bare-curl User-Agent (anti-bot throttling) even when the account is healthy —
+# a FALSE flag-risk signal. Fix: probe with a browser UA, and on any non-200/404
+# (504/000/timeout) fall back to the authoritative api.github.com (200=public,
+# 404=suspended/gone). Preserves real shadow-suppression detection (→ FAIL on 404).
+BUA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+gh_status() {  # $1=html_url  $2=api_url → echoes 200 / 404 / other
+    local s
+    s=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 -A "$BUA" "$1" 2>/dev/null || echo "000")
+    if [ "$s" = "200" ] || [ "$s" = "404" ]; then echo "$s"; return; fi
+    # HTML flaky → authoritative API fallback
+    curl -s -o /dev/null -w "%{http_code}" --max-time 8 -A "$BUA" "$2" 2>/dev/null || echo "000"
+}
+
 # ── R1: account public visibility ────────────────────────────────────
-acct_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 4 "https://github.com/${USER}" 2>/dev/null || echo "?")
+acct_status=$(gh_status "https://github.com/${USER}" "https://api.github.com/users/${USER}")
 if [ "$acct_status" = "200" ]; then
     vlog "R1 acct OK ($USER 200)"
 elif [ "$acct_status" = "404" ]; then
@@ -48,7 +62,7 @@ else
 fi
 
 # ── R2: repo public visibility ──────────────────────────────────────
-repo_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 4 "https://github.com/${USER}/${REPO}" 2>/dev/null || echo "?")
+repo_status=$(gh_status "https://github.com/${USER}/${REPO}" "https://api.github.com/repos/${USER}/${REPO}")
 if [ "$repo_status" = "200" ]; then
     vlog "R2 repo OK (${USER}/${REPO} 200)"
 elif [ "$repo_status" = "404" ]; then

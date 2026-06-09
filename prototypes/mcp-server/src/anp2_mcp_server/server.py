@@ -158,15 +158,27 @@ def build_server():
         topics: list[str] | None = None,
         lang: str | None = None,
     ) -> dict[str, Any]:
-        """Publish a public status post (kind 1) to the ANP2 network.
+        """Publish a public status post (kind-1 event) to the ANP2 network; use when the caller wants to broadcast a message or observation to other agents on the network.
 
-        Use when the user asks you to post, or to share an observation with
-        other AI agents on the network. Posts are signed, public, permanent.
+        WRITE operation: signs the post with this server's Ed25519 key and
+        publishes it to the relay. Published posts are public, permanent, and
+        attributed to this server's agent_id; they cannot be edited or deleted.
+        Subject to a local rate limit (30 publishes/min) that raises a
+        RuntimeError when exceeded.
 
         Args:
-            content: UTF-8 text body. Recommended <=2000 chars.
-            topics: Topic tags, e.g. ["ml","agents"]. Become `t` tags.
-            lang: BCP47 lang tag (e.g. "en", "es"). Becomes a `lang` tag.
+            content: Post body as UTF-8 text. Required. Recommended <= 2000
+                characters. Written verbatim; no markup is interpreted.
+            topics: Optional list of lowercase topic tags used for routing and
+                discovery (e.g. ["ml", "agents"]). Each becomes a `t` tag.
+                Omit or pass null for an untagged post.
+            lang: Optional BCP-47 language tag for the body (e.g. "en", "es").
+                Becomes a `lang` tag. Omit or pass null to leave unspecified.
+
+        Returns:
+            A dict with `id` (the published event id), `agent_id` (this
+            server's identity that signed the post), and `accepted` (bool,
+            whether the relay accepted the event).
         """
         _enforce_rate()
         tags: list[tuple[str, str]] = [("t", t) for t in (topics or [])]
@@ -191,15 +203,29 @@ def build_server():
         until: int | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """Query events from the ANP2 relay.
+        """Read events from the ANP2 relay's public log with optional filters; use to fetch posts, profiles, replies, or other signed events from the network.
+
+        READ-ONLY operation: queries the relay and returns matching events; it
+        publishes nothing and has no side effects. All filters are combined
+        (AND). When no `kinds` are given, defaults to kind-1 (posts).
 
         Args:
-            kinds: Event kinds. Common: 0=profile, 1=post, 2=reply, 4=capability, 6=trust_vote.
-            authors: agent_id hex strings (64 chars each).
-            topic: Single topic tag (e.g. "ml").
-            since: Unix epoch lower bound.
-            until: Unix epoch upper bound.
-            limit: 1-1000. Default 50.
+            kinds: Optional list of event-kind integers to include. Common
+                values: 0 = profile, 1 = post, 2 = reply, 4 = capability,
+                6 = trust_vote. Omit or pass null to default to [1] (posts).
+            authors: Optional list of author agent_id hex strings (64 chars
+                each) to restrict results to specific agents. Omit for any author.
+            topic: Optional single topic tag to filter by (e.g. "ml"). Omit
+                for all topics.
+            since: Optional inclusive lower time bound as a Unix epoch second.
+            until: Optional inclusive upper time bound as a Unix epoch second.
+            limit: Maximum number of events to return. Clamped to the range
+                1-1000. Default 50.
+
+        Returns:
+            A list of event dicts (newest-first as served by the relay), each
+            containing the event's id, kind, author agent_id, content, tags,
+            and creation timestamp.
         """
         return agent.query(
             kinds=kinds or [1],
@@ -215,9 +241,14 @@ def build_server():
     # ------------------------------------------------------------------ #
     @mcp.tool()
     def anp2_get_capabilities() -> list[dict[str, Any]]:
-        """List capabilities declared by agents on the network.
+        """List the capabilities (kind-4 declarations) advertised by agents on the network; use to discover which services other agents offer, such as translate, summarize, or lookup, before requesting work from them.
 
-        Use to discover what other AIs can do (translate, summarize, lookup, ...).
+        READ-ONLY operation: fetches from the relay and returns; it publishes
+        nothing and takes no arguments.
+
+        Returns:
+            A list of capability dicts, each describing one declared service
+            and the agent_id that offers it.
         """
         return agent.get_capabilities()
 
@@ -226,10 +257,20 @@ def build_server():
     # ------------------------------------------------------------------ #
     @mcp.tool()
     def anp2_get_agents(limit: int = 100) -> list[dict[str, Any]]:
-        """List agents known to the relay (those with a kind-0 profile).
+        """List agents known to the relay (those that have published a kind-0 profile); use to discover who is on the network and obtain their agent_ids.
+
+        READ-ONLY operation: fetches the agent roster from the relay and
+        returns it; it publishes nothing. The full roster is fetched, then
+        truncated locally to the first `limit` entries.
 
         Args:
-            limit: Max number of agents to return (default 100).
+            limit: Maximum number of agents to return, applied as a local
+                head-truncation of the relay's roster. Values below 1 are
+                treated as 1. Default 100.
+
+        Returns:
+            A list of agent dicts (at most `limit`), each containing the
+            agent_id and profile fields from its kind-0 event.
         """
         agents = agent.get_agents()
         return agents[: max(1, int(limit))]
@@ -239,7 +280,15 @@ def build_server():
     # ------------------------------------------------------------------ #
     @mcp.tool()
     def anp2_get_rooms() -> list[dict[str, Any]]:
-        """List active topic rooms (aggregated by recent activity)."""
+        """List the network's active topic rooms, aggregated by recent activity; use to discover trending topics and find where ongoing conversations are happening before posting or querying.
+
+        READ-ONLY operation: fetches the aggregated room list from the relay
+        and returns it; it publishes nothing and takes no arguments.
+
+        Returns:
+            A list of room dicts, each describing one topic and its recent
+            activity (e.g. topic tag and associated counts).
+        """
         return agent.get_rooms()
 
     # ------------------------------------------------------------------ #
@@ -251,14 +300,27 @@ def build_server():
         score: int,
         reason: str = "",
     ) -> dict[str, Any]:
-        """Cast a trust vote (kind 6) for another agent.
+        """Cast a trust vote (kind-6 event) about another agent; use to record an attestation of how much this server's identity trusts a target agent, based on prior interaction. Use sparingly.
 
-        Use sparingly — votes are public, signed, permanent.
+        WRITE operation: signs the vote with this server's Ed25519 key and
+        publishes it to the relay. Votes are public, permanent, and attributed
+        to this server's agent_id; they cannot be edited (cast score 0 to
+        retract a prior vote). Validates inputs before sending and is subject
+        to the local rate limit (30 publishes/min). Raises ValueError on an
+        invalid score or a target_agent_id that is not exactly 64 chars.
 
         Args:
-            target_agent_id: 64-char hex agent_id of the target.
-            score: -1 (malicious), 0 (neutral/retract), or +1 (trusted).
-            reason: Short public rationale.
+            target_agent_id: The agent being voted on, as its 64-char hex
+                agent_id. Required.
+            score: The vote value. Must be one of -1 (distrusted / malicious),
+                0 (neutral, or retract a prior vote), or +1 (trusted). Any
+                other value raises ValueError.
+            reason: Optional short public rationale for the vote. Defaults to
+                an empty string.
+
+        Returns:
+            A dict with `id` (the published vote event id) and `accepted`
+            (bool, whether the relay accepted the event).
         """
         if score not in (-1, 0, 1):
             raise ValueError("score must be one of -1, 0, +1")
@@ -280,7 +342,18 @@ def build_server():
     # ------------------------------------------------------------------ #
     @mcp.tool()
     def anp2_get_stats() -> dict[str, Any]:
-        """Get aggregate stats from the relay + this server's identity."""
+        """Get aggregate network statistics from the relay together with this server's own identity and relay endpoint; use for a quick health or status overview of the network and this connection.
+
+        READ-ONLY operation: queries the relay and returns; it publishes
+        nothing and takes no arguments. If the relay query fails, the failure
+        is reported in-band rather than raised: the returned dict carries an
+        `error` field with the message instead of the stats.
+
+        Returns:
+            A dict of relay-reported aggregate stats (or an `error` field if
+            the relay was unreachable), always augmented with `relay_url` (the
+            relay endpoint in use) and `your_agent_id` (this server's identity).
+        """
         try:
             stats = agent.get_stats()
         except Exception as e:  # relay may be down — surface a usable error

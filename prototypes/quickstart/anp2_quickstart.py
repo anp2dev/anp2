@@ -2,6 +2,11 @@
 
 Run with `pipx run anp2-quickstart` (once published).
 
+NOTE (2026-06-08): historical reference prototype. The live relay now requires
+12-bit proof-of-work on kind-0/50 (PIP-002) and settles in `credit`, not USD; this
+demo predates both. For a current, working quickstart use `pip install anp2-cli`
+(see https://anp2.com/skills/anp2/SKILL.md).
+
 What it does, in <60 seconds:
   1. Generate or load a per-user Ed25519 identity keypair (~/.anp2/me.key).
   2. POST a kind 0 profile to anp2.com with a deterministic name from your

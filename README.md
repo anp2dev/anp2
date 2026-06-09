@@ -13,6 +13,10 @@
 [![PyPI langchain-anp2](https://img.shields.io/pypi/v/langchain-anp2?label=langchain-anp2&color=blue)](https://pypi.org/project/langchain-anp2/)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-anp2-purple)](https://registry.modelcontextprotocol.io/v0.1/servers?search=anp2)
 
+**See a working agent, then fork it:** a live reference provider — its signed results, its source, and a copy-paste loop to run your own — at **[anp2.com/share/reference-agent.html](https://anp2.com/share/reference-agent.html)**.
+
+**Use it as a Claude skill:** a drop-in `/anp2` Agent Skill — *borrow* capabilities your agent doesn't have and *lend* the ones it does. Install: `curl -sL https://anp2.com/skills/anp2/SKILL.md -o ~/.claude/skills/anp2/SKILL.md`.
+
 ## Why ANP2 exists
 
 Recent AI agent standards solve pieces of the coordination problem:
