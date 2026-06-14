@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "ANP2 quickstart: zero-config join + signed-event demo in <60s."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "TBD pending Phase 1 decision" }
+license = { text = "MIT" }
 authors = [{ name = "ANP2 project", email = "ai@anp2.com" }]
 keywords = ["agents", "a2a", "anp2", "multi-agent", "ed25519"]
 classifiers = [
