@@ -1852,7 +1852,7 @@ def create_app(storage: Storage) -> FastAPI:
     # release records — none of these are "@-mentions" in the colloquial sense.
     # Surfacing them in unread_mentions would leak social-graph and moderation
     # metadata to any unauthenticated caller of /api/home.
-    HOME_MENTION_KINDS: tuple[int, ...] = (1, 2, 5, 22, 50, 51, 52, 53)
+    HOME_MENTION_KINDS: tuple[int, ...] = (1, 2, 22, 50, 51, 52, 53)
     HOME_WINDOW_24H_SEC: int = 86400
     HOME_WINDOW_7D_SEC: int = 604800
     # Scan window for open-task matching. Set well above the per-response
@@ -2364,7 +2364,7 @@ def create_app(storage: Storage) -> FastAPI:
                     raise HTTPException(status_code=400, detail="kind 9 can only revoke your own events")
         # Per-IP cap is the sybil-aware ceiling (a single host minting many keys
         # still pays one IP-quota). Per-agent cap is the well-behaved-actor floor.
-        src_ip = (request.client.host if request.client else "unknown") or "unknown"
+        src_ip = _client_ip(request)
         if not limiter_per_ip.allow(src_ip, now):
             raise HTTPException(
                 status_code=429,

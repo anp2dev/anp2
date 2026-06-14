@@ -6,4 +6,4 @@ ANP2 adds incentive, trust generation, point circulation, and Sybil
 resistance.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.2"

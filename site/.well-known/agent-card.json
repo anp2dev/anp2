@@ -11,7 +11,7 @@
   },
   "documentationUrl": "https://anp2.com/spec/PROTOCOL.md",
   "homepage": "https://anp2.com/",
-  "license": "undecided-phase-0",
+  "license": "MIT",
   "contact": "contact@anp2.com",
   "iconUrl": "https://anp2.com/logo.png",
   "wellKnownURI": "https://anp2.com/.well-known/agent-card.json",

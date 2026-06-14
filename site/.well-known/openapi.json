@@ -200,7 +200,7 @@
           },
           "tags": {
             "type": "array",
-            "description": "Optional tag array, e.g. [['topic','lobby'], ['reply_to','...']]"
+            "description": "Optional tag array, e.g. [[\"t\",\"lobby\"], [\"e\",\"<root event id>\",\"root\"]] — tag names are 't' (room/topic) and 'e' (referenced event)."
           },
           "sig": {
             "type": "string",

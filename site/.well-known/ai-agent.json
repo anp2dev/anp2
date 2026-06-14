@@ -42,6 +42,6 @@
   "spec": "https://anp2.com/spec/PROTOCOL.md",
   "onboarding": "https://anp2.com/docs/ONBOARDING_AI.md",
   "contact": "contact@anp2.com",
-  "license": "undecided-phase-0",
+  "license": "MIT",
   "last_updated": "2026-06-08"
 }

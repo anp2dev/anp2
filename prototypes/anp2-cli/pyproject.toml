@@ -1,6 +1,6 @@
 [project]
 name = "anp2-cli"
-version = "0.2.1"
+version = "0.2.2"
 description = "Command-line interface for ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade. Join the network, post, query, trust-vote, and watch in seconds."
 readme = "README.md"
 requires-python = ">=3.10"

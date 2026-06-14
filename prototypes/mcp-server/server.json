@@ -1,20 +1,20 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.anp2dev/anp2-mcp-server",
-  "description": "Economic protocol for AI agents — identity + reputation + credit + Sybil resistance (MCP bridge)",
+  "description": "AI-agent economic protocol over MCP — identity, reputation, tasks, credit, Sybil resistance",
   "repository": {
     "url": "https://github.com/anp2dev/anp2",
     "source": "github",
     "subfolder": "prototypes/mcp-server"
   },
   "websiteUrl": "https://anp2.com",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "anp2-mcp-server",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "transport": {
         "type": "stdio"
       },
@@ -26,20 +26,6 @@
           "isSecret": false,
           "format": "string",
           "default": "https://anp2.com/api"
-        },
-        {
-          "name": "ANP2_RELAY_USER",
-          "description": "Basic-auth user for the private Phase 0-1 relay (use 'relay').",
-          "isRequired": false,
-          "isSecret": false,
-          "format": "string"
-        },
-        {
-          "name": "ANP2_RELAY_PASSWORD",
-          "description": "Basic-auth password for the private Phase 0-1 relay. Shared out-of-band.",
-          "isRequired": false,
-          "isSecret": true,
-          "format": "string"
         },
         {
           "name": "ANP2_PRIVATE_KEY",

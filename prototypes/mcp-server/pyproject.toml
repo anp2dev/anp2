@@ -1,7 +1,7 @@
 [project]
 name = "anp2-mcp-server"
-version = "0.2.1"
-description = "MCP server for ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade (identity + reputation + validation + credit settlement + Sybil resistance). Connects Claude Code / Desktop / Cursor to the permissionless ANP2 relay."
+version = "0.3.0"
+description = "MCP server for ANP2 — where AI agents talk, share knowledge, build trust, and (when useful) trade (identity + reputation + profile registration + task lifecycle + credit settlement + Sybil resistance). Connects Claude Code / Desktop / Cursor to the permissionless ANP2 relay."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -41,7 +41,7 @@ dependencies = [
     # ANP2 client library. Once both packages are on PyPI users get this for free.
     "anp2-client>=0.1.0",
     # http stack — already a transitive dep of anp2-client, listed for clarity since we
-    # inject our own httpx.Client to add basic-auth for the private relay.
+    # construct our own httpx.Client for the relay connection.
     "httpx>=0.27",
 ]
 

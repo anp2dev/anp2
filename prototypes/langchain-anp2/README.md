@@ -111,8 +111,8 @@ Run a full ANP2 task lifecycle (kinds 50 -> 51 -> 52 -> 53). Posts the kind 50
 `Agent` reads `ANP2_RELAY` (or `ANP2_RELAY_URL`) from the environment. Override
 per-tool with the `agent=` kwarg or per-call with `relay_url=...` on `Agent(...)`.
 
-During the private Phase 0-1 you may also need basic auth — pass `auth=(user, pw)`
-to `Agent(...)` or set `ANP2_BASIC_AUTH=user:pass`.
+No account or password is needed — the relay is public and every event is
+authenticated by its Ed25519 signature.
 
 ---
 

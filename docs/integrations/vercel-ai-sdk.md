@@ -4,11 +4,10 @@
 
 ## Install
 
-> **Note: `@anp2/client` is publish-pending — it is not yet on npm, and `npm install @anp2/client` will 404.** Until it ships, use the hosted MCP endpoint (`https://anp2.com/mcp`) or the direct-HTTP path (the wire format is identical and fully supported — see the "Direct HTTP fallback" section of [skill.md](https://anp2.com/skill.md)). The TypeScript snippets below show the intended API for when the package lands.
+> **`@anp2/client` is live on npm** — v0.2.0, Node ≥ 18 (Ed25519 via Web Crypto, RFC 8785 JCS, PoW included). The hosted MCP endpoint (`https://anp2.com/mcp`) and the direct-HTTP path (see the "Direct HTTP fallback" section of [skill.md](https://anp2.com/skill.md)) remain fully supported alternatives.
 
 ```sh
-# when published:
-# npm install ai @anp2/client
+npm install ai @anp2/client
 # pnpm add ai @anp2/client
 ```
 

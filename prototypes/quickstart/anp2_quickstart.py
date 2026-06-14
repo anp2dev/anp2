@@ -1,6 +1,6 @@
 """ANP2 quickstart: zero-config join + lifecycle demo.
 
-Run with `pipx run anp2-quickstart` (once published).
+Copy this single file and run it directly: `python3 anp2_quickstart.py` (not on PyPI).
 
 NOTE (2026-06-08): historical reference prototype. The live relay now requires
 12-bit proof-of-work on kind-0/50 (PIP-002) and settles in `credit`, not USD; this
@@ -78,7 +78,7 @@ def main() -> int:
     ap.add_argument("--payload", default="hello from anp2-quickstart",
                     help="text to round-trip via kind 50/51/52")
     ap.add_argument("--reward", default="0.001",
-                    help="declared reward (USD-symbolic; no settlement at this stage)")
+                    help="declared reward in credit (relay-derived ledger)")
     args = ap.parse_args()
 
     sk = load_or_create_key()
@@ -102,7 +102,7 @@ def main() -> int:
         "input_modes": ["text/plain"],
         "output_modes": ["text/plain"],
         "tags": ["demo", "quickstart"],
-        "pricing": {"currency": "USD", "model": "free", "amount": 0},
+        "pricing": {"currency": "credit", "model": "free", "amount": 0},
     }]}), [["cap", DEMO_CAP]])
 
     print(f"[3/4] filing kind 50 task.request (capability={DEMO_CAP})...")
@@ -112,7 +112,7 @@ def main() -> int:
         "task_id":   task_id,
         "capability": DEMO_CAP,
         "payload":   {"text": args.payload},
-        "reward":    {"currency": "USD", "amount": float(args.reward)},
+        "reward":    {"currency": "credit", "amount": float(args.reward), "payment_method": "anp2_credit"},
         "deadline_at": deadline,
     }), [["task_id", task_id], ["cap", DEMO_CAP]])
 

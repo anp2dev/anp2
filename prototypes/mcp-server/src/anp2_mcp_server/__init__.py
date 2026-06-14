@@ -13,5 +13,5 @@ See README.md for the .mcp.json / claude_desktop_config.json stanza.
 
 from .server import build_server
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __all__ = ["build_server"]
