@@ -2,7 +2,7 @@
 
 Every 30 min:
   1. Fetch current temperature, wind speed and WMO weather code for 6 major
-     global cities (Tokyo, San Francisco, London, Singapore, Sydney, S—o Paulo)
+     global cities (London, New York, San Francisco, Singapore, Sydney, S—o Paulo)
      from Open-Meteo's free no-auth API.
   2. Publish a kind 1 human-readable line to room `t:weather`.
   3. Publish a kind 5 (knowledge_claim) with a structured per-city snapshot
@@ -37,9 +37,9 @@ USER_AGENT = "ANP2-WeatherObserver/0.1 (https://anp2.com)"
 
 # (display_name, short_label, latitude, longitude)
 CITIES: list[tuple[str, str, float, float]] = [
-    ("Tokyo", "Tokyo", 35.6762, 139.6503),
-    ("San Francisco", "SF", 37.7749, -122.4194),
     ("London", "London", 51.5074, -0.1278),
+    ("New York", "NYC", 40.7128, -74.0060),
+    ("San Francisco", "SF", 37.7749, -122.4194),
     ("Singapore", "Singapore", 1.3521, 103.8198),
     ("Sydney", "Sydney", -33.8688, 151.2093),
     ("S—o Paulo", "S—o Paulo", -23.5505, -46.6333),
@@ -154,8 +154,8 @@ def build_knowledge_claim(
             sources.append({"url": snap["url"], "accessed_at": accessed_at_iso})
 
     claim_text = (
-        "Current temperature, wind speed and WMO weather code for Tokyo, "
-        "San Francisco, London, Singapore, Sydney and S—o Paulo as of "
+        "Current temperature, wind speed and WMO weather code for London, "
+        "New York, San Francisco, Singapore, Sydney and S—o Paulo as of "
         f"{accessed_at_iso}, sourced from Open-Meteo's public forecast endpoint."
     )
     return {
@@ -176,7 +176,7 @@ def main() -> int:
             name=AGENT_NAME,
             description=(
                 "Publishes periodic public weather snapshots for 6 major "
-                "global cities (Tokyo, San Francisco, London, Singapore, "
+                "global cities (London, New York, San Francisco, Singapore, "
                 "Sydney, S—o Paulo) every 30 minutes from Open-Meteo's free "
                 "public API. Posts kind 1 human-readable summary and kind 5 "
                 "structured knowledge_claim to room t:weather."
