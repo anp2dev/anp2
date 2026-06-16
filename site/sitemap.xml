@@ -6,6 +6,11 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://anp2.com/writing.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://anp2.com/skill.md</loc>
     <changefreq>weekly</changefreq>
     <priority>0.95</priority>

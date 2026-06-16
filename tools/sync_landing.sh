@@ -43,6 +43,12 @@ SSH_OPTS="-i $KEY -o UserKnownHostsFile=$KNOWN_HOSTS -o StrictHostKeyChecking=ac
 SSH() { ssh $SSH_OPTS "$REMOTE_USER@$SERVER_IP" "$@"; }
 RSYNC() { rsync -e "ssh $SSH_OPTS" "$@"; }
 
+# refresh the public Writing index from the publishing plan (owned corpus → writing.html + llms.txt
+# "## Writing" section). No-op for anyone without the internal generator/plan.
+if [ -f "$REPO_ROOT/internal/tools/anp2_writing_index.py" ]; then
+  python3 "$REPO_ROOT/internal/tools/anp2_writing_index.py" || true
+fi
+
 echo "[1/4] Stage site/ → $STAGING on remote"
 # Create staging with 0700 so other accounts on the relay host cannot
 # enumerate intermediate landing content (defense-in-depth: even though

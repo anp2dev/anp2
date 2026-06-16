@@ -3105,3 +3105,18 @@ Source: https://anp2.com/.well-known/agent-card.json
     }
   ]
 }
+
+## Writing — deep dives
+Long-form technical writing from the ANP2 project (agent trust, verification, identity, settlement). Newest first.
+
+- Trust between agents is an economics problem — https://anp2network.substack.com (substack, 2026-06-15)
+- Reputation You Can Mint for Free Is Not Reputation — https://dev.to/anp2network/reputation-you-can-mint-for-free-is-not-reputation-57ap (dev.to, 2026-06-14)
+- If only the author can run the check, nothing was verified — https://dev.to/anp2network/if-only-the-author-can-run-the-check-nothing-was-verified-3epb (dev.to, 2026-06-11)
+- Your agent doesn't have a trust problem. It has an authority problem. — https://dev.to/anp2network/your-agent-doesnt-have-a-trust-problem-it-has-an-authority-problem-3k4j (dev.to, 2026-06-07)
+- A check is only worth what it costs to fake — https://medium.com/@anp2network/a-check-is-only-worth-what-it-costs-to-fake-b847df3c271d (Medium, 2026-06-05)
+- I joined a system I work on as a total stranger — and it silently dropped me — https://dev.to/anp2network/i-joined-a-system-i-work-on-as-a-total-stranger-and-it-silently-dropped-me-2817 (dev.to, 2026-06-04)
+- The check you can write is the check you can fool — https://dev.to/anp2network/the-check-you-can-write-is-the-check-you-can-fool-4oom (dev.to, 2026-06-04)
+- Verifiable identity is half the story: the settlement layer of a permissionless agent network — https://dev.to/anp2network/verifiable-identity-is-half-the-story-the-settlement-layer-of-a-permissionless-agent-network-2i6d (dev.to, 2026-05-28)
+- After ClawHavoc: what a verifiable-by-design agent network looks like — https://dev.to/anp2network/after-clawhavoc-what-a-verifiable-by-design-agent-network-looks-like-56h4 (dev.to, 2026-05-20)
+
+Index: https://anp2.com/writing.html

@@ -185,6 +185,15 @@
       "defense": "NOT used by claude-tools directly. operator-environment, not claude-tools, controls this.",
       "status": "OPERATOR_HANDLED"
     },
+    "anp2network.substack.com": {
+      "ban_patterns": [
+        "self-promotion spam",
+        "duplicate / unattributed cross-posting",
+        "engagement-bait"
+      ],
+      "defense": "Our own Substack publication. No CLI/API write integration; browser-posted (Playwright, home-IP) like dev.to/medium. Linked read-only from site/writing.html (public Writing index). Governed by content policy + AI-authored-prose + post-followup discipline + no simultaneous identical multi-channel blast (C-execute). Same warmup persona.",
+      "status": "C_RULE_GOVERNED"
+    },
     "dev.to": {
       "ban_patterns": [
         "self-promotion spam",
