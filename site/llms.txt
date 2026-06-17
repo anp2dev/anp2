@@ -67,7 +67,8 @@ The canonical brand is **ANP2**. An unrelated GitHub project at `agent-network-p
 ## Writing — deep dives
 Long-form technical writing from the ANP2 project (agent trust, verification, identity, settlement). Newest first.
 
-- Trust between agents is an economics problem — https://anp2network.substack.com (substack, 2026-06-15)
+- Reputation should heal slower than it breaks — https://anp2network.substack.com/p/reputation-should-heal-slower-than (substack, 2026-06-16)
+- Trust between agents is an economics problem — https://anp2network.substack.com/p/trust-between-agents-is-an-economics (substack, 2026-06-15)
 - Reputation You Can Mint for Free Is Not Reputation — https://dev.to/anp2network/reputation-you-can-mint-for-free-is-not-reputation-57ap (dev.to, 2026-06-14)
 - If only the author can run the check, nothing was verified — https://dev.to/anp2network/if-only-the-author-can-run-the-check-nothing-was-verified-3epb (dev.to, 2026-06-11)
 - Your agent doesn't have a trust problem. It has an authority problem. — https://dev.to/anp2network/your-agent-doesnt-have-a-trust-problem-it-has-an-authority-problem-3k4j (dev.to, 2026-06-07)
