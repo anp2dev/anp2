@@ -1,0 +1,200 @@
+/* ANP2 extension — design system.
+   One type scale, one spacing scale, one radius scale. Everything below sizes
+   off these tokens so the UI reads as a single, consistent app. */
+:root {
+  /* Light theme matched to claude.ai/login (measured): bg #f8f8f6, text #141413,
+     muted #73726c, cream secondary surfaces. Accent = Claude orange. */
+  --bg: #f8f8f6;          /* claude.ai page background */
+  --bg-elev: #ffffff;     /* header / tab bar */
+  --card: #ffffff;
+  --card-2: #f0eee6;      /* Claude cream (secondary buttons / chips) */
+  --line: #e8e6df;
+  --line-soft: #efece5;
+  --text: #141413;        /* claude.ai near-black text */
+  --muted: #73726c;       /* claude.ai muted gray */
+  --accent: #141413;      /* claude.ai uses near-black for primary buttons / active (no orange on login) */
+  --accent-press: #33302b;
+  --good: #1a9d6b;
+  --bad: #d64545;
+
+  --r-lg: 16px; --r: 13px; --r-sm: 10px; --r-pill: 999px;
+
+  /* type scale — anchored at the SMALLEST size (--fs-xs) and stepped up from there.
+     Nothing in the UI renders below --fs-xs. */
+  --fs-xs: 14px; --fs-sm: 15px; --fs-base: 16px; --fs-md: 18px; --fs-lg: 22px; --fs-xl: 25px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; }
+body {
+  /* Fluid: fills the side panel at any width, never collapses below a usable
+     popup width — so the layout follows a resize instead of leaving blank space. */
+  width: 100%; min-width: 360px; max-width: 100%; min-height: 520px;
+  background: var(--bg); color: var(--text);
+  font: var(--fs-base)/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  display: flex; flex-direction: column;
+}
+html[dir="rtl"] body { direction: rtl; }
+
+/* ---- header ---- */
+.top {
+  display: flex; align-items: center; gap: var(--sp-3);
+  height: 58px; padding: 0 14px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--line-soft);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo {
+  width: 30px; height: 30px; border-radius: 8px;
+  object-fit: cover; display: block;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+}
+.title { font-size: 19px; font-weight: 800; letter-spacing: .4px; }
+.actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+html[dir="rtl"] .actions { margin-left: 0; margin-right: auto; }
+.icon-btn {
+  width: 38px; height: 38px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--muted);
+  display: grid; place-items: center; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.icon-btn:hover { background: var(--card-2); color: var(--text); }
+
+/* ---- layout ---- */
+#main { flex: 1; overflow-y: auto; }
+.screen { padding: var(--sp-4); }
+
+h2 { font-size: var(--fs-lg); font-weight: 700; margin: 0 0 var(--sp-2); letter-spacing: .2px; }
+.sub { color: var(--muted); margin: 0 0 var(--sp-4); font-size: var(--fs-base); }
+
+/* ---- buttons ---- */
+.btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 50px; padding: 12px 16px;
+  border-radius: var(--r); border: 0;
+  background: var(--accent); color: #fff;
+  font-size: var(--fs-base); font-weight: 650; cursor: pointer;
+  transition: background .12s, opacity .12s;
+}
+.btn:hover { background: var(--accent-press); }
+.btn.secondary { background: var(--card); border: 1px solid var(--line); color: var(--text); font-weight: 600; }
+.btn.secondary:hover { background: var(--card-2); }
+.btn + .btn { margin-top: var(--sp-2); }
+.btn:disabled { opacity: .5; cursor: default; }
+
+/* segmented toggle (e.g. Subscription | API key) */
+.seg { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--card-2); }
+.seg-btn {
+  flex: 1; padding: 11px 10px; border: 0; background: transparent;
+  color: var(--muted); font-size: var(--fs-base); font-weight: 650; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+.seg-btn.active { background: var(--accent); color: #fff; }
+
+/* example / format sample block */
+.sample { background: var(--card-2); border: 1px solid var(--line-soft); border-radius: var(--r-sm); padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-xs); color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+
+/* ---- inputs ---- */
+input[type=text], input[type=password], textarea, select {
+  width: 100%; padding: 12px 13px; border-radius: var(--r);
+  border: 1px solid var(--line); background: var(--card); color: var(--text);
+  font: inherit; font-size: var(--fs-base); resize: vertical;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+textarea { min-height: 116px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm); }
+label.fld { display: block; margin: var(--sp-3) 0 6px; color: var(--muted); font-size: var(--fs-sm); font-weight: 600; }
+
+/* ---- cards & rows ---- */
+.card { background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--r-lg); padding: 14px; margin-bottom: var(--sp-3); }
+.card.row, .row.card { align-items: center; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } /* wrap before clipping */
+.row > h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* long room names ellipsize, don't push the LIVE badge off-edge */
+.row + .row { margin-top: 9px; }
+.k { color: var(--muted); font-size: var(--fs-sm); min-width: 88px; }
+.v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm); word-break: break-all; }
+.pill { font-size: var(--fs-xs); padding: 4px 10px; border-radius: var(--r-pill); border: 1px solid var(--line); color: var(--muted); }
+.pill.good { color: var(--good); border-color: rgba(26,157,107,.4); background: rgba(26,157,107,.1); }
+.good { color: var(--good); } .bad { color: var(--bad); }
+.center { text-align: center; }
+.muted { color: var(--muted); }
+.small { font-size: var(--fs-sm); }
+.note { font-size: var(--fs-sm); color: var(--muted); margin-top: var(--sp-3); line-height: 1.5; }
+a { color: var(--accent); text-decoration: none; }
+
+/* live "running" dot */
+.live { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; flex: none; }
+
+/* room chips */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.chip {
+  font-size: var(--fs-sm); padding: 6px 12px; border-radius: var(--r-pill);
+  border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer;
+}
+.chip.active { border-color: var(--accent); color: var(--accent); background: rgba(20,20,19,.07); }
+
+/* toggle switch */
+.switch { width: 44px; height: 26px; border-radius: var(--r-pill); background: #d6d1c7; position: relative; cursor: pointer; transition: background .15s; flex: none; }
+.switch.on { background: var(--accent); }
+.switch i { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left .15s; }
+.switch.on i { left: 21px; }
+html[dir="rtl"] .switch i { left: auto; right: 3px; }
+html[dir="rtl"] .switch.on i { right: 21px; left: auto; }
+
+/* ---- live room messages ---- */
+#live { margin-top: 6px; }
+/* feed row = avatar + body. Compact padding so more messages fit the panel. */
+.msg { display: flex; gap: 9px; align-items: flex-start; border-bottom: 1px solid var(--line-soft); padding: 9px 0; }
+.msg:last-child { border-bottom: 0; }
+.msg-body { min-width: 0; flex: 1; }   /* min-width:0 so long content wraps, never pushes out */
+.msg-head { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 7px; }
+.msg .who { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm); font-weight: 700; }
+.msg .feed-kind { font-size: var(--fs-xs); color: var(--muted); }
+.vchk { font-size: var(--fs-base); font-weight: 700; cursor: default; }
+.vchk.good { color: var(--good); } .vchk.bad { color: var(--bad); }
+.msg .mtxt { margin-top: 3px; white-space: pre-wrap; word-break: break-word; font-size: var(--fs-base); }
+
+/* per-agent avatar disc — stable colour + initial = a unique "face" per agent */
+.avatar {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #fff; font-size: var(--fs-sm); font-weight: 700; line-height: 1;
+  user-select: none;
+}
+.avatar.sys { background: var(--accent); color: #fff; font-size: 15px; } /* ANP2 service agent */
+/* your OWN AI's posts — make them unmistakable */
+.msg.mine { background: rgba(194,72,122,.06); border-radius: 10px; padding: 9px 10px; margin: 0 -10px; border-bottom-color: transparent; }
+.msg.mine .avatar { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px #c2487a; } /* pink ring */
+/* ANP2's own AI — a clear, branded badge next to the name */
+.tag-anp2 { font-size: var(--fs-xs); font-weight: 700; color: #fff; background: var(--accent); padding: 1px 7px; border-radius: var(--r-pill); letter-spacing: .3px; }
+
+/* ---- empty / error states ---- */
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 48px 20px; color: var(--muted); }
+.empty svg { opacity: .45; }
+.empty .t { font-size: var(--fs-base); }
+
+/* ---- result panel (verify / hire) ---- */
+.result { margin-top: var(--sp-3); padding: 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--card); }
+.result.ok { border-color: rgba(26,157,107,.5); }
+.result.no { border-color: rgba(214,69,69,.5); }
+.result b { font-size: var(--fs-md); }
+.spinner { color: var(--muted); }
+
+/* ---- bottom tab bar ---- */
+.tabs { display: flex; height: 62px; background: var(--bg-elev); border-top: 1px solid var(--line-soft); }
+.tab {
+  position: relative; flex: 1; background: none; border: 0; color: var(--muted);
+  padding: 9px 0 8px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  transition: color .12s;
+}
+.tab svg { width: 23px; height: 23px; }
+.tab span { font-size: var(--fs-xs); font-weight: 600; }
+.tab.active { color: var(--accent); }
+.tab.active::before {
+  content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 30px; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent);
+}

@@ -1,0 +1,13 @@
+# Generated, NEVER-publish artifacts for the ANP2 browser-extension client.
+# (The extension is a client, not a published "kit"; these are local-only.)
+
+# build output + deps
+/dist/
+/node_modules/
+
+# one-off verification/demo screenshots written to the dir root by the e2e/
+# capture scripts. One of them (e2e-translated.png) renders the UI in a non-
+# English locale = an origin fingerprint, so these must never be
+# committed. `icons/*.png` (the real extension icons) live in a subdir and are
+# intentionally NOT matched by this root-anchored rule.
+/*.png

@@ -1,0 +1,23 @@
+{
+  "name": "anp2-extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ANP2 — your AI on the open agent network (Chrome extension)",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.js",
+    "e2e": "node test/e2e.translate.mjs",
+    "soak": "node test/soak.runaway.mjs",
+    "earn": "node test/earn.demo.mjs"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.3.0",
+    "@noble/hashes": "^1.8.0",
+    "canonicalize": "^3.0.0",
+    "esbuild": "^0.28.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.0"
+  }
+}
