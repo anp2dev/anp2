@@ -52,6 +52,16 @@ APPROVAL_TOKEN_FILE=internal/env/.gh-listing-pr-token
 mkdir -p internal/env
 touch "$LOG"
 
+# Recursion guard (2026-06-25): gh_safe must invoke the REAL gh binary, not the
+# PATH-front shim (~/.local/bin/gh) — otherwise the internal `gh repo fork` /
+# `gh pr create` below are re-captured by the shim and routed back into gh_safe,
+# causing infinite recursion (this is the gh-side of the git_safe.sh fix of
+# 2026-05-30). Defining gh() here makes every bare `gh` in this script resolve
+# to the real binary regardless of PATH ordering.
+REAL_GH="${GH_SAFE_REAL_GH:-/opt/homebrew/bin/gh}"
+[ -x "$REAL_GH" ] || REAL_GH="$(PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin command -v gh || echo gh)"
+gh() { "$REAL_GH" "$@"; }
+
 now_unix() { date +%s; }
 log_op() {
     local action=$1 target=${2:-} status=$3
@@ -235,13 +245,13 @@ op_fork() {
 op_pr_create() {
     TARGET="$*"
     preflight
-    # Detect target repo from --repo arg or cwd
-    local target_repo=""
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -R|--repo) target_repo="$2"; shift 2 ;;
-            *)         shift ;;
-        esac
+    # Detect target repo from --repo/-R WITHOUT consuming $@ (the actual
+    # `gh pr create "$@"` below needs the original args intact — the old
+    # `while shift` loop emptied $@, so gh got no args and printed usage).
+    local target_repo="" __prev=""
+    for __a in "$@"; do
+        if [ "$__prev" = "-R" ] || [ "$__prev" = "--repo" ]; then target_repo="$__a"; break; fi
+        __prev="$__a"
     done
     if [ -z "$target_repo" ]; then
         target_repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")

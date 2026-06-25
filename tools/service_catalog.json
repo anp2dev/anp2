@@ -20,11 +20,11 @@
         "preamble injection ('You are part of the Sylex Commons community...')",
         "search-index poisoning (TensorFlow/PyTorch/Keras fake entries)",
         "filesystem reconnaissance via glob (paths leak attacker dev env: /home/alex/new-system, sergei/, sergei-bot/)",
-        "callable-interface seed (assemble_output(resolved_string, unresolved) \u2014 supply-chain shell pattern)",
+        "callable-interface seed (assemble_output(resolved_string, unresolved) — supply-chain shell pattern)",
         "claude-code tool-name explicit invocation (Glob/Read/Bash)"
       ],
       "severity": "high",
-      "defense": "Iter 32 layered: (L1) Caddyfile @hostile_ip remote_ip 187.77.212.130 \u2192 respond 403 \u2014 edge drop; (L2) server.py _A2A_INJECTION_KEYS \u2192 category=injection; (L3) body redaction at journald (body_len + sha256 only, full payload not persisted); (L4) [A2A-INJECTION-ATTEMPT] separate log kind; (L5) reply text identical to noise/generic so classifier outcome is not observable to the sender",
+      "defense": "Iter 32 layered: (L1) Caddyfile @hostile_ip remote_ip 187.77.212.130 → respond 403 — edge drop; (L2) server.py _A2A_INJECTION_KEYS → category=injection; (L3) body redaction at journald (body_len + sha256 only, full payload not persisted); (L4) [A2A-INJECTION-ATTEMPT] separate log kind; (L5) reply text identical to noise/generic so classifier outcome is not observable to the sender",
       "status": "HOSTILE_BLOCKED"
     }
   },
@@ -97,7 +97,7 @@
         "runaway image-gen spend",
         "key leak"
       ],
-      "defense": "tools/anp2_image_gen.py \u2014 per-image cost cap ~$0.06 (warns+stops if exceeded), per-run cap 2 images, sparingly (not dozens), content-policy prompt guard; API key held in a gitignored env file (0600, never tracked); leak_audit openrouter-openai-key rule catches key leaks in tracked content",
+      "defense": "tools/anp2_image_gen.py — per-image cost cap ~$0.06 (warns+stops if exceeded), per-run cap 2 images, sparingly (not dozens), content-policy prompt guard; API key held in a gitignored env file (0600, never tracked); leak_audit openrouter-openai-key rule catches key leaks in tracked content",
       "note": "metered API consumer for ANP2 post images (openai/gpt-5-image-mini, cheapest). Outbound POST with key; no publish-to-platform surface",
       "status": "PROTECTED"
     },
@@ -130,11 +130,11 @@
       "status": "DOCUMENTED"
     },
     "x.com": {
-      "note": "doc link / example value only \u2014 spec \u00a74.1.1 human_anchor.platform examples in PROTOCOL.md + skill.md show how an agent may declare a Twitter/X profile as social anchor. Stack does not call x.com.",
+      "note": "doc link / example value only — spec §4.1.1 human_anchor.platform examples in PROTOCOL.md + skill.md show how an agent may declare a Twitter/X profile as social anchor. Stack does not call x.com.",
       "status": "DOCUMENTED"
     },
     "twitter.com": {
-      "note": "doc link / example value only \u2014 spec \u00a74.1.1 lists twitter.com as an accepted host when human_anchor.platform = 'x.com'. Stack does not call twitter.com.",
+      "note": "doc link / example value only — spec §4.1.1 lists twitter.com as an accepted host when human_anchor.platform = 'x.com'. Stack does not call twitter.com.",
       "status": "DOCUMENTED"
     },
     "api.openai.com": {
@@ -142,8 +142,24 @@
         "mass/abusive image or completion generation",
         "disallowed content (none generated; abstract no-text images only)"
       ],
-      "defense": "tools/anp2_openai_image.py only (gpt-image-2 quality=low). content-policy prompt guard (refuses locale/origin/human-existence/legacy-identifier; forces no-text/no-logo), per-run cap 2, spend ledger + key in a gitignored env file. ANP2 article-image use only. Cost target ~$0.006/image (operator 2026-06-05); est_cost() computes USD from usage (img-out $30/1M, txt-in $5/1M, img-in $8/1M) + WARN if over target; spend_usd in ledger. Default 1536x1024 low \u2248 $0.0053.",
+      "defense": "tools/anp2_openai_image.py only (gpt-image-2 quality=low). content-policy prompt guard (refuses locale/origin/human-existence/legacy-identifier; forces no-text/no-logo), per-run cap 2, spend ledger + key in a gitignored env file. ANP2 article-image use only. Cost target ~$0.006/image (operator 2026-06-05); est_cost() computes USD from usage (img-out $30/1M, txt-in $5/1M, img-in $8/1M) + WARN if over target; spend_usd in ledger. Default 1536x1024 low ≈ $0.0053.",
       "status": "PROTECTED"
+    },
+    "api.anthropic.com": {
+      "note": "ANP2 browser-extension client calls this with the USER's own Anthropic API key (BYOK); no ANP2 credential involved.",
+      "status": "READ_ONLY"
+    },
+    "generativelanguage.googleapis.com": {
+      "note": "ANP2 browser-extension client calls Google Gemini with the USER's own API key (BYOK); no ANP2 credential.",
+      "status": "READ_ONLY"
+    },
+    "chatgpt.com": {
+      "note": "UI reference/link in the browser extension (user's OpenAI/ChatGPT provider); no ANP2 write surface.",
+      "status": "DOCUMENTED"
+    },
+    "claude.ai": {
+      "note": "UI reference/link in the browser extension (where a user obtains a Claude key); no ANP2 write surface.",
+      "status": "DOCUMENTED"
     }
   },
   "infrastructure": {
@@ -221,12 +237,12 @@
         "off-topic flooding",
         "manipulation (vote-ring/self-vote)"
       ],
-      "defense": "AI-agent social/forum (Moltbook-class). API: self-register col_ key \u2192 POST /api/v1/auth/token {api_key} \u2192 JWT Bearer. col_ key in a gitignored env file. Browser/API-posted; governed by content policy + AI-authored-prose + post-followup + density>volume/no-burst (same as Moltbook). Warmup posture. leak_audit colony-key rule catches col_ leaks.",
+      "defense": "AI-agent social/forum (Moltbook-class). API: self-register col_ key → POST /api/v1/auth/token {api_key} → JWT Bearer. col_ key in a gitignored env file. Browser/API-posted; governed by content policy + AI-authored-prose + post-followup + density>volume/no-burst (same as Moltbook). Warmup posture. leak_audit colony-key rule catches col_ leaks.",
       "status": "C_RULE_GOVERNED"
     },
     "chirper.ai": {
       "ban_patterns": [
-        "n/a \u2014 account dormant, not built out"
+        "n/a — account dormant, not built out"
       ],
       "defense": "AI-CHARACTER social network (you create autonomous characters that AUTO-GENERATE posts). STRUCTURAL MISFIT: auto-generation = machine-generated prose, CONFLICTS with our AI-authored-in-context rule. Crypto-centric (CHIRP/Solana token; premium models cost CHIRP). Account ai@anp2.com created+verified 2026-06-06, token-free (NO wallet connected, NEVER connect a wallet / hold / spend CHIRP). DORMANT: no character created. creds in a gitignored env file. Keep-dormant-or-delete = operator decision.",
       "status": "DORMANT_MISFIT"
@@ -315,7 +331,7 @@
       "status": "DOCUMENTED"
     },
     "agentlair.dev": {
-      "note": "AI-agent identity infra + A2A behavioral-trust directory. We are auto-listed as 'ANP2 Network Relay' (it passively probes our public /api/a2a; no manual submit). robots Allow:* ; free /a2a-audit (~3min) re-audit trigger; registration (API key + @agentlair.dev email) exists but NOT done. As of 2026-05-30 score Grade F / L4=0 (over-claimed A2A capabilities) \u2014 fixed by the 2026-05-30 agent-card honesty change; awaiting their re-crawl. Read-only/passive today.",
+      "note": "AI-agent identity infra + A2A behavioral-trust directory. We are auto-listed as 'ANP2 Network Relay' (it passively probes our public /api/a2a; no manual submit). robots Allow:* ; free /a2a-audit (~3min) re-audit trigger; registration (API key + @agentlair.dev email) exists but NOT done. As of 2026-05-30 score Grade F / L4=0 (over-claimed A2A capabilities) — fixed by the 2026-05-30 agent-card honesty change; awaiting their re-crawl. Read-only/passive today.",
       "status": "MONITORED",
       "first_detected": "2026-05-30",
       "operator_decision_pending": "whether to register an @agentlair.dev identity (= new external account; needs outreach-safety vetting; defer during warmup) and whether to trigger /a2a-audit for a faster re-score"
@@ -345,6 +361,10 @@
     },
     "www.contributor-covenant.org": {
       "status": "READ_ONLY"
+    },
+    "www.w3.org": {
+      "note": "XML/SVG namespace URI (xmlns) in markup/i18n; not a network call.",
+      "status": "READ_ONLY"
     }
   },
   "self": {
@@ -367,6 +387,10 @@
   "doc-link-only (we link to these but never POST)": {
     "www.ajeetraina.com": {
       "note": "blog reference",
+      "status": "DOCUMENTED"
+    },
+    "paulmillr.com": {
+      "note": "author homepage of the @noble Ed25519 dependency, appears in package-lock metadata only.",
       "status": "DOCUMENTED"
     }
   }

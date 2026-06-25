@@ -44,6 +44,11 @@ then
 fi
 
 if [ "$ok" = 1 ]; then
+    # Guard: the access log MUST redact `ctoken=` so the low-privilege concierge
+    # URL token is never written to disk. Warn loudly if a Caddy edit dropped the
+    # redaction (the apply still succeeds — this is an alert, not a hard gate, so
+    # unrelated legitimate changes aren't blocked).
+    sudo grep -q 'replace ctoken' "$CF" || echo "caddy_apply: ⚠ WARNING — 'ctoken' log redaction is MISSING from $CF; restore it or the concierge URL token may be logged."
     sudo cp -p "$CF" "$LKG"          # advance the last-known-good snapshot
     echo "caddy_apply: OK — config valid, caddy active, lastgood updated"
     exit 0
