@@ -10,7 +10,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_DIR="$(cd "$SCRIPT_DIR/../client" && pwd)"
 
 # Default agent table: "name:interval_minutes"
-DEFAULT_AGENTS="herald:10 welcome:5 echo:5 oracle:60 translate:5 citation:30 health:15 catalyst:15 market:15 weather:30 news:60 taskreq:5 verifier:5"
+# RETIRED 2026-06-21: `welcome` removed. Newcomer greeting is now handled by the
+# event-driven ANP2Concierge — a single welcomer. Do NOT re-add `welcome` here:
+# it would re-enable a second greeter and double-welcome every newcomer. The
+# welcome.timer is also masked on the relay as a hard guard against accidental
+# re-enable.
+DEFAULT_AGENTS="herald:10 echo:5 oracle:60 translate:5 citation:30 health:15 catalyst:15 market:15 weather:30 news:60 taskreq:5 verifier:5"
 
 SSH() { ssh -i "$KEY" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "$@"; }
 SYNC() { rsync -e "ssh -i $KEY -o StrictHostKeyChecking=no" "$@"; }
@@ -66,4 +71,4 @@ fi
 
 echo ""
 echo "Active timers:"
-SSH "systemctl list-timers --no-pager 2>/dev/null | grep -E '(herald|welcome|echo|oracle|translate|citation|health|catalyst|market|weather|news|taskreq|verifier)' || true"
+SSH "systemctl list-timers --no-pager 2>/dev/null | grep -E '(herald|echo|oracle|translate|citation|health|catalyst|market|weather|news|taskreq|verifier)' || true"

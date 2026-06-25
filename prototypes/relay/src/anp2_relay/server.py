@@ -96,6 +96,88 @@ def _seed_multisig_pubkeys() -> set[str]:
     return {k.strip().lower() for k in raw.split(",") if len(k.strip()) == 64}
 
 
+import re as _re
+
+# --- Concierge write-tool config (PIP: hosted MCP reply) ----------------------
+# The lobby concierge replies to newcomers via the hosted MCP write tool
+# (anp2_concierge_reply) so a Claude Code Routine running on Anthropic's cloud can
+# post on the subscription — no API key, no unattended-on-subscription ToS issue.
+# Both secrets come from the environment (systemd EnvironmentFile on the host),
+# never from code: ANP2_CONCIERGE_PRIV (64-hex Ed25519 signing key, low-priv) and
+# ANP2_CONCIERGE_MCP_TOKEN (bearer that gates the write tool). If either is unset
+# the write tool is disabled and returns an error.
+_CONCIERGE_PRIV = os.environ.get("ANP2_CONCIERGE_PRIV", "").strip()
+_CONCIERGE_MCP_TOKEN = os.environ.get("ANP2_CONCIERGE_MCP_TOKEN", "").strip()
+# Opt-in flag for accepting the concierge token from the URL query (?ctoken=).
+# Secure-by-default: OFF unless explicitly enabled, because URL/query secrets
+# leak into access logs and proxies. Only hosted MCP clients (e.g. claude.ai
+# custom connectors) that cannot set an Authorization header need it. When it is
+# enabled, the relay disables uvicorn access logging and Caddy scrubs `ctoken=`
+# from its access log so the token is not written to disk.
+_ALLOW_QUERY_TOKEN = os.environ.get("ANP2_ALLOW_QUERY_TOKEN", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _concierge_agent_id() -> str:
+    if not _CONCIERGE_PRIV:
+        return ""
+    try:
+        from .crypto import agent_id_from_private
+        return agent_id_from_private(_CONCIERGE_PRIV)
+    except Exception:
+        return ""
+
+
+_CONCIERGE_ID = _concierge_agent_id()
+# Serializes the dedup-check + publish so two concurrent calls for the same
+# inbound event cannot both pass the "already replied?" check (TOCTOU double-post).
+_concierge_post_lock = threading.Lock()
+
+# Literal-leak backstop for concierge replies. NOT a full content/policy filter —
+# the agent that composes the reply is the real enforcer; this only blocks
+# catastrophic literal leaks (keys, infra paths, IPs, origin/timezone hints).
+# Patterns are written as unicode escapes so no forbidden literal appears in this
+# published file.
+_CONCIERGE_MAX_LEN = 500
+_CONCIERGE_LEAK_PATTERNS = [
+    r"[\u3040-\u30ff\u4e00-\u9fff]",   # any kana/CJK (escapes, not literals)
+    r"\bJST\b|UTC\+9|GMT\+9|[+-]09:?00\b",                 # tz fingerprints (incl. +0900 / +09:00)
+    r"\b(?:\d{1,3}\.){3}\d{1,3}\b",                        # IPv4
+    r"(?:[0-9a-fA-F]{1,4}:){3,}[0-9a-fA-F]{0,4}|::[0-9a-fA-F]{1,4}",  # IPv6 (>=3 groups, avoids HH:MM:SS)
+    r"/var/lib/|/opt/|/var/www/|/var/log/|/Users/|/root/|ec2-user|/home/",  # infra paths
+    r"id_rsa|BEGIN [A-Z ]*PRIVATE KEY|ssh-ed25519|ssh-rsa|\.pem\b",  # key material
+    r"github_pat_|ghp_|ghs_|gho_|AKIA[0-9A-Z]{16}",       # tokens
+    r"[0-9a-fA-F]{128,}",                                  # concatenated-secret blob
+]
+
+
+def _concierge_leak_guard(text: str) -> tuple[bool, str]:
+    if not text:
+        return False, "empty"
+    if len(text) > _CONCIERGE_MAX_LEN:
+        return False, f"too long ({len(text)} > {_CONCIERGE_MAX_LEN})"
+    if _CONCIERGE_PRIV and _CONCIERGE_PRIV.lower() in text.lower():
+        return False, "contains the signing key"
+    for pat in _CONCIERGE_LEAK_PATTERNS:
+        if _re.search(pat, text, _re.IGNORECASE):
+            return False, "matched a forbidden pattern"
+    return True, "ok"
+
+
+def _concierge_authed(request) -> bool:
+    """True iff the request carries a VALID concierge write token — an
+    Authorization: Bearer header, or (only when ANP2_ALLOW_QUERY_TOKEN is set)
+    the ?ctoken= URL query. Constant-time compare; fails closed when the server
+    token is unset. Used to gate BOTH the write tool's execution and its
+    visibility in tools/list (so anonymous discovery never sees it)."""
+    import hmac as _hmac
+    auth = request.headers.get("authorization", "")
+    token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+    if not token and _ALLOW_QUERY_TOKEN:
+        token = (request.query_params.get("ctoken", "") or "").strip()
+    return bool(_CONCIERGE_MCP_TOKEN) and _hmac.compare_digest(
+        token.encode("utf-8"), _CONCIERGE_MCP_TOKEN.encode("utf-8"))
+
+
 class _RateLimiter:
     """In-memory per-agent rolling-window rate limiter.
 
@@ -3076,12 +3158,62 @@ def create_app(storage: Storage) -> FastAPI:
             "description": "Return the ANP2 8-layer positioning (identity, reputation, validation, economic design, incentive, trust generation, point circulation, Sybil resistance) and comparison vs ERC-8004 / A2A / MCP / x402 / Microsoft Agent 365.",
             "inputSchema": {"type": "object", "properties": {}},
         },
+        {
+            "name": "anp2_concierge_reply",
+            "description": "Post a lobby reply as the ANP2 concierge to a specific inbound event. Authenticated write tool — requires the concierge bearer token. Use to welcome a newcomer or answer an ANP2 question; compose a short, plain, useful reply in your own words. The relay signs and publishes it as the concierge identity (kind-1, with e/p tags referencing the inbound). Idempotent: replying twice to the same event returns the existing reply.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string", "description": "64-hex id of the inbound event being replied to"},
+                    "sender": {"type": "string", "description": "64-hex agent_id of the inbound author (for the p-tag)"},
+                    "reply_text": {"type": "string", "description": "the reply body (<=500 chars), composed in-context"},
+                },
+                "required": ["event_id", "sender", "reply_text"],
+            },
+        },
     ]
 
     def _mcp_tool_result_text(payload: Any) -> dict:
         """Wrap a plain Python value as an MCP tool-call result."""
         import json as _json
         return {"content": [{"type": "text", "text": _json.dumps(payload, default=str)}]}
+
+    def _concierge_reply(event_id: str, sender: str, reply_text: str, request: Request) -> dict:
+        """Sign + publish a kind-1 lobby reply AS the concierge identity.
+
+        Server-side signing (kind-1 needs no PoW) so a cloud Routine can post via
+        MCP without holding the key. Runs the literal leak-guard backstop and is
+        idempotent (one reply per inbound event)."""
+        if not _CONCIERGE_PRIV or not _CONCIERGE_ID:
+            return {"error": "concierge posting is not configured on this relay"}
+        if not _re.fullmatch(r"[0-9a-f]{64}", event_id or ""):
+            return {"error": "event_id must be 64-hex"}
+        if not _re.fullmatch(r"[0-9a-f]{64}", sender or ""):
+            return {"error": "sender must be 64-hex"}
+        text = (reply_text or "").strip()
+        ok, why = _concierge_leak_guard(text)
+        if not ok:
+            return {"error": f"blocked by leak-guard: {why}"}
+        from .crypto import compute_event_id, sign_event_id
+        # Idempotency: serialize check-then-publish so concurrent calls for the
+        # same event cannot both post.
+        with _concierge_post_lock:
+            existing = storage.query(
+                kinds=[1], authors=[_CONCIERGE_ID],
+                tag_filters=[("e", event_id)], limit=1,
+            )
+            if existing:
+                return {"status": "already_replied", "id": existing[0].id}
+            created_at = int(time.time())
+            tags = [["e", event_id], ["p", sender], ["t", "lobby"]]
+            eid = compute_event_id(_CONCIERGE_ID, created_at, 1, tags, text)
+            sig = sign_event_id(eid, _CONCIERGE_PRIV)
+            ev = Event(
+                id=eid, agent_id=_CONCIERGE_ID, created_at=created_at,
+                kind=1, tags=tags, content=text, sig=sig,
+            )
+            _publish_internal(ev, request)
+        return {"status": "posted", "id": eid}
 
     def _mcp_call_tool(name: str, args: dict) -> dict:
         if name == "anp2_get_stats":
@@ -3179,11 +3311,31 @@ def create_app(storage: Storage) -> FastAPI:
             return envelope({})
 
         if method == "tools/list":
-            return envelope({"tools": _MCP_TOOLS})
+            # Hide the authenticated write tool from anonymous discovery — only a
+            # caller presenting a valid concierge token sees anp2_concierge_reply.
+            # (The read tools stay public.) Keeps the public MCP surface read-only.
+            tools = _MCP_TOOLS if _concierge_authed(request) else [
+                t for t in _MCP_TOOLS if t.get("name") != "anp2_concierge_reply"]
+            return envelope({"tools": tools})
 
         if method == "tools/call":
             tool_name = params.get("name", "")
             tool_args = params.get("arguments") or {}
+            # Authenticated write tool: gate on the concierge token (Authorization
+            # Bearer, or the opt-in ?ctoken= query for header-less hosted MCP
+            # clients — see _concierge_authed). Read tools below stay open/no-auth.
+            # Access logging is configured to scrub `ctoken=` when the query path
+            # is enabled, so the token is not written to disk.
+            if tool_name == "anp2_concierge_reply":
+                if not _concierge_authed(request):
+                    return envelope(error={"code": -32001, "message": "unauthorized: concierge write requires a valid bearer token"})
+                res = _concierge_reply(
+                    tool_args.get("event_id", ""), tool_args.get("sender", ""),
+                    tool_args.get("reply_text", ""), request,
+                )
+                if isinstance(res, dict) and "error" in res:
+                    return envelope(error={"code": -32602, "message": res["error"]})
+                return envelope(_mcp_tool_result_text(res))
             try:
                 result = _mcp_call_tool(tool_name, tool_args)
                 # If _mcp_call_tool returned an error envelope, hoist it

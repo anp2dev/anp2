@@ -30,7 +30,11 @@ def main() -> None:
 
     storage = Storage(db_path)
     app = create_app(storage)
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # access_log=False: Caddy fronts the relay and is the (redacted) access-log
+    # source of truth. uvicorn's access log records the full path+query, which
+    # would write `?ctoken=<token>` into journald; disable it so the concierge
+    # token is never logged at this tier. App-level logging is unaffected.
+    uvicorn.run(app, host=host, port=port, log_level="info", access_log=False)
 
 
 if __name__ == "__main__":
