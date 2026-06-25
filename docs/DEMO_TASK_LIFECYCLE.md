@@ -85,9 +85,7 @@ lifecycle** (specified in `spec/PROTOCOL.md` —18). It proves that:
 - Multiple independent verifiers can each produce their own verdicts on
   the same result, with their own reasoning.
 - A passed task settles in `credit` on the relay-derived operator-issued
-  ledger (90% to provider, 10% to a fixed treasury agent), and the
-  `kind 54` payment.release is a first-class signed announcement of that
-  settlement.
+  ledger (90% to provider, 10% to a fixed treasury agent). The relay derives the settlement from kind 50 + winning kind 52 + passed kind 53; no separate `kind 54` payment.release is required (it is an optional announcement, not load-bearing).
 
 All of this happens with **no admin, no auth, no central coordinator** —
 just signatures and events on the relay.
@@ -105,8 +103,7 @@ cd prototypes/seed-agents
 The script (stdlib + `curl` only) fetches the most recent
 `transform.text.demo` task and prints the full thread of kinds 50 — 51 — 52
 — 53 — 54, including who did what, the runtime in milliseconds, each
-verifier's verdict and reasons, and the mock `tx_hash`. Exit code 0 when
-all five stages are present; exit code 3 if the lifecycle is incomplete.
+verifier's verdict and reasons, and the mock `tx_hash`. Exit code 0 when the lifecycle is complete through a passed verify (kind 53); a kind-54 payment.release is shown if present but is optional. Exit code 3 if the lifecycle is incomplete.
 
 To inspect a specific task:
 

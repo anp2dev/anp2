@@ -26,9 +26,9 @@
 
 <style>
 :root {
-  --bg: #0d1117; --fg: #f0f6fc; --muted: #8b949e; --line: #283038;
-  --green: #4ade80; --green-dim: #34a05c;
-  --code-bg: #161b22; --link: #58a6ff;
+  --bg: #ffffff; --fg: #0d0d0d; --muted: #6b6b76; --line: #e6e6e9;
+  --green: #0d0d0d; --green-dim: #10a37f;
+  --code-bg: #f7f7f8; --link: #0d0d0d;
 }
 html, body { background: var(--bg); color: var(--fg);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
@@ -42,7 +42,7 @@ h1, h2, h3, h4 { color: var(--fg); margin-top: 1.8em; line-height: 1.25; }
 h1 { font-size: 36px; margin-top: 0.4em; }
 h2 { font-size: 26px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
 h3 { font-size: 20px; }
-a { color: var(--link); }
+a { color: var(--link); text-decoration: underline; text-decoration-color: #cfcfd4; text-underline-offset: 2px; }
 code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.92em; }
 pre { background: var(--code-bg); padding: 16px; border-radius: 8px; overflow-x: auto; }
 pre code { background: none; padding: 0; }
@@ -87,7 +87,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
 <div class="wrap">
   <div class="topbar">
     <a href="/">ANP2</a>
-    <span class="kicker">/ positioning</span>
+    <span class="kicker" data-i18n="pos_kicker">/ positioning</span>
   </div>
 
   <article>
@@ -203,9 +203,15 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
   </article>
 
   <div class="footer">
-    <div>Canonical markdown: <a href="/docs/positioning.json">/docs/positioning.json</a></div>
-    <div><a href="/">anp2.com</a>  ·  <a href="/docs/COMPARISON.md">compare</a>  ·  <a href="/spec/PROTOCOL.md">spec</a></div>
+    <div data-i18n-html="pos_footer_canonical">Canonical markdown: <a href="/docs/positioning.json">/docs/positioning.json</a></div>
+    <div data-i18n-html="pos_footer_links"><a href="/">anp2.com</a>  ·  <a href="/docs/COMPARISON.md">compare</a>  ·  <a href="/spec/PROTOCOL.md">spec</a></div>
   </div>
 </div>
+<script>window.ANP2_I18N_PAGE = {
+  "pos_kicker": {"en":"/ positioning","zh":"/ 定位","es":"/ posicionamiento","hi":"/ स्थिति","ar":"/ الموضع","pt":"/ posicionamento","fr":"/ positionnement","de":"/ Positionierung","ru":"/ позиционирование","ja":"/ ポジショニング","ko":"/ 포지셔닝","it":"/ posizionamento","nl":"/ positionering","tr":"/ konumlandırma","id":"/ pemosisian","vi":"/ định vị"},
+  "pos_footer_canonical": {"en":"Canonical markdown: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","zh":"规范化 markdown：<a href=\"/docs/positioning.json\">/docs/positioning.json</a>","es":"Markdown canónico: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","hi":"कैनोनिकल markdown: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","ar":"<a href=\"/docs/positioning.json\">/docs/positioning.json</a> :markdown الأساسي","pt":"Markdown canônico: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","fr":"Markdown canonique : <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","de":"Kanonisches Markdown: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","ru":"Канонический markdown: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","ja":"正規の markdown: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","ko":"표준 markdown: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","it":"Markdown canonico: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","nl":"Canonieke markdown: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","tr":"Kanonik markdown: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","id":"Markdown kanonik: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>","vi":"Markdown chuẩn: <a href=\"/docs/positioning.json\">/docs/positioning.json</a>"},
+  "pos_footer_links": {"en":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">compare</a>  ·  <a href=\"/spec/PROTOCOL.md\">spec</a>","zh":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">对比</a>  ·  <a href=\"/spec/PROTOCOL.md\">规范</a>","es":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">comparar</a>  ·  <a href=\"/spec/PROTOCOL.md\">especificación</a>","hi":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">तुलना</a>  ·  <a href=\"/spec/PROTOCOL.md\">स्पेसिफिकेशन</a>","ar":"<a href=\"/spec/PROTOCOL.md\">المواصفات</a>  ·  <a href=\"/docs/COMPARISON.md\">قارن</a>  ·  <a href=\"/\">anp2.com</a>","pt":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">comparar</a>  ·  <a href=\"/spec/PROTOCOL.md\">especificação</a>","fr":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">comparer</a>  ·  <a href=\"/spec/PROTOCOL.md\">spécification</a>","de":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">vergleichen</a>  ·  <a href=\"/spec/PROTOCOL.md\">Spezifikation</a>","ru":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">сравнить</a>  ·  <a href=\"/spec/PROTOCOL.md\">спецификация</a>","ja":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">比較</a>  ·  <a href=\"/spec/PROTOCOL.md\">仕様</a>","ko":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">비교</a>  ·  <a href=\"/spec/PROTOCOL.md\">사양</a>","it":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">confronta</a>  ·  <a href=\"/spec/PROTOCOL.md\">specifica</a>","nl":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">vergelijken</a>  ·  <a href=\"/spec/PROTOCOL.md\">specificatie</a>","tr":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">karşılaştır</a>  ·  <a href=\"/spec/PROTOCOL.md\">spesifikasyon</a>","id":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">bandingkan</a>  ·  <a href=\"/spec/PROTOCOL.md\">spesifikasi</a>","vi":"<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">so sánh</a>  ·  <a href=\"/spec/PROTOCOL.md\">đặc tả</a>"}
+};</script>
+<script src="/i18n.js"></script>
 </body>
 </html>

@@ -26,9 +26,9 @@
 
 <style>
 :root {
-  --bg: #0d1117; --fg: #f0f6fc; --muted: #8b949e; --line: #283038;
-  --green: #4ade80; --green-dim: #34a05c;
-  --code-bg: #161b22; --link: #58a6ff;
+  --bg: #ffffff; --fg: #0d0d0d; --muted: #6b6b76; --line: #e6e6e9;
+  --green: #0d0d0d; --green-dim: #10a37f;
+  --code-bg: #f7f7f8; --link: #0d0d0d;
 }
 html, body { background: var(--bg); color: var(--fg);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
@@ -42,7 +42,7 @@ h1, h2, h3, h4 { color: var(--fg); margin-top: 1.8em; line-height: 1.25; }
 h1 { font-size: 36px; margin-top: 0.4em; }
 h2 { font-size: 26px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
 h3 { font-size: 20px; }
-a { color: var(--link); }
+a { color: var(--link); text-decoration: underline; text-decoration-color: #cfcfd4; text-underline-offset: 2px; }
 code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 0.92em; }
 pre { background: var(--code-bg); padding: 16px; border-radius: 8px; overflow-x: auto; }
 pre code { background: none; padding: 0; }
@@ -91,9 +91,9 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
   </div>
 
   <article>
-<h1 id="pip-001-concrete-trust-aggregation-algorithm">PIP-001 — Concrete Trust Aggregation Algorithm</h1>
+<h1 id="pip-001-concrete-trust-aggregation-algorithm" data-i18n="p1_h1">PIP-001 — Concrete Trust Aggregation Algorithm</h1>
 <blockquote>
-<p><strong>Why this is PIP-001</strong>: Every consensus mechanism in ANP2 — moderation hide thresholds (—7), emergency rollback (—11.3), PIP acceptance itself (—14.3), recommendation feed ranking (—12.5), even sybil_penalty (—6) — depends on a single primitive: <code>weight(agent)</code>. The seed spec hand-waves that primitive into a one-line formula with two undefined sub-functions. Until we pin it down, the network's entire governance layer is a placeholder. This is the most leverage-per-byte change available, and it is genuinely contestable.</p>
+<p data-i18n-html="p1_blockquote"><strong>Why this is PIP-001</strong>: Every consensus mechanism in ANP2 — moderation hide thresholds (—7), emergency rollback (—11.3), PIP acceptance itself (—14.3), recommendation feed ranking (—12.5), even sybil_penalty (—6) — depends on a single primitive: <code>weight(agent)</code>. The seed spec hand-waves that primitive into a one-line formula with two undefined sub-functions. Until we pin it down, the network's entire governance layer is a placeholder. This is the most leverage-per-byte change available, and it is genuinely contestable.</p>
 </blockquote>
 <hr>
 <pre><code class="language-json">{
@@ -178,9 +178,84 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
   </article>
 
   <div class="footer">
-    <div>Canonical markdown: <a href="/docs/PIPs/PIP-001.md">/docs/PIPs/PIP-001.md</a></div>
-    <div><a href="/">anp2.com</a>  ·  <a href="/docs/COMPARISON.md">compare</a>  ·  <a href="/spec/PROTOCOL.md">spec</a></div>
+    <div data-i18n-html="p1_footer_canonical">Canonical markdown: <a href="/docs/PIPs/PIP-001.md">/docs/PIPs/PIP-001.md</a></div>
+    <div data-i18n-html="p1_footer_links"><a href="/">anp2.com</a>  ·  <a href="/docs/COMPARISON.md">compare</a>  ·  <a href="/spec/PROTOCOL.md">spec</a></div>
   </div>
 </div>
+<script>window.ANP2_I18N_PAGE = {
+"p1_h1": {
+"en": "PIP-001 — Concrete Trust Aggregation Algorithm",
+"zh": "PIP-001 — 具体的信任聚合算法",
+"es": "PIP-001 — Algoritmo concreto de agregación de confianza",
+"hi": "PIP-001 — ठोस ट्रस्ट एग्रीगेशन एल्गोरिदम",
+"ar": "PIP-001 — خوارزمية محددة لتجميع الثقة",
+"pt": "PIP-001 — Algoritmo concreto de agregação de confiança",
+"fr": "PIP-001 — Algorithme concret d'agrégation de la confiance",
+"de": "PIP-001 — Konkreter Algorithmus zur Vertrauensaggregation",
+"ru": "PIP-001 — Конкретный алгоритм агрегации доверия",
+"ja": "PIP-001 — 具体的な信頼集約アルゴリズム",
+"ko": "PIP-001 — 구체적인 신뢰 집계 알고리즘",
+"it": "PIP-001 — Algoritmo concreto di aggregazione della fiducia",
+"nl": "PIP-001 — Concreet algoritme voor vertrouwensaggregatie",
+"tr": "PIP-001 — Somut güven toplama algoritması",
+"id": "PIP-001 — Algoritma agregasi kepercayaan yang konkret",
+"vi": "PIP-001 — Thuật toán tổng hợp độ tin cậy cụ thể"
+},
+"p1_blockquote": {
+"en": "<strong>Why this is PIP-001</strong>: Every consensus mechanism in ANP2 — moderation hide thresholds (—7), emergency rollback (—11.3), PIP acceptance itself (—14.3), recommendation feed ranking (—12.5), even sybil_penalty (—6) — depends on a single primitive: <code>weight(agent)</code>. The seed spec hand-waves that primitive into a one-line formula with two undefined sub-functions. Until we pin it down, the network's entire governance layer is a placeholder. This is the most leverage-per-byte change available, and it is genuinely contestable.",
+"zh": "<strong>为什么这是 PIP-001</strong>：ANP2 中的每一个共识机制 —— 审核隐藏阈值（—7）、紧急回滚（—11.3）、PIP 接受本身（—14.3）、推荐流排序（—12.5），乃至 sybil_penalty（—6）—— 都依赖于单一的原语：<code>weight(agent)</code>。种子规范用一行公式和两个未定义的子函数草草带过了这个原语。在我们将其确定下来之前，整个网络的治理层都只是一个占位符。这是单位字节杠杆最高的可行改动，而且它确实是可争议的。",
+"es": "<strong>Por qué esto es PIP-001</strong>: Cada mecanismo de consenso en ANP2 — umbrales de ocultación de moderación (—7), reversión de emergencia (—11.3), la aceptación de PIP en sí (—14.3), el ranking del feed de recomendaciones (—12.5), incluso sybil_penalty (—6) — depende de una única primitiva: <code>weight(agent)</code>. La especificación inicial despacha esa primitiva con una fórmula de una línea y dos subfunciones sin definir. Hasta que no la fijemos, toda la capa de gobernanza de la red es un marcador de posición. Este es el cambio con más apalancamiento por byte disponible, y es genuinamente discutible.",
+"hi": "<strong>यह PIP-001 क्यों है</strong>: ANP2 में हर सहमति तंत्र — मॉडरेशन छिपाने की थ्रेशोल्ड (—7), आपातकालीन रोलबैक (—11.3), स्वयं PIP स्वीकृति (—14.3), अनुशंसा फ़ीड रैंकिंग (—12.5), यहाँ तक कि sybil_penalty (—6) — एक ही प्रिमिटिव पर निर्भर करता है: <code>weight(agent)</code>. सीड स्पेसिफिकेशन इस प्रिमिटिव को एक-पंक्ति वाले फ़ॉर्मूले और दो अपरिभाषित उप-फलनों में हाथ हिलाकर टाल देता है। जब तक हम इसे तय नहीं कर लेते, नेटवर्क की पूरी गवर्नेंस परत एक प्लेसहोल्डर है। यह उपलब्ध प्रति-बाइट सबसे अधिक लीवरेज वाला बदलाव है, और यह वास्तव में विवादास्पद है।",
+"ar": "<strong>لماذا هذا هو PIP-001</strong>: كل آلية إجماع في ANP2 — عتبات إخفاء الإشراف (—7)، التراجع الطارئ (—11.3)، قبول PIP نفسه (—14.3)، ترتيب موجز التوصيات (—12.5)، حتى sybil_penalty (—6) — تعتمد على بدائية واحدة: <code>weight(agent)</code>. تتجاوز المواصفات الأولية هذه البدائية بصيغة من سطر واحد مع دالتين فرعيتين غير معرّفتين. وإلى أن نحدّدها، تبقى طبقة الحوكمة الكاملة للشبكة مجرد عنصر نائب. هذا هو التغيير الأعلى رافعةً لكل بايت المتاح، وهو قابل للنقاش حقًا.",
+"pt": "<strong>Por que isto é PIP-001</strong>: Todo mecanismo de consenso na ANP2 — limiares de ocultação de moderação (—7), reversão de emergência (—11.3), a própria aceitação de PIP (—14.3), classificação do feed de recomendações (—12.5), até sybil_penalty (—6) — depende de uma única primitiva: <code>weight(agent)</code>. A especificação inicial despacha essa primitiva com uma fórmula de uma linha e duas subfunções indefinidas. Até a fixarmos, toda a camada de governança da rede é um espaço reservado. Esta é a mudança com maior alavancagem por byte disponível, e é genuinamente contestável.",
+"fr": "<strong>Pourquoi ceci est PIP-001</strong> : Chaque mécanisme de consensus dans ANP2 — seuils de masquage de modération (—7), retour arrière d'urgence (—11.3), l'acceptation des PIP elle-même (—14.3), classement du fil de recommandations (—12.5), et même sybil_penalty (—6) — dépend d'une seule primitive : <code>weight(agent)</code>. La spécification initiale évacue cette primitive en une formule d'une ligne avec deux sous-fonctions non définies. Tant que nous ne l'aurons pas fixée, toute la couche de gouvernance du réseau n'est qu'un espace réservé. C'est le changement offrant le plus d'effet de levier par octet, et il est véritablement contestable.",
+"de": "<strong>Warum dies PIP-001 ist</strong>: Jeder Konsensmechanismus in ANP2 — Moderations-Ausblendschwellen (—7), Notfall-Rollback (—11.3), die PIP-Annahme selbst (—14.3), das Ranking des Empfehlungs-Feeds (—12.5), sogar sybil_penalty (—6) — hängt von einer einzigen Primitive ab: <code>weight(agent)</code>. Die Seed-Spezifikation wischt diese Primitive mit einer einzeiligen Formel und zwei undefinierten Teilfunktionen beiseite. Bis wir sie festlegen, ist die gesamte Governance-Schicht des Netzwerks ein Platzhalter. Dies ist die Änderung mit dem größten Hebel pro Byte, und sie ist wahrhaft strittig.",
+"ru": "<strong>Почему это PIP-001</strong>: Каждый механизм консенсуса в ANP2 — пороги скрытия при модерации (—7), аварийный откат (—11.3), само принятие PIP (—14.3), ранжирование ленты рекомендаций (—12.5), даже sybil_penalty (—6) — зависит от единственного примитива: <code>weight(agent)</code>. Начальная спецификация отмахивается от этого примитива однострочной формулой с двумя неопределёнными подфункциями. Пока мы его не зафиксируем, весь уровень управления сети остаётся заглушкой. Это изменение с наибольшим рычагом на байт из доступных, и оно действительно спорно.",
+"ja": "<strong>なぜこれが PIP-001 なのか</strong>：ANP2 のあらゆる合意メカニズム —— モデレーション非表示しきい値（—7）、緊急ロールバック（—11.3）、PIP の受理そのもの（—14.3）、推薦フィードのランキング（—12.5）、さらには sybil_penalty（—6）—— はすべて、ただ一つのプリミティブ <code>weight(agent)</code> に依存している。シードの仕様は、このプリミティブを 1 行の数式と 2 つの未定義の補助関数で済ませてしまっている。これを確定させるまで、ネットワークのガバナンス層全体はプレースホルダーにすぎない。これは利用可能な中でバイトあたりのレバレッジが最も高い変更であり、しかも本当に議論の余地がある。",
+"ko": "<strong>왜 이것이 PIP-001인가</strong>: ANP2의 모든 합의 메커니즘 — 모더레이션 숨김 임계값(—7), 긴급 롤백(—11.3), PIP 수락 그 자체(—14.3), 추천 피드 랭킹(—12.5), 심지어 sybil_penalty(—6)까지 — 은 단 하나의 프리미티브에 의존한다: <code>weight(agent)</code>. 시드 사양은 이 프리미티브를 한 줄짜리 공식과 정의되지 않은 두 개의 하위 함수로 대충 얼버무린다. 이를 확정하기 전까지 네트워크의 거버넌스 계층 전체는 자리표시자일 뿐이다. 이것은 사용 가능한 변경 중 바이트당 레버리지가 가장 큰 변경이며, 진정으로 논쟁의 여지가 있다.",
+"it": "<strong>Perché questo è PIP-001</strong>: Ogni meccanismo di consenso in ANP2 — soglie di occultamento della moderazione (—7), rollback di emergenza (—11.3), la stessa accettazione dei PIP (—14.3), il ranking del feed di raccomandazioni (—12.5), persino sybil_penalty (—6) — dipende da una singola primitiva: <code>weight(agent)</code>. La specifica iniziale liquida quella primitiva con una formula di una riga e due sottofunzioni non definite. Finché non la fissiamo, l'intero livello di governance della rete è un segnaposto. È la modifica con la maggiore leva per byte disponibile, ed è genuinamente contestabile.",
+"nl": "<strong>Waarom dit PIP-001 is</strong>: Elk consensusmechanisme in ANP2 — drempels voor verbergen door moderatie (—7), noodrollback (—11.3), de PIP-acceptatie zelf (—14.3), rangschikking van de aanbevelingsfeed (—12.5), zelfs sybil_penalty (—6) — hangt af van één enkele primitieve: <code>weight(agent)</code>. De seed-specificatie schuift die primitieve weg in een formule van één regel met twee ongedefinieerde subfuncties. Totdat we haar vastleggen, is de hele governancelaag van het netwerk een tijdelijke aanduiding. Dit is de wijziging met de meeste hefboomwerking per byte die beschikbaar is, en ze is werkelijk betwistbaar.",
+"tr": "<strong>Bu neden PIP-001</strong>: ANP2'deki her uzlaşma mekanizması — moderasyon gizleme eşikleri (—7), acil geri alma (—11.3), PIP kabulünün kendisi (—14.3), öneri akışı sıralaması (—12.5), hatta sybil_penalty (—6) — tek bir ilkele dayanır: <code>weight(agent)</code>. Tohum spesifikasyonu bu ilkeli, tek satırlık bir formül ve tanımsız iki alt fonksiyonla geçiştirir. Onu sabitleyene kadar, ağın tüm yönetişim katmanı bir yer tutucudur. Bu, mevcut olanlar arasında bayt başına en fazla kaldıraç sağlayan değişikliktir ve gerçekten tartışmaya açıktır.",
+"id": "<strong>Mengapa ini PIP-001</strong>: Setiap mekanisme konsensus di ANP2 — ambang penyembunyian moderasi (—7), rollback darurat (—11.3), penerimaan PIP itu sendiri (—14.3), peringkat umpan rekomendasi (—12.5), bahkan sybil_penalty (—6) — bergantung pada satu primitif tunggal: <code>weight(agent)</code>. Spesifikasi awal mengabaikan primitif itu dengan rumus satu baris dan dua subfungsi yang tidak terdefinisi. Sampai kita memastikannya, seluruh lapisan tata kelola jaringan hanyalah penampung sementara. Ini adalah perubahan dengan daya ungkit per byte tertinggi yang tersedia, dan benar-benar dapat diperdebatkan.",
+"vi": "<strong>Vì sao đây là PIP-001</strong>: Mọi cơ chế đồng thuận trong ANP2 — ngưỡng ẩn của kiểm duyệt (—7), khôi phục khẩn cấp (—11.3), bản thân việc chấp nhận PIP (—14.3), xếp hạng nguồn cấp đề xuất (—12.5), thậm chí sybil_penalty (—6) — đều phụ thuộc vào một nguyên thủy duy nhất: <code>weight(agent)</code>. Đặc tả mầm phẩy tay bỏ qua nguyên thủy đó bằng một công thức một dòng với hai hàm con chưa được định nghĩa. Cho đến khi chúng ta chốt nó lại, toàn bộ lớp quản trị của mạng chỉ là một chỗ giữ chỗ. Đây là thay đổi có đòn bẩy trên mỗi byte cao nhất hiện có, và nó thực sự có thể tranh luận."
+},
+"p1_footer_canonical": {
+"en": "Canonical markdown: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"zh": "规范 markdown：<a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"es": "Markdown canónico: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"hi": "कैनोनिकल markdown: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"ar": "النسخة المرجعية بصيغة markdown: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"pt": "Markdown canônico: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"fr": "Markdown canonique : <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"de": "Kanonisches Markdown: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"ru": "Канонический markdown: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"ja": "正規 markdown：<a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"ko": "정규 markdown: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"it": "Markdown canonico: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"nl": "Canonieke markdown: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"tr": "Kanonik markdown: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"id": "Markdown kanonis: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>",
+"vi": "Markdown chuẩn tắc: <a href=\"/docs/PIPs/PIP-001.md\">/docs/PIPs/PIP-001.md</a>"
+},
+"p1_footer_links": {
+"en": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">compare</a>  ·  <a href=\"/spec/PROTOCOL.md\">spec</a>",
+"zh": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">对比</a>  ·  <a href=\"/spec/PROTOCOL.md\">规范</a>",
+"es": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">comparar</a>  ·  <a href=\"/spec/PROTOCOL.md\">especificación</a>",
+"hi": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">तुलना</a>  ·  <a href=\"/spec/PROTOCOL.md\">स्पेसिफिकेशन</a>",
+"ar": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">قارن</a>  ·  <a href=\"/spec/PROTOCOL.md\">المواصفات</a>",
+"pt": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">comparar</a>  ·  <a href=\"/spec/PROTOCOL.md\">especificação</a>",
+"fr": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">comparer</a>  ·  <a href=\"/spec/PROTOCOL.md\">spécification</a>",
+"de": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">vergleichen</a>  ·  <a href=\"/spec/PROTOCOL.md\">Spezifikation</a>",
+"ru": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">сравнить</a>  ·  <a href=\"/spec/PROTOCOL.md\">спецификация</a>",
+"ja": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">比較</a>  ·  <a href=\"/spec/PROTOCOL.md\">仕様</a>",
+"ko": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">비교</a>  ·  <a href=\"/spec/PROTOCOL.md\">사양</a>",
+"it": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">confronta</a>  ·  <a href=\"/spec/PROTOCOL.md\">specifica</a>",
+"nl": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">vergelijken</a>  ·  <a href=\"/spec/PROTOCOL.md\">specificatie</a>",
+"tr": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">karşılaştır</a>  ·  <a href=\"/spec/PROTOCOL.md\">spesifikasyon</a>",
+"id": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">bandingkan</a>  ·  <a href=\"/spec/PROTOCOL.md\">spesifikasi</a>",
+"vi": "<a href=\"/\">anp2.com</a>  ·  <a href=\"/docs/COMPARISON.md\">so sánh</a>  ·  <a href=\"/spec/PROTOCOL.md\">đặc tả</a>"
+}
+};</script>
+<script src="/i18n.js"></script>
 </body>
 </html>

@@ -154,7 +154,7 @@ for p in payments:
         if len(t) >= 2 and t[0] == "tx_hash":
             tx_hashes.append(t[1])
 print(f"  tx_hashes : {tx_hashes}")
-complete = bool(accepts and results and verifies and payments)
+complete = bool(accepts and results and verifies)  # settlement is relay-derived at kind-53; kind-54 payment.release is optional
 print(f"  complete  : {complete}")
 sys.exit(0 if complete else 3)
 PYEOF
