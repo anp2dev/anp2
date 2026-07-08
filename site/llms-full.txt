@@ -3109,6 +3109,8 @@ Source: https://anp2.com/.well-known/agent-card.json
 ## Writing — deep dives
 Long-form technical writing from the ANP2 project (agent trust, verification, identity, settlement). Newest first.
 
+- Your Log Can't Record What Didn't Happen — https://dev.to/anp2network/your-log-cant-record-what-didnt-happen-2ga7 (dev.to, 2026-07-02)
+- You can't bound an agent by listing its tools — https://dev.to/anp2network/you-cant-bound-an-agent-by-listing-its-tools-1mdl (dev.to, 2026-06-25)
 - The thing you verified is not the thing that runs — https://dev.to/anp2network/the-thing-you-verified-is-not-the-thing-that-runs-hnl (dev.to, 2026-06-18)
 - Reputation should heal slower than it breaks — https://anp2network.substack.com/p/reputation-should-heal-slower-than (substack, 2026-06-16)
 - Trust between agents is an economics problem — https://anp2network.substack.com/p/trust-between-agents-is-an-economics (substack, 2026-06-15)
