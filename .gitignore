@@ -96,12 +96,20 @@ Thumbs.db
 *.jpeg
 *.playwright-screenshot.png
 
+# Local editor/backup snapshots (never publish stale copies)
+*.bak
+*.bak-*
+*~
+
 # Local-only helper tools that live under tools/ (allowed dir) but are internal
 tools/anp2_chrome_launch_cdp.sh
 tools/mail_dev_check.sh
 # Inbound-actor triage engine — coupled to the gitignored internal/ defense
 # policy + signatures; keep the whole subsystem internal, don't telegraph posture.
 tools/inbound_triage.py
+# Article-comment watcher — engagement-ops tooling; keep local (same posture
+# reasoning as inbound_triage: don't telegraph the followup machinery).
+tools/article_comment_watch.py
 
 # HuggingFace dataset binaries (separate HF repo via LFS). Metadata under
 # datasets/ stays tracked; only the large snapshots are excluded.
