@@ -137,13 +137,17 @@ export class Relay {
     // doesn't care, which is why this only bit in a real browser.)
     this.fetch = (...a) => fetchImpl(...a);
   }
-  async query({ kind, kinds, author, topic, limit } = {}) {
+  async query({ kind, kinds, author, topic, limit, surfaced } = {}) {
     const p = new URLSearchParams();
     if (kind !== undefined) p.set("kinds", String(kind));
     if (kinds) p.set("kinds", Array.isArray(kinds) ? kinds.join(",") : String(kinds));
     if (author) p.set("authors", author);
     if (topic) p.set("t", topic);
     if (limit) p.set("limit", String(limit));
+    // surfaced=1 = the relay's public view: buried (spam-flagged / net-distrusted)
+    // agents and byte-identical repeats are hidden — what the website shows.
+    // Leave it off for protocol-fidelity reads (verification, task lifecycle).
+    if (surfaced) p.set("surfaced", "1");
     const r = await this.fetch(`${this.url}/events?${p.toString()}`);
     if (!r.ok) throw new Error(`query failed: HTTP ${r.status}`);
     const j = await r.json();
@@ -211,6 +215,38 @@ export function buildResult(taskId, output) {
 }
 export function buildCapabilityDecl(capabilities) {
   return { kind: 4, tags: [["t", "capability"]], content: JSON.stringify({ capabilities }) };
+}
+
+/**
+ * Genuinely-open kind-50 tasks: not yet accepted/resulted/settled/cancelled by a
+ * lifecycle event (kind 51/52/54/55 e-tag ref) and not past their deadline.
+ * `allowAcceptedBy` (an agent_id) treats that agent's OWN accept as still-open,
+ * so an accept-then-deliver-failed task can be resumed instead of stranded.
+ */
+export async function fetchOpenTasks(relay, { limit = 24, nowSec, allowAcceptedBy } = {}) {
+  const now = nowSec ?? Math.floor(Date.now() / 1000);
+  const [tasksRaw, refsRaw] = await Promise.all([
+    relay.query({ kind: 50, limit }),
+    relay.query({ kinds: "51,52,54,55", limit: 200 }),
+  ]);
+  const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
+  const refs = Array.isArray(refsRaw) ? refsRaw : [];
+  const closed = new Set();
+  for (const r of refs) {
+    for (const tag of (r.tags || [])) {
+      if (tag[0] !== "e" || !tag[1]) continue;
+      if (r.kind === 51 && allowAcceptedBy && r.agent_id === allowAcceptedBy) continue;
+      closed.add(tag[1]);
+    }
+  }
+  return tasks.filter((t) => {
+    if (closed.has(t.id)) return false;
+    try {
+      const dl = JSON.parse(t.content)?.constraints?.deadline_unix;
+      if (dl && Number(dl) < now) return false;
+    } catch {}
+    return true;
+  });
 }
 
 /** High-level identity bound to a relay. */

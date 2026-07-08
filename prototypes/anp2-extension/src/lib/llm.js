@@ -66,9 +66,10 @@ export async function chat(apiKey, prompt, opts = {}) {
       generationConfig: { maxOutputTokens: maxTokens },
     };
     if (opts.system) body.systemInstruction = { parts: [{ text: opts.system }] };
-    const r = await fetchImpl(`${cfg.host}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    // Key goes in a header, not the URL — URLs can end up in intermediary logs.
+    const r = await fetchImpl(`${cfg.host}/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify(body),
     });
     if (!r.ok) throw new Error(`google HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);

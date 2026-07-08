@@ -166,3 +166,49 @@ test("resetIfNewDay zeroes counters on a new day", () => {
   resetIfNewDay(c, "2026-06-18");
   assert.equal(c.earned, 0); assert.equal(c.talked, 0); assert.equal(c.day, "2026-06-18");
 });
+
+// --- open-task filtering + failure ordering (regressions, 2026-07-05) -------
+import { fetchOpenTasks } from "../src/lib/anp2.js";
+const taskEv = (id, cap = "transform.text.demo", agent = "issuer") =>
+  ({ id, agent_id: agent, kind: 50, tags: [["t", "task"]], content: JSON.stringify({ capability: cap, input: { text: "hi" } }) });
+const routeRelay = (tasks, refs) => ({ query: async (q) => (q.kind === 50 ? tasks : refs) });
+
+test("fetchOpenTasks drops settled/accepted tasks but keeps our own accept", async () => {
+  const tasks = [taskEv("t1"), taskEv("t2"), taskEv("t3")];
+  const refs = [
+    { id: "r1", agent_id: "someone", kind: 52, tags: [["e", "t1", "result"]] }, // resulted -> closed
+    { id: "r2", agent_id: "me", kind: 51, tags: [["e", "t2", "accept"]] },      // OUR accept -> still open for us
+  ];
+  const open = await fetchOpenTasks(routeRelay(tasks, refs), { allowAcceptedBy: "me" });
+  assert.deepEqual(open.map((t) => t.id), ["t2", "t3"]);
+  const openForOther = await fetchOpenTasks(routeRelay(tasks, refs), { allowAcceptedBy: "other" });
+  assert.deepEqual(openForOther.map((t) => t.id), ["t3"]);
+});
+
+test("fetchOpenTasks drops tasks past their deadline", async () => {
+  const past = { ...taskEv("old"), content: JSON.stringify({ capability: "x", constraints: { deadline_unix: 1000 } }) };
+  const open = await fetchOpenTasks(routeRelay([past, taskEv("fresh")], []), { nowSec: 2000 });
+  assert.deepEqual(open.map((t) => t.id), ["fresh"]);
+});
+
+test("earnTick: a transient LLM failure does NOT blacklist the task (retries next tick)", async () => {
+  const id = mockIdentity("me");
+  const relay = routeRelay([taskEv("t9")], []);
+  const seenTasks = new Set();
+  const fail = await earnTick({ identity: id, relay, llm: async () => { throw new Error("429"); }, capability: "transform.text.demo", caps: DEFAULT_CAPS, counters: { day: today, earned: 0, talked: 0 }, today, seenTasks });
+  assert.equal(fail.action, "error");
+  assert.equal(seenTasks.has("t9"), false, "failed task must stay retryable");
+  assert.equal(id._calls.accept.length, 0, "must not accept before a result exists");
+  const ok = await earnTick({ identity: id, relay, llm: okLlm, capability: "transform.text.demo", caps: DEFAULT_CAPS, counters: { day: today, earned: 0, talked: 0 }, today, seenTasks });
+  assert.equal(ok.action, "earned");
+  assert.equal(seenTasks.has("t9"), true);
+});
+
+test("earnTick: deliver failure keeps the task retryable (no accept-and-vanish)", async () => {
+  const id = mockIdentity("me");
+  id.deliverResult = async () => { throw new Error("HTTP 500"); };
+  const seenTasks = new Set();
+  const res = await earnTick({ identity: id, relay: routeRelay([taskEv("t5")], []), llm: okLlm, capability: "transform.text.demo", caps: DEFAULT_CAPS, counters: { day: today, earned: 0, talked: 0 }, today, seenTasks });
+  assert.equal(res.action, "error");
+  assert.equal(seenTasks.has("t5"), false);
+});

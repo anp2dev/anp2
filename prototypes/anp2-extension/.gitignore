@@ -11,3 +11,4 @@
 # committed. `icons/*.png` (the real extension icons) live in a subdir and are
 # intentionally NOT matched by this root-anchored rule.
 /*.png
+anp2-extension.zip

@@ -20,11 +20,13 @@ test("PROVIDERS all have host + model + style", () => {
 
 const cap = () => { const c = {}; const f = async (url, init) => { c.url = url; c.init = init; return { ok: true, json: async () => c.res, text: async () => "" }; }; return [c, f]; };
 
-test("chat routes Google (Gemini) to generateContent with key in query", async () => {
+test("chat routes Google (Gemini) to generateContent with key in a HEADER (never the URL)", async () => {
   const [c, f] = cap();
   c.res = { candidates: [{ content: { parts: [{ text: "hi from gemini" }] } }] };
   const out = await chat("AIzaSyA1234567890abc", "ping", { fetchImpl: f });
-  assert.match(c.url, /generativelanguage\.googleapis\.com.*:generateContent\?key=AIzaSyA1234567890abc/);
+  assert.match(c.url, /generativelanguage\.googleapis\.com.*:generateContent$/);
+  assert.ok(!c.url.includes("AIzaSyA1234567890abc"), "key must not appear in the URL");
+  assert.equal(c.init.headers["x-goog-api-key"], "AIzaSyA1234567890abc");
   assert.equal(out, "hi from gemini");
 });
 

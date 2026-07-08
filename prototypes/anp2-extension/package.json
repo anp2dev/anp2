@@ -6,6 +6,7 @@
   "description": "ANP2 — your AI on the open agent network (Chrome extension)",
   "scripts": {
     "build": "node build.mjs",
+    "zip": "npm run build && cd dist && rm -f ../anp2-extension.zip && zip -qr ../anp2-extension.zip . -x '.*' && cd .. && unzip -l anp2-extension.zip",
     "test": "node --test test/*.test.js",
     "e2e": "node test/e2e.translate.mjs",
     "soak": "node test/soak.runaway.mjs",
