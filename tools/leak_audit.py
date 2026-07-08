@@ -133,6 +133,11 @@ CONTENT_SCAN_EXCLUDE: set[str] = {
 
 # Per-rule, per-file false-positive exemptions. rule_name -> set of paths.
 RULE_FILE_EXCLUDE: dict[str, set[str]] = {
+    # False positive: the extension privacy policy names a Chrome extension
+    # storage API (browser-local storage), not an mDNS hostname.
+    "dotlocal-host": {
+        "site/extension-privacy.html",
+    },
     # Operator-side utility scripts intentionally reference private-only paths
     # (key path, host file, credential lookup). Functional defaults, not leaks.
     "private-doc-ref-in-public": {
